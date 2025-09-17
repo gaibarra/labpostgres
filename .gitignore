@@ -1,0 +1,58 @@
+### Dependencias
+node_modules/
+
+### Builds / Output
+dist/
+build/
+*.pid
+*.pid.lock
+*.seed
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+### Sistema / Editor
+.DS_Store
+Thumbs.db
+.idea/
+*.iml
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+### Entornos
+.env
+.env.*.local
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+!/.env.example
+
+### Coverage / Tests
+coverage/
+*.lcov
+
+### Cachés herramientas
+.eslintcache
+.stylelintcache
+.parcel-cache
+.nyc_output/
+.vite/
+.cache/
+cache/
+tmp/
+temp/
+
+### Otros
+*.tsbuildinfo
+*.swp
+*.swo
+*.patch
+*.orig
+*.rej
+
+# Lockfiles: se recomienda mantenerlos versionados (package-lock.json / pnpm-lock.yaml / yarn.lock)
