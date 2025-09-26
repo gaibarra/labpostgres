@@ -31,10 +31,13 @@ function normalizeUser(raw) {
   };
 }
 
-export const AuthProvider = ({ children }) => {
+// AuthProvider
+// Ahora acepta opcionalmente initialUser (solo pensado para pruebas) para inyectar
+// un usuario ya autenticado y evitar la llamada a /auth/me. En producción no se usa.
+export const AuthProvider = ({ children, initialUser = null }) => {
       const { toast } = useToast();
-      const [user, setUser] = useState(null);
-      const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(initialUser ? normalizeUser(initialUser) : null);
+  const [loading, setLoading] = useState(!initialUser); // si viene initialUser ya estamos listos
 
     const loadCurrentUser = useCallback(async () => {
         if (!getToken()) { setUser(null); return; }
@@ -51,7 +54,10 @@ export const AuthProvider = ({ children }) => {
         }
       }, []);
 
-      useEffect(() => { (async () => { setLoading(true); await loadCurrentUser(); setLoading(false); })(); }, [loadCurrentUser]);
+      useEffect(() => {
+        if (initialUser) return; // en pruebas skip fetch /auth/me
+        (async () => { setLoading(true); await loadCurrentUser(); setLoading(false); })();
+      }, [loadCurrentUser, initialUser]);
 
     const signUp = useCallback(async (email, password, firstName, lastName) => {
         setLoading(true);

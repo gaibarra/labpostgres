@@ -22,6 +22,18 @@ Object.defineProperty(window, 'matchMedia', {
 
 // Supabase mock & related test scaffolding removed after full migration to custom backend.
 
+// Polyfill mínimo para ResizeObserver (usado por recharts ResponsiveContainer)
+if (typeof window !== 'undefined' && !window.ResizeObserver) {
+  class ResizeObserverMock {
+    constructor(cb) { this.cb = cb; }
+    observe() { /* no-op */ }
+    unobserve() { /* no-op */ }
+    disconnect() { /* no-op */ }
+  }
+  window.ResizeObserver = ResizeObserverMock;
+  global.ResizeObserver = ResizeObserverMock;
+}
+
 // Ensure fetch works with relative URLs in JSDOM/Node
 // Node's fetch (undici) requires absolute URLs; some UI code may call fetch('/api/...').
 // In tests, transparently prefix a base origin to relative requests to avoid unhandled rejections.

@@ -11,7 +11,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
     import { useAuth } from '@/contexts/AuthContext';
     import OrderHelpDialog from '@/components/modules/orders/OrderHelpDialog';
 
-    const Orders = () => {
+  const Orders = () => {
       const { toast } = useToast();
       const { user } = useAuth();
       const [searchTerm, setSearchTerm] = useState('');
@@ -73,6 +73,29 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
       }, [openModal, initialOrderForm]);
 
       const safeOrders = orders || [];
+      // Obtener highlight de query param
+      const params = new URLSearchParams(location.search);
+      const highlightId = params.get('highlight');
+
+      // Scroll suave al elemento resaltado la primera vez que exista
+      const scrolledRef = useRef(false);
+      useEffect(() => {
+        if (highlightId && !scrolledRef.current) {
+          const el = document.getElementById(`order-${highlightId}`);
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            scrolledRef.current = true;
+            // Remover animación pulsante después de 3s (mantener resaltado base)
+            setTimeout(() => {
+              try {
+                if (el.classList.contains('animate-pulse-[1.5s_ease-in-out_2]')) {
+                  el.classList.remove('animate-pulse-[1.5s_ease-in-out_2]');
+                }
+              } catch(_) {}
+            }, 3000);
+          }
+        }
+      }, [highlightId, safeOrders]);
       const filteredOrders = searchTerm
         ? safeOrders.filter(order =>
             (order?.patient_name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
@@ -104,6 +127,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
                   onEdit={handleEdit}
                   onDelete={handleDeleteOrder}
                   onOpenModal={openModal}
+                  highlightId={highlightId}
                 />
               </div>
             </CardContent>

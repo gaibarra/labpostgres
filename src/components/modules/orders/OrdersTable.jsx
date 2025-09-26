@@ -21,7 +21,8 @@ import React from 'react';
       isLoading,
       onEdit, 
       onDelete, 
-      onOpenModal
+      onOpenModal,
+      highlightId = null
     }) => {
 
       if (isLoading) {
@@ -58,8 +59,15 @@ import React from 'react';
             </TableRow>
           </TableHeader>
           <TableBody>
-            {orders.map((order) => (
-              <TableRow key={order.id} className="hover:bg-slate-100/50 dark:hover:bg-slate-800/50">
+            {orders.map((order) => {
+              const isHighlighted = highlightId && order.id === highlightId;
+              return (
+              <TableRow 
+                key={order.id}
+                id={`order-${order.id}`}
+                data-highlighted={isHighlighted ? 'true' : 'false'}
+                className={`hover:bg-slate-100/50 dark:hover:bg-slate-800/50 transition-colors ${isHighlighted ? 'ring-2 ring-sky-400 dark:ring-sky-500 bg-sky-50/70 dark:bg-sky-900/30 animate-pulse-[1.5s_ease-in-out_2]' : ''}`}
+              >
                 <TableCell className="font-mono text-xs text-slate-600 dark:text-slate-400">{order.folio}</TableCell>
                 <TableCell className="text-slate-600 dark:text-slate-400">{formatInTimeZone(order.order_date, "dd/MM/yyyy")}</TableCell>
                 <TableCell className="font-medium text-slate-700 dark:text-slate-300">{order.patient_name}</TableCell>
@@ -148,7 +156,7 @@ import React from 'react';
                   </DropdownMenu>
                 </TableCell>
               </TableRow>
-            ))}
+            );})}
           </TableBody>
         </Table>
       );
