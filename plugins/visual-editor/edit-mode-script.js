@@ -3,9 +3,9 @@ import { POPUP_STYLES } from '/plugins/visual-editor/visual-editor-config.js';
 const PLUGIN_APPLY_EDIT_API_URL = '/api/apply-edit';
 
 const ALLOWED_PARENT_ORIGINS = [
-	'https://horizons.hostinger.com',
-	'https://horizons.hostinger.dev',
-	'https://horizons-frontend-local.hostinger.dev',
+	// 'https://horizons.hostinger.com',
+	// 'https://horizons.hostinger.dev',
+	// 'https://horizons-frontend-local.hostinger.dev',
 	'http://localhost:4000',
 ];
 

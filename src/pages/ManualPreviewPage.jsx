@@ -11,7 +11,7 @@ const ManualPreviewPage = () => {
 
   const handlePrint = useReactToPrint({
     content: () => componentRef.current,
-    documentTitle: 'LabSys - Manual de Usuario',
+    documentTitle: 'LabG40 - Manual de Usuario',
   });
 
   return (

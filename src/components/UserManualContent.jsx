@@ -128,7 +128,7 @@ const UserManualContent = React.forwardRef((props, ref) => {
     return (
         <div ref={ref} className="bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 p-8 md:p-12 font-sans">
             <header className="text-center mb-12">
-                <h1 className="text-5xl font-extrabold text-slate-900 dark:text-white mb-4">Bienvenido a LabSys</h1>
+                <h1 className="text-5xl font-extrabold text-slate-900 dark:text-white mb-4">Bienvenido a LabG40</h1>
                 <p className="text-xl text-slate-600 dark:text-slate-300">
                     La guía definitiva para transformar su laboratorio clínico.
                 </p>
@@ -136,7 +136,7 @@ const UserManualContent = React.forwardRef((props, ref) => {
 
             <main>
                 <Paragraph isQuote={true}>
-                    Este no es solo un manual; es el mapa para desbloquear todo el potencial de su negocio. LabSys ha sido diseñado desde cero para ir más allá de un simple sistema de gestión: es su socio estratégico para la eficiencia, el crecimiento y la excelencia.
+                    Este no es solo un manual; es el mapa para desbloquear todo el potencial de su negocio. LabG40 ha sido diseñado desde cero para ir más allá de un simple sistema de gestión: es su socio estratégico para la eficiencia, el crecimiento y la excelencia.
                 </Paragraph>
 
                 <HelpSection mainTitle="Gestion de Pacientes" content={patientHelp} />
@@ -158,7 +158,7 @@ const UserManualContent = React.forwardRef((props, ref) => {
                         <br />
                         <strong>2. Metodología:</strong> El diseño de la campaña (el anuncio, el email, la publicación).
                         <br />
-                        <strong>3. Ejecución:</strong> Lanzar la campaña con las herramientas de LabSys.
+                        <strong>3. Ejecución:</strong> Lanzar la campaña con las herramientas de LabG40.
                         <br />
                         <strong>4. Análisis de Resultados:</strong> Medir los KPIs (indicadores clave) para ver si la hipótesis fue correcta.
                     </Paragraph>
@@ -175,7 +175,7 @@ const UserManualContent = React.forwardRef((props, ref) => {
                             Diseñe un anuncio claro y atractivo. Use imágenes de calidad y un mensaje directo que resalte el beneficio para el paciente o médico (Ej: "Resultados de Perfil Tiroideo en 24h. Precisión en la que puede confiar").
                         </ListItem>
                         <ListItem title="Paso 3: Gestión y Análisis (La Medición)">
-                            Utilice la plataforma de anuncios (Facebook Ads, Google Ads) para lanzar su campaña. Luego, en LabSys, cruce los datos: ¿cuántas órdenes nuevas vinieron de pacientes que mencionaron la campaña? Mida el Retorno de Inversión (ROI).
+                            Utilice la plataforma de anuncios (Facebook Ads, Google Ads) para lanzar su campaña. Luego, en LabG40, cruce los datos: ¿cuántas órdenes nuevas vinieron de pacientes que mencionaron la campaña? Mida el Retorno de Inversión (ROI).
                         </ListItem>
                     </ul>
 
@@ -188,7 +188,7 @@ const UserManualContent = React.forwardRef((props, ref) => {
                             Cree un calendario. Lunes: "Mito vs. Realidad sobre el colesterol". Miércoles: "Conozca a nuestro equipo de Químicos". Viernes: "Promoción de fin de semana en perfiles de salud". El objetivo es aportar valor, no solo vender.
                         </ListItem>
                         <ListItem title="Paso 2: Creación y Programación">
-                            Use las herramientas de LabSys para escribir y programar sus publicaciones. Cree gráficos sencillos con información útil (ej: qué significa tener la Vitamina D baja).
+                            Use las herramientas de LabG40 para escribir y programar sus publicaciones. Cree gráficos sencillos con información útil (ej: qué significa tener la Vitamina D baja).
                         </ListItem>
                         <ListItem title="Paso 3: Publicación y Análisis">
                             Observe qué publicaciones generan más "me gusta", comentarios o son más compartidas. Esos son sus "controles positivos". Aprenda de ellos y replique el éxito.
@@ -201,7 +201,7 @@ const UserManualContent = React.forwardRef((props, ref) => {
                     </Paragraph>
                     <ul className="list-none pl-2">
                         <ListItem title="Paso 1: Recopilación y Segmentación">
-                            LabSys automáticamente construye su lista de correos. Segméntela: una lista para pacientes, otra para médicos. Puede incluso segmentar por tipo de estudio (pacientes diabéticos, cardiópatas, etc.).
+                            LabG40 automáticamente construye su lista de correos. Segméntela: una lista para pacientes, otra para médicos. Puede incluso segmentar por tipo de estudio (pacientes diabéticos, cardiópatas, etc.).
                         </ListItem>
                         <ListItem title="Paso 2: Creación de Plantillas">
                             Diseñe correos profesionales. Use el Asistente de IA para generar contenido para un boletín mensual con consejos de salud, o para notificar a los médicos sobre un nuevo equipo o estudio disponible.
@@ -214,7 +214,7 @@ const UserManualContent = React.forwardRef((props, ref) => {
 
             </main>
             <footer className="text-center mt-16 pt-8 border-t border-slate-200 dark:border-slate-800">
-                <p className="text-sm text-slate-500 dark:text-slate-400">&copy; {new Date().getFullYear()} LabSys. Todos los derechos reservados.</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">&copy; {new Date().getFullYear()} LabG40. Todos los derechos reservados.</p>
             </footer>
         </div>
     );

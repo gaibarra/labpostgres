@@ -57,7 +57,7 @@ import React from 'react';
                     transition={{ duration: 0.2 }}
                     className="text-2xl font-bold text-slate-800 dark:text-slate-100 origin-left"
                   >
-                    LabSys
+                    LabG40
                   </motion.h1>
                 )}
               </AnimatePresence>
@@ -149,7 +149,7 @@ import React from 'react';
                   transition={{ duration: 0.2 }}
                   className="text-center text-xs text-slate-500 dark:text-slate-400 mb-4"
                 >
-                  <p>&copy; {new Date().getFullYear()} LabSys</p>
+                  <p>&copy; {new Date().getFullYear()} LabG40</p>
                   <p>Creado por Gonzalo Ibarra M.</p>
                 </motion.div>
               )}

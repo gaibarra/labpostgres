@@ -230,9 +230,9 @@ export const generateUserManualPDF = async () => {
     const builder = new PDFBuilder();
     await builder.init();
     
-    await builder.addTitle("Bienvenido a LabSys", { size: 28 });
+    await builder.addTitle("Bienvenido a LabG40", { size: 28 });
     await builder.addParagraph("La guía definitiva para transformar su laboratorio clínico en un modelo de eficiencia, crecimiento y excelencia.");
-    await builder.addParagraph("Este no es solo un manual; es el mapa para desbloquear todo el potencial de su negocio. LabSys ha sido diseñado desde cero para ir más allá de un simple sistema de gestión: es su socio estratégico.", { isQuote: true });
+    await builder.addParagraph("Este no es solo un manual; es el mapa para desbloquear todo el potencial de su negocio. LabG40 ha sido diseñado desde cero para ir más allá de un simple sistema de gestión: es su socio estratégico.", { isQuote: true });
     
     await builder.addSectionBreak();
     

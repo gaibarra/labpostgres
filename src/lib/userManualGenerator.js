@@ -26,7 +26,7 @@ export const generateUserManualPDF = () => {
             doc.setPage(i);
             doc.setFontSize(8);
             doc.setTextColor(150);
-            doc.text(`LabSys - El Futuro de tu Laboratorio`, margin, pageHeight - 20, { align: 'left' });
+            doc.text(`LabG40 - El Futuro de tu Laboratorio`, margin, pageHeight - 20, { align: 'left' });
             doc.text(`Página ${i} de ${totalPages}`, pageWidth - margin, pageHeight - 20, { align: 'right' });
         }
     };
@@ -129,9 +129,9 @@ export const generateUserManualPDF = () => {
         addSectionBreak();
     };
 
-    addTitle("Bienvenido a LabSys", { size: 32 });
+    addTitle("Bienvenido a LabG40", { size: 32 });
     addParagraph("La guía definitiva para transformar su laboratorio clínico en un modelo de eficiencia, crecimiento y excelencia.", { size: 14 });
-    addParagraph("Este no es solo un manual; es el mapa para desbloquear todo el potencial de su negocio. LabSys ha sido diseñado desde cero para ir más allá de un simple sistema de gestión: es su socio estratégico.", { isQuote: true });
+    addParagraph("Este no es solo un manual; es el mapa para desbloquear todo el potencial de su negocio. LabG40 ha sido diseñado desde cero para ir más allá de un simple sistema de gestión: es su socio estratégico.", { isQuote: true });
     
     addSectionBreak();
 
