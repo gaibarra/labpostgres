@@ -460,19 +460,45 @@ router.get('/email/lists/:id/subscribers', auth, requirePermission('marketing','
 router.get('/ad-campaigns', auth, requirePermission('marketing','manage_campaigns'), async (_req, res, next) => {
   try {
     const { rows } = await pool.query('SELECT * FROM ad_campaigns ORDER BY created_at DESC LIMIT 1000');
-    res.json(rows);
+    const normalized = rows.map(r => ({
+      ...r,
+      budget: typeof r.budget === 'number' ? r.budget : parseFloat(r.budget) || 0,
+      kpis: {
+        impressions: 0,
+        clicks: 0,
+        conversions: 0,
+        ctr: '0%',
+        cpc: '$0.00',
+        cpa: '$0.00',
+        ...(r.kpis || {})
+      }
+    }));
+    res.json(normalized);
   } catch (e) { next(new AppError(500,'Error listando campañas','AD_CAMPAIGNS_LIST_FAIL')); }
 });
 
 router.post('/ad-campaigns', auth, requirePermission('marketing','manage_campaigns'), async (req, res, next) => {
   const { name, platform, start_date, end_date, budget, objectives, status, notes, kpis } = req.body || {};
   if (!name || !platform || !start_date || budget === undefined) return next(new AppError(400,'name, platform, start_date y budget requeridos','AD_CAMPAIGNS_VALIDATION'));
+  const normalizedBudget = typeof budget === 'number' ? budget : parseFloat(budget) || 0;
+  const mergedKpis = {
+    impressions: 0,
+    clicks: 0,
+    conversions: 0,
+    ctr: '0%',
+    cpc: '$0.00',
+    cpa: '$0.00',
+    ...(kpis || {})
+  };
   try {
     const { rows } = await pool.query(`
       INSERT INTO ad_campaigns (name, platform, start_date, end_date, budget, objectives, status, notes, kpis)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *
-    `,[name, platform, start_date, end_date || null, budget, objectives || null, status || 'Planificada', notes || null, kpis || {}]);
-    res.status(201).json(rows[0]);
+    `,[name, platform, start_date, end_date || null, normalizedBudget, objectives || null, status || 'Planificada', notes || null, mergedKpis]);
+    const created = rows[0];
+    created.budget = normalizedBudget;
+    created.kpis = mergedKpis;
+    res.status(201).json(created);
   } catch (e) {
     console.error('AD_CAMPAIGN_CREATE_FAIL', e);
     next(new AppError(500,'Error creando campaña','AD_CAMPAIGN_CREATE_FAIL'));
@@ -481,6 +507,16 @@ router.post('/ad-campaigns', auth, requirePermission('marketing','manage_campaig
 
 router.put('/ad-campaigns/:id', auth, requirePermission('marketing','manage_campaigns'), async (req, res, next) => {
   const { id } = req.params; const { name, platform, start_date, end_date, budget, objectives, status, notes, kpis } = req.body || {};
+  const normalizedBudget = budget === undefined ? undefined : (typeof budget === 'number' ? budget : parseFloat(budget) || 0);
+  const mergedKpis = kpis === undefined ? undefined : {
+    impressions: 0,
+    clicks: 0,
+    conversions: 0,
+    ctr: '0%',
+    cpc: '$0.00',
+    cpa: '$0.00',
+    ...(kpis || {})
+  };
   try {
     const { rows } = await pool.query(`
       UPDATE ad_campaigns SET
@@ -494,9 +530,12 @@ router.put('/ad-campaigns/:id', auth, requirePermission('marketing','manage_camp
         notes = $9,
         kpis = COALESCE($10,kpis)
       WHERE id = $1 RETURNING *
-    `,[id, name, platform, start_date, end_date || null, budget, objectives || null, status, notes || null, kpis]);
+    `,[id, name, platform, start_date, end_date || null, normalizedBudget, objectives || null, status, notes || null, mergedKpis]);
     if (!rows[0]) return next(new AppError(404,'Campaña no encontrada','AD_CAMPAIGN_NOT_FOUND'));
-    res.json(rows[0]);
+    const updated = rows[0];
+    if (normalizedBudget !== undefined) updated.budget = normalizedBudget;
+    if (mergedKpis !== undefined) updated.kpis = mergedKpis;
+    res.json(updated);
   } catch (e) { next(new AppError(500,'Error actualizando campaña','AD_CAMPAIGN_UPDATE_FAIL')); }
 });
 

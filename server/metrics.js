@@ -36,4 +36,13 @@ const dbPoolTotal = new client.Gauge({ name: 'db_pool_total_connections', help: 
 const dbPoolIdle = new client.Gauge({ name: 'db_pool_idle_connections', help: 'Conexiones idle en el pool PG' });
 const dbPoolWaiting = new client.Gauge({ name: 'db_pool_waiting_clients', help: 'Clientes esperando conexión PG' });
 
-module.exports = { metricsMiddleware, metricsEndpoint };
+// Revocaciones y validaciones de tokens
+const tokenRevocations = new client.Counter({ name: 'auth_token_revocations_total', help: 'Total de revocaciones explícitas (logout, admin, blacklist)' , labelNames: ['reason']});
+const tokenVersionMismatch = new client.Counter({ name: 'auth_token_version_mismatch_total', help: 'Tokens rechazados por versionado (token_version desincronizado)' });
+const tokenJtiBlacklistHits = new client.Counter({ name: 'auth_token_jti_blacklist_hits_total', help: 'Tokens rechazados por jti en blacklist' });
+
+function incRevocation(reason='unknown'){ tokenRevocations.inc({ reason }); }
+function incVersionMismatch(){ tokenVersionMismatch.inc(); }
+function incJtiBlacklistHit(){ tokenJtiBlacklistHits.inc(); }
+
+module.exports = { metricsMiddleware, metricsEndpoint, incRevocation, incVersionMismatch, incJtiBlacklistHit };

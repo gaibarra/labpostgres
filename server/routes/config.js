@@ -3,24 +3,11 @@ const { pool } = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { requirePermission } = require('../middleware/permissions');
 const router = express.Router();
+const { configLimiter } = require('../middleware/rateLimit');
 
-// Utility: mask secret-like fields before logging
-function maskSecrets(obj){
-  if (!obj || typeof obj !== 'object') return obj;
-  const secretFields = ['openaiApiKey','openAIKey','whatsappApiKey','emailApiKey','telegramBotToken','deepseekKey','perplexityKey'];
-  if (Array.isArray(obj)) return obj.map(v=>maskSecrets(v));
-  const out = {};
-  for (const [k,v] of Object.entries(obj)) {
-    if (v && typeof v === 'object') {
-      out[k] = maskSecrets(v);
-    } else if (secretFields.includes(k) && typeof v === 'string') {
-      out[k] = v.length > 9 ? v.slice(0,4)+'***'+v.slice(-4) : '***MASKED***';
-    } else {
-      out[k] = v;
-    }
-  }
-  return out;
-}
+// Centralizado en utils/secrets
+const { redactSecrets, SECRET_FIELDS, LEGACY_SECRET_FIELDS } = require('../utils/secrets');
+const crypto = require('crypto');
 
 // Map DB columns to frontend keys (mirror of frontend mapping)
 const dbToFrontend = {
@@ -33,6 +20,12 @@ const dbToFrontend = {
 };
 const frontendToDb = Object.fromEntries(Object.entries(dbToFrontend).map(([k,v])=>[v,k]));
 
+// Campos de labInfo protegidos: no se pueden modificar sin forceUnlock explícito
+// Puedes ampliar esta lista si en futuro se agregan más datos críticos.
+const PROTECTED_LABINFO_FIELDS = [
+  'name','razonSocial','taxId','logoUrl','calle','numeroExterior','numeroInterior','colonia','codigoPostal','ciudad','estado','pais','phone','secondaryPhone','email','website','responsableSanitarioNombre','responsableSanitarioCedula'
+];
+
 function rowToFrontend(row){
   const out = { id: row.id, created_at: row.created_at, updated_at: row.updated_at };
   for (const [dbKey, feKey] of Object.entries(dbToFrontend)) {
@@ -42,6 +35,10 @@ function rowToFrontend(row){
   if (process.env.TEST_MODE === '1' && out.labInfo && typeof out.labInfo === 'object') {
     const { _testOwner, ...rest } = out.labInfo;
     out.labInfo = rest;
+  }
+  // Adjuntar metadata cruda sólo para uso interno; se filtrará en capa GET según rol
+  if (row.integrations_meta) {
+    out._integrationsMeta = row.integrations_meta;
   }
   return out;
 }
@@ -74,27 +71,84 @@ async function getOrCreateConfigRow(req) {
   return rows[0];
 }
 
-// GET current configuration (auto-create empty row if none)
+// Helper: determina si el usuario es admin (rol Administrador) para exponer secretos completos
+function isAdmin(req){
+  return req.user && (req.user.role === 'Administrador' || req.user.role_name === 'Administrador');
+}
+
+// Construir versión segura de integraciones para respuesta según rol
+function buildSafeIntegrations(integrations, admin){
+  if (!integrations || typeof integrations !== 'object') return {};
+  const safe = { ...integrations };
+  // Incluir lista defensiva (SECRET_FIELDS + legacy)
+  const allSecretCandidates = [...SECRET_FIELDS, ...LEGACY_SECRET_FIELDS];
+  for (const f of allSecretCandidates) {
+    const val = integrations[f];
+    if (typeof val === 'string' && val) {
+      if (admin) {
+        // Admin ve valor completo pero añadimos preview útil
+        safe[`${f}Preview`] = val.length > 12 ? val.slice(0,4)+'***'+val.slice(-4) : '***';
+      } else {
+        // Usuarios no admin: ocultar valor completo
+        safe[`${f}Preview`] = val.length > 8 ? val.slice(0,4)+'***'+val.slice(-4) : '***';
+        delete safe[f];
+      }
+    } else if (!val) {
+      delete safe[f];
+    }
+  }
+  // Eliminar alias legacy siempre
+  delete safe.openAIKey;
+  return safe;
+}
+
+// GET current configuration (auto-create empty row if none) con masking de secretos para no-admin
 router.get('/', requireAuth, async (req,res,next)=>{
   try {
     const row = await getOrCreateConfigRow(req);
     if (process.env.DEBUG_CONFIG) console.log('[CONFIG GET] returning row', row.id);
-    return res.json(rowToFrontend(row));
+    const base = rowToFrontend(row);
+    const admin = isAdmin(req);
+    base.integrations = buildSafeIntegrations(base.integrations || {}, admin);
+    if (admin && base._integrationsMeta) {
+      base.integrations._meta = base._integrationsMeta; // embed
+    }
+    delete base._integrationsMeta;
+    return res.json(base);
   } catch(err){
     next(err);
   }
 });
 
 // PATCH partial update (top-level deep merge per section using jsonb ||)
-router.patch('/', requireAuth, requirePermission('settings','update'), async (req,res,next)=>{
+router.patch('/', requireAuth, requirePermission('settings','update'), configLimiter, async (req,res,next)=>{
   try {
     const current = await getOrCreateConfigRow(req);
     const payload = req.body || {};
+    const forceUnlock = Boolean(payload.forceUnlock) || req.query.forceUnlock === '1';
+
+    // Protección labInfo: si se intenta modificar campos protegidos sin forceUnlock => 409
+    if (payload.labInfo && typeof payload.labInfo === 'object') {
+      const attemptedKeys = Object.keys(payload.labInfo);
+      const protectedTouched = attemptedKeys.filter(k => PROTECTED_LABINFO_FIELDS.includes(k));
+      if (protectedTouched.length > 0 && !forceUnlock) {
+        return res.status(409).json({
+          error: 'LABINFO_PROTECTED',
+            message: 'Los campos de información del laboratorio están protegidos y no pueden modificarse sin confirmación explícita.',
+            details: { intentados: protectedTouched, requiere: 'forceUnlock=true' }
+        });
+      }
+      // Si viene un objeto vacío ({}), ignorar para no sobreescribir con vacío
+      if (attemptedKeys.length === 0) {
+        delete payload.labInfo; // no tiene sentido aplicar merge vacío
+      }
+    }
+
     const updateFragments = [];
     const values = [];
     let idx = 1;
     if (process.env.DEBUG_CONFIG) {
-      console.log('[CONFIG PATCH] raw incoming payload masked=', JSON.stringify(maskSecrets(payload)));
+  console.log('[CONFIG PATCH] raw incoming payload redacted=', JSON.stringify(redactSecrets(payload)));
       if (payload.integrations) {
         if (typeof payload.integrations.openaiApiKey !== 'undefined' || typeof payload.integrations.openAIKey !== 'undefined') {
           const raw = payload.integrations.openaiApiKey || payload.integrations.openAIKey;
@@ -106,10 +160,58 @@ router.patch('/', requireAuth, requirePermission('settings','update'), async (re
         console.log('[CONFIG PATCH] NO integrations section in payload');
       }
     }
-    for (const [feKey, val] of Object.entries(payload)) {
+    // Preparar metadata de integraciones si cambian secretos
+  let metaNeedsUpdate = false;
+  let newMeta = current.integrations_meta || {};
+  // Usar sólo SECRET_FIELDS (sin alias)
+  const secretFields = SECRET_FIELDS;
+
+    for (const [feKey, valRaw] of Object.entries(payload)) {
+      let val = valRaw;
       if (!(feKey in frontendToDb)) continue; // ignore unknown top-level section
+      if (feKey === 'integrations' && val && typeof val === 'object') {
+        // Normalizar alias legacy si llega (openAIKey -> openaiApiKey) antes de procesar
+        if (val.openAIKey && !val.openaiApiKey) {
+          val = { ...val, openaiApiKey: val.openAIKey };
+          delete val.openAIKey;
+        }
+        // Detectar cambios en secretos
+        for (const f of secretFields) {
+          if (Object.prototype.hasOwnProperty.call(val, f)) {
+            const incoming = val[f];
+            const prevMeta = current.integrations_meta?.[f];
+            // null => borrado explícito
+            if (incoming === null) {
+              if (!prevMeta || !prevMeta.removedAt) {
+                newMeta[f] = { removedAt: new Date().toISOString(), removedBy: req.user?.id || null };
+                metaNeedsUpdate = true;
+              }
+              continue;
+            }
+            if (typeof incoming === 'string' && incoming !== '') {
+              const hash = crypto.createHash('sha256').update(incoming).digest('hex');
+              const prevHash = prevMeta && prevMeta.hash;
+              if (prevHash === hash) {
+                // Misma clave: no actualizar metadata; remover del payload para no forzar write innecesaria
+                delete val[f];
+              } else {
+                const last4 = incoming.slice(-4);
+                newMeta[f] = { updatedAt: new Date().toISOString(), updatedBy: req.user?.id || null, last4, hash };
+                metaNeedsUpdate = true;
+              }
+            } else if (incoming === '') {
+              // Cadena vacía se ignora: no rota, no borra
+              delete val[f];
+            }
+          }
+        }
+      }
       updateFragments.push(`${frontendToDb[feKey]} = COALESCE(${frontendToDb[feKey]}, '{}'::jsonb) || $${idx++}::jsonb`);
       values.push(val);
+    }
+    if (metaNeedsUpdate) {
+      updateFragments.push(`integrations_meta = COALESCE(integrations_meta, '{}'::jsonb) || $${idx++}::jsonb`);
+      values.push(newMeta);
     }
     if (updateFragments.length === 0) {
       if (process.env.DEBUG_CONFIG) console.log('[CONFIG PATCH] no valid sections, skipping update');
@@ -118,7 +220,22 @@ router.patch('/', requireAuth, requirePermission('settings','update'), async (re
     values.push(current.id);
     const sql = `UPDATE lab_configuration SET ${updateFragments.join(', ')} WHERE id = $${idx} RETURNING *`;
   if (process.env.DEBUG_CONFIG) console.log('[CONFIG PATCH] payload keys', Object.keys(payload), 'sql', sql);
-    const updated = await pool.query(sql, values);
+    let updated;
+    try {
+      updated = await pool.query(sql, values);
+    } catch(dbErr) {
+      if (/integrations_meta/.test(dbErr.message)) {
+        // Intentar crear columna on-the-fly (backfill) para entornos donde migración aún no corrió.
+        try {
+          await pool.query("ALTER TABLE lab_configuration ADD COLUMN IF NOT EXISTS integrations_meta jsonb DEFAULT '{}'::jsonb");
+          updated = await pool.query(sql, values); // retry
+        } catch(alterErr) {
+          return next(alterErr);
+        }
+      } else {
+        return next(dbErr);
+      }
+    }
   if (process.env.DEBUG_CONFIG) console.log('[CONFIG PATCH] updated row', updated.rows[0].id);
     return res.json(rowToFrontend(updated.rows[0]));
   } catch(err){
@@ -127,11 +244,17 @@ router.patch('/', requireAuth, requirePermission('settings','update'), async (re
 });
 
 // PATCH only integrations (convenience endpoint). Accepts partial keys inside body root.
-router.patch('/integrations', requireAuth, requirePermission('settings','update'), async (req,res,next)=>{
+router.patch('/integrations', requireAuth, requirePermission('settings','update'), configLimiter, async (req,res,next)=>{
   try {
-    const partial = req.body || {};
+    const partialRaw = req.body || {};
+    // Clonar para no mutar referencia externa
+    const partial = { ...partialRaw };
+    if (partial.openAIKey && !partial.openaiApiKey) {
+      partial.openaiApiKey = partial.openAIKey;
+      delete partial.openAIKey;
+    }
     if (process.env.DEBUG_CONFIG) {
-      console.log('[CONFIG PATCH /integrations] raw partial masked=', JSON.stringify(maskSecrets(partial)));
+  console.log('[CONFIG PATCH /integrations] raw partial redacted=', JSON.stringify(redactSecrets(partial)));
       if (typeof partial.openaiApiKey !== 'undefined' || typeof partial.openAIKey !== 'undefined') {
         const raw = partial.openaiApiKey || partial.openAIKey;
         console.log('[CONFIG PATCH /integrations] received openai key length=', raw ? raw.length : 0);
@@ -140,8 +263,60 @@ router.patch('/integrations', requireAuth, requirePermission('settings','update'
       }
     }
     const current = await getOrCreateConfigRow(req);
-    const sql = "UPDATE lab_configuration SET integrations_settings = COALESCE(integrations_settings, '{}'::jsonb) || $1::jsonb WHERE id = $2 RETURNING *";
-    const updated = await pool.query(sql, [partial, current.id]);
+    // Construir metadata
+  const secretFields = SECRET_FIELDS;
+    let metaNeedsUpdate = false;
+    let newMeta = current.integrations_meta || {};
+    for (const f of secretFields) {
+      if (Object.prototype.hasOwnProperty.call(partial, f)) {
+        const incoming = partial[f];
+        const prevMeta = current.integrations_meta?.[f];
+        if (incoming === null) {
+          if (!prevMeta || !prevMeta.removedAt) {
+            newMeta[f] = { removedAt: new Date().toISOString(), removedBy: req.user?.id || null };
+            metaNeedsUpdate = true;
+          }
+          continue;
+        }
+        if (typeof incoming === 'string' && incoming !== '') {
+          const hash = crypto.createHash('sha256').update(incoming).digest('hex');
+            const prevHash = prevMeta && prevMeta.hash;
+            if (prevHash === hash) {
+              // Misma clave -> no actualizar metadata ni valor
+              delete partial[f];
+            } else {
+              newMeta[f] = { updatedAt: new Date().toISOString(), updatedBy: req.user?.id || null, last4: incoming.slice(-4), hash };
+              metaNeedsUpdate = true;
+            }
+        } else if (incoming === '') {
+          delete partial[f];
+        }
+      }
+    }
+    let sql;
+    let params;
+    if (metaNeedsUpdate) {
+      sql = "UPDATE lab_configuration SET integrations_settings = COALESCE(integrations_settings, '{}'::jsonb) || $1::jsonb, integrations_meta = COALESCE(integrations_meta, '{}'::jsonb) || $2::jsonb WHERE id = $3 RETURNING *";
+      params = [partial, newMeta, current.id];
+    } else {
+      sql = "UPDATE lab_configuration SET integrations_settings = COALESCE(integrations_settings, '{}'::jsonb) || $1::jsonb WHERE id = $2 RETURNING *";
+      params = [partial, current.id];
+    }
+    let updated;
+    try {
+      updated = await pool.query(sql, params);
+    } catch(dbErr) {
+      if (/integrations_meta/.test(dbErr.message)) {
+        try {
+          await pool.query("ALTER TABLE lab_configuration ADD COLUMN IF NOT EXISTS integrations_meta jsonb DEFAULT '{}'::jsonb");
+          updated = await pool.query(sql, params);
+        } catch(alterErr) {
+          return next(alterErr);
+        }
+      } else {
+        return next(dbErr);
+      }
+    }
   if (process.env.DEBUG_CONFIG) console.log('[CONFIG PATCH /integrations] keys', Object.keys(partial), 'row', current.id);
     return res.json(rowToFrontend(updated.rows[0]));
   } catch(err){
@@ -150,10 +325,26 @@ router.patch('/integrations', requireAuth, requirePermission('settings','update'
 });
 
 // PUT full replace (expects full object keys; missing keys left untouched unless null explicitly provided)
-router.put('/', requireAuth, requirePermission('settings','update'), async (req,res,next)=>{
+router.put('/', requireAuth, requirePermission('settings','update'), configLimiter, async (req,res,next)=>{
   try {
     const current = await getOrCreateConfigRow(req);
     const payload = req.body || {};
+    const forceUnlock = Boolean(payload.forceUnlock) || req.query.forceUnlock === '1';
+
+    if (Object.prototype.hasOwnProperty.call(payload,'labInfo')) {
+      const labInfoIncoming = payload.labInfo || {};
+      if (labInfoIncoming && typeof labInfoIncoming === 'object') {
+        const attemptedKeys = Object.keys(labInfoIncoming);
+        const protectedTouched = attemptedKeys.filter(k => PROTECTED_LABINFO_FIELDS.includes(k));
+        if (protectedTouched.length > 0 && !forceUnlock) {
+          return res.status(409).json({
+            error: 'LABINFO_PROTECTED',
+            message: 'Los campos de información del laboratorio están protegidos y no pueden modificarse sin confirmación explícita.',
+            details: { intentados: protectedTouched, requiere: 'forceUnlock=true' }
+          });
+        }
+      }
+    }
     const updateFragments = [];
     const values = [];
     let idx = 1;
@@ -177,3 +368,23 @@ router.put('/', requireAuth, requirePermission('settings','update'), async (req,
 });
 
 module.exports = router;
+
+// NUEVO: GET /api/config/integrations (endpoint admin-only para valores completos + metadata)
+router.get('/integrations', requireAuth, async (req,res,next)=>{
+  try {
+    if (!isAdmin(req)) return res.status(403).json({ error: 'Forbidden' });
+    const row = await getOrCreateConfigRow(req);
+    const integrations = (row.integrations_settings || {});
+    // Limpiar alias legacy si aún existe
+    if (integrations.openAIKey && !integrations.openaiApiKey) {
+      // Migrar silenciosamente a la clave nueva
+      integrations.openaiApiKey = integrations.openAIKey;
+      delete integrations.openAIKey;
+    } else {
+      delete integrations.openAIKey;
+    }
+    return res.json({ integrations, integrationsMeta: row.integrations_meta || {} });
+  } catch(err){
+    next(err);
+  }
+});

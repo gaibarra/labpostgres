@@ -40,8 +40,15 @@ async function ensureAuditTable() {
     if (!cols.includes('created_at') && cols.includes('timestamp')) {
       try { await pool.query('ALTER TABLE system_audit_logs RENAME COLUMN "timestamp" TO created_at'); } catch(_) {}
     }
+    if (!cols.includes('entity')) {
+      try { await pool.query('ALTER TABLE system_audit_logs ADD COLUMN entity text'); } catch(_) {}
+    }
+    if (!cols.includes('entity_id')) {
+      try { await pool.query('ALTER TABLE system_audit_logs ADD COLUMN entity_id text'); } catch(_) {}
+    }
     await pool.query('CREATE INDEX IF NOT EXISTS idx_audit_action ON system_audit_logs(action)');
     await pool.query('CREATE INDEX IF NOT EXISTS idx_audit_created ON system_audit_logs(created_at DESC)');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_audit_entity ON system_audit_logs(entity)');
   } catch(e) {
     console.error('Error ensuring audit table', e);
   }
@@ -83,18 +90,18 @@ router.get('/', auth, requirePermission('administration','view_audit_log'), asyn
   if (P_HAS_FIRST_LAST) namePieces.push("(trim(COALESCE(p.first_name,'')||' '||COALESCE(p.last_name,'')))");
   if (!namePieces.length) namePieces.push('u.email');
   const nameExpr = `COALESCE(${namePieces.join(', ')})`;
-  const baseSelect = `SELECT l.*, ${nameExpr} AS user_name FROM system_audit_logs l LEFT JOIN users u ON u.id = l.performed_by ${profileJoin} ${where}`;
+  const baseSelect = `SELECT l.id, l.action, l.details, l.performed_by, l.created_at, COALESCE(l.created_at, now()) AS created_at_fallback, ${nameExpr} AS user_name FROM system_audit_logs l LEFT JOIN users u ON u.id = l.performed_by ${profileJoin} ${where}`;
     if (all === '1') {
-      const { rows } = await pool.query(baseSelect + ' ORDER BY created_at DESC');
-      return res.json({ items: rows, total: rows.length });
+      const { rows } = await pool.query(baseSelect + ' ORDER BY created_at_fallback DESC');
+      return res.json({ items: rows.map(r=> ({ ...r, created_at: r.created_at || r.created_at_fallback })), total: rows.length });
     }
-    const dataQ = baseSelect + ' ORDER BY created_at DESC LIMIT $' + (params.length+1) + ' OFFSET $' + (params.length+2);
+    const dataQ = baseSelect + ' ORDER BY created_at_fallback DESC LIMIT $' + (params.length+1) + ' OFFSET $' + (params.length+2);
     const countQ = 'SELECT COUNT(*)::int AS total FROM system_audit_logs l ' + (where ? where : '');
     const [dataR, countR] = await Promise.all([
       pool.query(dataQ, [...params, limit, offset]),
       pool.query(countQ, params)
     ]);
-    res.json({ items: dataR.rows, total: countR.rows[0].total, page: parseInt(page,10)||0, pageSize: limit });
+  res.json({ items: dataR.rows.map(r=> ({ ...r, created_at: r.created_at || r.created_at_fallback })), total: countR.rows[0].total, page: parseInt(page,10)||0, pageSize: limit });
   } catch (e) { console.error(e); next(new AppError(500,'Error listando logs','AUDIT_LIST_FAIL')); }
 });
 

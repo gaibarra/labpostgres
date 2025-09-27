@@ -9,7 +9,7 @@ import apiClient from '@/lib/apiClient';
 import { useSettings } from '@/contexts/SettingsContext';
 
 const AIAssistDialog = ({ isOpen, onOpenChange, onGenerationSuccess }) => {
-  const TOTAL_TIMEOUT_MS = 120000; // 120s
+  const TOTAL_TIMEOUT_MS = 180000; // 180s
   const [studyName, setStudyName] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [jobId, setJobId] = useState(null);
@@ -103,10 +103,10 @@ const AIAssistDialog = ({ isOpen, onOpenChange, onGenerationSuccess }) => {
     const tick = async () => {
       if (ac.signal.aborted) return;
       const elapsed = Date.now() - startedAt;
-      if (elapsed > TOTAL_TIMEOUT_MS) { // 120s
+      if (elapsed > TOTAL_TIMEOUT_MS) { // 180s
         ac.abort();
         setIsGenerating(false);
-        toast({ title:'Tiempo excedido', description:'>120s sin completar.', variant:'destructive' });
+        toast({ title:'Tiempo excedido', description:'>180s sin completar.', variant:'destructive' });
         if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }
         resetState();
         return;

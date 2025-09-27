@@ -10,12 +10,12 @@ const ThemeContext = createContext({
 
 export const useTheme = () => useContext(ThemeContext);
 
-export const ThemeProvider = ({ children, defaultTheme = 'light', storageKey = 'vite-ui-theme' }) => {
+export const ThemeProvider = ({ children, defaultTheme = 'light' }) => {
   const { user } = useAuth();
   const [theme, setTheme] = useState(defaultTheme);
   const [ready, setReady] = useState(false);
 
-  // Load theme from backend for authenticated users; fallback to localStorage for guests
+  // Carga tema desde backend si autenticado; caso contrario usa default sin persistir en localStorage
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -23,31 +23,25 @@ export const ThemeProvider = ({ children, defaultTheme = 'light', storageKey = '
         if (user) {
           const res = await apiClient.get('/profiles/me/theme');
           if (!cancelled) setTheme(res?.theme || defaultTheme);
-        } else {
-          const fromLocal = localStorage.getItem(storageKey) || defaultTheme;
-          if (!cancelled) setTheme(fromLocal);
+        } else if (!cancelled) {
+          setTheme(defaultTheme);
         }
       } catch {
-        const fromLocal = localStorage.getItem(storageKey) || defaultTheme;
-        if (!cancelled) setTheme(fromLocal);
+        if (!cancelled) setTheme(defaultTheme);
   } finally { if (!cancelled) setReady(true); }
     })();
     return () => { cancelled = true; };
-  }, [user, defaultTheme, storageKey]);
+  // Nota: Eliminado storageKey/localStorage para cumplir requisito de no persistir en cliente.
+  }, [user, defaultTheme]);
 
   useEffect(() => {
     const root = window.document.documentElement;
     root.classList.remove('light', 'dark');
     if (theme) {
       root.classList.add(theme);
-      // Persist: DB for authenticated users, else localStorage fallback
-      if (user && ready) {
-        apiClient.put('/profiles/me/theme', { theme }).catch(() => {});
-      } else {
-        localStorage.setItem(storageKey, theme);
-      }
+      if (user && ready) apiClient.put('/profiles/me/theme', { theme }).catch(() => {});
     }
-  }, [theme, storageKey, user, ready]);
+  }, [theme, user, ready]);
 
   const toggleTheme = () => {
     setTheme((prevTheme) => (prevTheme === 'light' ? 'dark' : 'light'));

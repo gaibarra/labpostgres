@@ -23,8 +23,9 @@ const slugify = (s) =>
     .toUpperCase()
     .slice(0, 20);
 
-const StudyForm = ({ initialStudy, onSubmit, onCancel, isSubmitting, onAIAssist, onImmediateParameterSave, onImmediateParameterDelete, onPersistParameterOrder }) => {
+const StudyForm = ({ initialStudy, onSubmit, onCancel, isSubmitting, onAIAssist, onImmediateParameterSave, onImmediateParameterDelete, onPersistParameterOrder, onAIAddParameter }) => {
   const [study, setStudy] = useState(initialStudy);
+  const [aiParamLoading, setAiParamLoading] = useState(false);
   const [showParameters, setShowParameters] = useState(true);
   const paramsCompRef = useRef(null);
   // Importante: NO usar el hook genérico useStudies aquí porque no sincroniza rangos de referencia.
@@ -70,6 +71,33 @@ const StudyForm = ({ initialStudy, onSubmit, onCancel, isSubmitting, onAIAssist,
   const handleAddParameterClick = () => {
     if (!showParameters) setShowParameters(true);
     paramsCompRef.current?.openNew?.();
+  };
+
+  const handleAIAddParameterClick = () => {
+    if (typeof onAIAddParameter !== 'function' || aiParamLoading) return;
+    const ctx = {
+      studyName: study.name,
+      category: study.category,
+      existingParameters: (study.parameters||[]).map(p=>p.name).filter(Boolean)
+    };
+    setAiParamLoading(true);
+    try {
+      const maybePromise = onAIAddParameter(ctx, (newParam)=>{
+        if (newParam) {
+          setStudy(prev => ({ ...prev, parameters: [...(prev.parameters||[]), newParam] }));
+          if (!showParameters) setShowParameters(true);
+          try { paramsCompRef.current?.focusLast?.(); } catch {}
+        }
+      });
+      if (maybePromise && typeof maybePromise.finally === 'function') {
+        maybePromise.finally(()=> setAiParamLoading(false));
+      } else {
+        // Fallback: reset after short delay if callback style only
+        setTimeout(()=> setAiParamLoading(false), 1200);
+      }
+    } catch {
+      setAiParamLoading(false);
+    }
   };
 
   const handleParametersChange = (newParameters) => {
@@ -173,6 +201,18 @@ const StudyForm = ({ initialStudy, onSubmit, onCancel, isSubmitting, onAIAssist,
                     >
                       <PlusCircle className="mr-2 h-4 w-4" /> Añadir Parámetro
                     </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleAIAddParameterClick}
+                      disabled={aiParamLoading || isSubmitting}
+                      className={`relative overflow-hidden ${aiParamLoading ? 'opacity-80 cursor-wait' : ''} text-purple-600 border-purple-600 hover:bg-purple-100 dark:text-purple-400 dark:border-purple-400 dark:hover:bg-slate-800/60`}
+                      title="Genera un nuevo parámetro con IA (novedoso o adicional)"
+                      aria-busy={aiParamLoading}
+                    >
+                      {aiParamLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />} {aiParamLoading ? 'Generando...' : 'Parámetro IA'}
+                    </Button>
                     <CollapsibleTrigger asChild>
                       <Button type="button" variant="ghost" size="sm" className="hover:bg-slate-200/50 dark:hover:bg-slate-800/50">
                         {showParameters ? <><ChevronUp className="mr-1 h-4 w-4" /> Ocultar</> : <><ChevronDown className="mr-1 h-4 w-4" /> Mostrar</>}
@@ -181,7 +221,10 @@ const StudyForm = ({ initialStudy, onSubmit, onCancel, isSubmitting, onAIAssist,
                   </div>
                 </div>
                 <CollapsibleContent>
-                  <div className="px-3 pb-3">
+                  <div
+                    className="px-3 pb-3 max-h-[60vh] overflow-y-auto overscroll-contain pr-2 scrollbar-thin"
+                    style={{ WebkitOverflowScrolling: 'touch' }}
+                  >
                     <StudyParameters
                       ref={paramsCompRef}
                       parameters={study.parameters || []}

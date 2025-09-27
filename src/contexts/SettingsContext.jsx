@@ -85,7 +85,12 @@ const SettingsContext = createContext({
 });
 
 export const SettingsProvider = ({ children }) => {
-  const { user, session, loading: authLoading } = useAuth();
+  // useAuth provee: { user, loading, signUp, signIn, signOut }
+  // Anteriormente se intentaba usar 'session' (remanente de una integración previa) lo cual provocaba que
+  // la condición (!user || !session) bloqueara permanentemente la carga de configuración y por ende
+  // tras refrescar la página se perdiera la API key en memoria (mostrando valores por defecto) aunque
+  // sí estuviera guardada en BD. Eliminamos toda dependencia de 'session'.
+  const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const [settings, setSettings] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -109,9 +114,16 @@ export const SettingsProvider = ({ children }) => {
       }
     }
     
-  const openaiApiKeyFromDb = frontendSettings.integrations.openaiApiKey || frontendSettings.integrations.openAIKey || '';
+    // Manejo de secreto OpenAI ahora puede venir como preview únicamente si backend enmascara para rol no admin
+    const openaiApiKeyFromDb = frontendSettings.integrations.openaiApiKey || frontendSettings.integrations.openAIKey || '';
     if (openaiApiKeyFromDb) {
+      // Si viene valor completo lo guardamos; si sólo viene preview (termina en *** + 4 chars) backend lo habrá puesto en openaiApiKeyPreview
       frontendSettings.integrations.openaiApiKey = openaiApiKeyFromDb;
+    } else {
+      // Podría venir sólo preview
+      if (frontendSettings.integrations.openaiApiKeyPreview && !frontendSettings.integrations.openaiApiKey) {
+        frontendSettings.integrations.openaiApiKey = ''; // no conocemos el valor completo, pero flag hasOpenAi se derivará
+      }
     }
     delete frontendSettings.integrations.openAIKey;
   console.log('[SettingsContext] processAndSetSettings RAW integrations keys', Object.keys(frontendSettings.integrations || {}));
@@ -129,7 +141,8 @@ export const SettingsProvider = ({ children }) => {
   }, []);
 
   const fetchSettings = useCallback(async (abortController) => {
-    if (!user || !session) {
+    // Si no hay usuario autenticado aún, fijamos defaults y salimos.
+    if (!user) {
       setIsLoading(false);
       setIsInitialized(true);
       if (!settings) setSettings(defaultSettings);
@@ -137,64 +150,9 @@ export const SettingsProvider = ({ children }) => {
     }
     setIsLoading(true);
     try {
-      const data = await apiClient.get('/config', { signal: abortController.signal });
+  const data = await apiClient.get('/config', { signal: abortController.signal });
       if (!abortController.signal.aborted && data) {
-        const merged = processAndSetSettings(data);
-        // One-time migration from legacy localStorage settings (if any) -> backend
-        try {
-          const migratedKey = 'labSettingsComplete_migrated';
-          const legacyKey = 'labSettingsComplete';
-          const alreadyMigrated = typeof window !== 'undefined' ? localStorage.getItem(migratedKey) : '1';
-          const legacyRaw = typeof window !== 'undefined' ? localStorage.getItem(legacyKey) : null;
-          if (!alreadyMigrated && legacyRaw) {
-            const legacy = JSON.parse(legacyRaw);
-            const legacyLabInfo = {
-              name: legacy.labName || '',
-              logoUrl: legacy.labLogoPreview || '',
-              razonSocial: legacy.razonSocial || '',
-              taxId: legacy.rfc || '',
-              calle: legacy.calle || '',
-              numeroExterior: legacy.numeroExterior || '',
-              numeroInterior: legacy.numeroInterior || '',
-              colonia: legacy.colonia || '',
-              codigoPostal: legacy.codigoPostal || '',
-              ciudad: legacy.ciudad || '',
-              estado: legacy.estado || '',
-              pais: legacy.pais || 'México',
-              phone: legacy.telefonoPrincipal || '',
-              secondaryPhone: legacy.telefonoSecundario || '',
-              email: legacy.emailContacto || ''
-            };
-            const legacyIntegrations = {
-              openaiApiKey: legacy.openAIKey || '',
-              deepseekKey: legacy.deepseekKey || '',
-              perplexityKey: legacy.perplexityKey || '',
-              emailServiceProvider: legacy.emailServiceProvider || '',
-              emailApiUser: legacy.emailApiUser || '',
-              emailApiKey: legacy.emailApiKey || '',
-              whatsappApiUrl: legacy.whatsappApiUrl || '',
-              whatsappApiKey: legacy.whatsappApiKey || '',
-              telegramBotToken: legacy.telegramBotToken || '',
-              telegramChatId: legacy.telegramChatId || ''
-            };
-            // Build minimal payload with only non-empty groups
-            const payload = {};
-            if (Object.values(legacyLabInfo).some(v => (v ?? '') !== '')) payload.labInfo = legacyLabInfo;
-            if (Object.values(legacyIntegrations).some(v => (v ?? '') !== '')) payload.integrations = legacyIntegrations;
-            if (Object.keys(payload).length > 0) {
-              if (process.env.NODE_ENV !== 'production') {
-                console.log('[SettingsContext] Migrating legacy localStorage -> /api/config', Object.keys(payload));
-              }
-              const updated = await apiClient.patch('/config', payload);
-              if (!abortController.signal.aborted && updated) {
-                processAndSetSettings(updated);
-              }
-            }
-            try { localStorage.setItem(migratedKey, '1'); } catch {}
-          }
-        } catch (migErr) {
-          console.warn('[SettingsContext] legacy migration failed (continuing):', migErr);
-        }
+        processAndSetSettings(data);
       }
     } catch (error) {
       if (abortController.signal.aborted) return;
@@ -213,7 +171,7 @@ export const SettingsProvider = ({ children }) => {
         setIsInitialized(true);
       }
     }
-  }, [user, session, toast, settings, processAndSetSettings]);
+  }, [user, toast, settings, processAndSetSettings]);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -229,12 +187,11 @@ export const SettingsProvider = ({ children }) => {
             }
         }
     };
-  }, [authLoading, user, session]);
+  }, [authLoading, user]);
 
   const updateSettings = async (newSettings) => {
     console.log('[SettingsContext] updateSettings START', {
       hasUser: !!user,
-      hasSession: !!session,
       hasSettings: !!settings,
       hasId: !!(settings && settings.id),
       incomingKeys: newSettings ? Object.keys(newSettings) : []
@@ -318,8 +275,8 @@ export const SettingsProvider = ({ children }) => {
       console.log('[SettingsContext] PATCH /config - AFTER response', {
         updated_at: data.updated_at,
         integrations: data.integrations ? {
-          hasOpenAi: !!data.integrations.openaiApiKey,
-          openaiApiKeyPreview: data.integrations.openaiApiKey ? data.integrations.openaiApiKey.slice(0,8)+'...' : ''
+          hasOpenAi: !!(data.integrations.openaiApiKey || data.integrations.openaiApiKeyPreview),
+          openaiApiKeyPreview: data.integrations.openaiApiKeyPreview || (data.integrations.openaiApiKey ? data.integrations.openaiApiKey.slice(0,4)+'***'+data.integrations.openaiApiKey.slice(-4) : '')
         } : undefined
       });
       const finalSettings = processAndSetSettings(data);

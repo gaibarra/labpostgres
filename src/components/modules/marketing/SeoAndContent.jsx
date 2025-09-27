@@ -16,6 +16,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { DatePicker } from '@/components/ui/datepicker'; 
 import { format, parseISO } from 'date-fns';
 import { apiClient } from '@/lib/apiClient';
+import { useSettings } from '@/contexts/SettingsContext';
 import { useAuth } from '@/contexts/AuthContext';
 
 const initialKeywordForm = { id: null, keyword: '', target_url: '', volume: '', difficulty: '', position: '', notes: '' };
@@ -26,6 +27,7 @@ const contentCategories = ['Salud General', 'Avances Médicos', 'Consejos Bienes
 const SeoAndContent = () => {
   const { toast } = useToast();
   const { user } = useAuth();
+  const { settings } = useSettings();
   const [activeTab, setActiveTab] = useState('keywords');
   
   const [keywords, setKeywords] = useState([]);
@@ -260,6 +262,9 @@ const SeoAndContent = () => {
     }
   };
 
+  const labWebsite = settings?.labInfo?.website?.trim();
+  const hasWebsite = !!(labWebsite && labWebsite.length > 5);
+
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="space-y-6">
       <Card className="shadow-xl glass-card overflow-hidden">
@@ -273,6 +278,28 @@ const SeoAndContent = () => {
           </div>
         </CardHeader>
         <CardContent className="p-6">
+          {!hasWebsite && (
+            <div className="mb-6 border border-amber-400 dark:border-amber-500 rounded-md p-4 bg-amber-50 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200">
+              <h3 className="font-semibold text-amber-700 dark:text-amber-300 mb-1">¿Aún no cuentas con Página Web?</h3>
+              <p className="text-sm mb-2">
+                Para aprovechar al máximo esta sección (análisis SEO, planeación de contenidos y optimización), necesitas un sitio web activo del laboratorio. 
+                Podemos ayudarte a crear uno profesional y listo para posicionamiento.
+              </p>
+              <p className="text-sm mb-2">
+                Contacta al creador de esta plataforma:
+              </p>
+              <ul className="text-sm list-disc list-inside mb-3 space-y-1">
+                <li><strong>C.P. Gonzalo Arturo Ibarra Mendoza</strong></li>
+                <li>Email: <a className="underline" href="mailto:proyectoG40@gmail.com">proyectoG40@gmail.com</a></li>
+                <li>Tel / WhatsApp: <a className="underline" href="tel:+526535388499">+52 653 538 8499</a></li>
+              </ul>
+              <p className="text-xs opacity-80 mb-3">Una vez que tengas el sitio, agrega la URL en Administración &gt; Información del Laboratorio para habilitar análisis contextual.</p>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" onClick={() => toast({ title: 'Agregar URL', description: 'Ve a Administración > Información del Laboratorio y llena el campo Sitio Web.' })}>Agregar URL ahora</Button>
+                <Button size="sm" onClick={() => window.open('mailto:proyectoG40@gmail.com?subject=Solicitud%20Sitio%20Web%20Laboratorio', '_blank')} className="bg-gradient-to-r from-theme-celestial to-theme-midnight text-white">Solicitar Sitio Web</Button>
+              </div>
+            </div>
+          )}
           <Tabs value={activeTab} onValueChange={(newTab) => { setActiveTab(newTab); setSearchTerm(''); setPageAnalysisResult(null); }} className="w-full">
             <TabsList className="grid w-full grid-cols-3 mb-6">
               <TabsTrigger value="keywords" className="flex items-center gap-2"><TrendingUp className="h-4 w-4"/>Palabras Clave</TabsTrigger>
@@ -288,7 +315,12 @@ const SeoAndContent = () => {
 
       <Dialog open={isKeywordFormOpen} onOpenChange={(isOpen) => { setIsKeywordFormOpen(isOpen); if (!isOpen) setCurrentKeyword(initialKeywordForm); }}>
         <DialogContent className="sm:max-w-lg">
-          <DialogHeader><DialogTitle>{keywordFormMode === 'new' ? 'Añadir Palabra Clave' : 'Editar Palabra Clave'}</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>{keywordFormMode === 'new' ? 'Añadir Palabra Clave' : 'Editar Palabra Clave'}</DialogTitle>
+            <DialogDescription className="sr-only">
+              Formulario para {keywordFormMode === 'new' ? 'añadir una nueva' : 'editar una'} palabra clave incluyendo URL objetivo, métricas simuladas y notas.
+            </DialogDescription>
+          </DialogHeader>
           <div className="grid gap-4 py-4">
             <div><Label htmlFor="kwKeyword">Palabra Clave</Label><Input id="kwKeyword" value={currentKeyword.keyword} onChange={(e) => setCurrentKeyword({...currentKeyword, keyword: e.target.value})} /></div>
             <div><Label htmlFor="kwTargetUrl">URL Objetivo</Label><Input id="kwTargetUrl" value={currentKeyword.target_url} onChange={(e) => setCurrentKeyword({...currentKeyword, target_url: e.target.value})} placeholder="https://ejemplo.com/servicio"/></div>
@@ -305,7 +337,12 @@ const SeoAndContent = () => {
 
       <Dialog open={isContentFormOpen} onOpenChange={(isOpen) => { setIsContentFormOpen(isOpen); if (!isOpen) setCurrentContentItem(initialContentForm); }}>
         <DialogContent className="sm:max-w-3xl max-h-[90vh]">
-          <DialogHeader><DialogTitle>{contentFormMode === 'new' ? 'Nuevo Artículo/Contenido' : 'Editar Artículo/Contenido'}</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>{contentFormMode === 'new' ? 'Nuevo Artículo/Contenido' : 'Editar Artículo/Contenido'}</DialogTitle>
+            <DialogDescription className="sr-only">
+              Formulario para {contentFormMode === 'new' ? 'crear un nuevo' : 'editar el'} artículo o contenido web incluyendo título, autor, fecha, categoría, etiquetas, cuerpo y estado.
+            </DialogDescription>
+          </DialogHeader>
            <ScrollArea className="max-h-[calc(90vh-200px)] pr-5">
             <div className="grid gap-4 py-4">
               <div><Label htmlFor="contentTitle">Título</Label><Input id="contentTitle" value={currentContentItem.title} onChange={(e) => setCurrentContentItem({...currentContentItem, title: e.target.value})} /></div>

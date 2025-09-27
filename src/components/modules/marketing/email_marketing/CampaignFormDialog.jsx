@@ -37,7 +37,12 @@ const CampaignFormDialog = ({ isOpen, onOpenChange, onSave, mode, initialData, l
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl max-h-[90vh]">
-        <DialogHeader><DialogTitle>{mode === 'new' ? 'Nueva Campaña de Email' : 'Editar Campaña'}</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>{mode === 'new' ? 'Nueva Campaña de Email' : 'Editar Campaña'}</DialogTitle>
+          <DialogDescription className="sr-only">
+            Formulario para {mode === 'new' ? 'crear una nueva' : 'editar una'} campaña de email incluyendo nombre, asunto, lista, plantilla, fecha y hora de envío y estado.
+          </DialogDescription>
+        </DialogHeader>
         <ScrollArea className="max-h-[calc(90vh-200px)] pr-5">
           <div className="grid gap-4 py-4">
             <div><Label htmlFor="campName">Nombre Campaña</Label><Input id="campName" value={currentCampaign.name} onChange={(e) => setCurrentCampaign({...currentCampaign, name: e.target.value})} /></div>

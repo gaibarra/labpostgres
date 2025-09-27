@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -6,8 +6,41 @@ import { BrainCircuit, Mail, MessageSquare, Send } from 'lucide-react';
 
 const IntegrationsSettingsTab = ({ settings, handleInputChange }) => {
   const integrations = settings?.integrations || {};
-  const hasOpenAi = !!integrations.openaiApiKey;
-  const openAiPreview = hasOpenAi ? `${integrations.openaiApiKey.slice(0,4)}…${integrations.openaiApiKey.slice(-4)}` : '';
+  const hasOpenAi = !!(integrations.openaiApiKey || integrations.openaiApiKeyPreview);
+  const openAiPreview = integrations.openaiApiKeyPreview || (hasOpenAi && integrations.openaiApiKey ? `${integrations.openaiApiKey.slice(0,4)}***${integrations.openaiApiKey.slice(-4)}` : '');
+  const meta = integrations._meta || {};
+  const openAiMeta = meta.openaiApiKey || meta.openAIKey || null;
+
+  // Estado local para impedir envío si usuario no editó
+  const [openAiLocal, setOpenAiLocal] = useState('');
+  const [openAiDirty, setOpenAiDirty] = useState(false);
+  useEffect(()=>{
+    // Cuando cambie settings externos, si no está dirty, sincronizar placeholder
+    if (!openAiDirty) {
+      if (integrations.openaiApiKey && integrations.openaiApiKey.startsWith('sk-')) {
+        setOpenAiLocal(''); // mantenemos vacío para no re-exponer
+      } else {
+        setOpenAiLocal('');
+      }
+    }
+  }, [integrations.openaiApiKey, integrations.openaiApiKeyPreview, openAiDirty]);
+
+  // Interceptar handleInputChange para omitir envío si no cambió valor real.
+  const handleOpenAiChange = (val) => {
+    setOpenAiLocal(val);
+    setOpenAiDirty(true);
+    // Pasamos el valor al settings sólo si no es cadena vacía (usuario quiere rotar) o null (borrar)
+    if (val === null) {
+      handleInputChange('integrations', 'openaiApiKey', null);
+      setOpenAiDirty(false);
+      setOpenAiLocal('');
+    } else if (val === '') {
+      // No enviar todavía; limpiar del objeto integrations si existía un staging previo
+      handleInputChange('integrations', 'openaiApiKey', undefined);
+    } else {
+      handleInputChange('integrations', 'openaiApiKey', val);
+    }
+  };
 
   return (
     <Card>
@@ -29,25 +62,27 @@ const IntegrationsSettingsTab = ({ settings, handleInputChange }) => {
               <Input
                 id="openaiApiKey"
                 type="password"
-                value={integrations.openaiApiKey || ''}
-                onChange={(e) => {
-                  console.log('[IntegrationsSettingsTab] onChange openaiApiKey BEFORE', integrations.openaiApiKey?.slice(0,8)+'...');
-                  handleInputChange('integrations', 'openaiApiKey', e.target.value);
-                  console.log('[IntegrationsSettingsTab] onChange openaiApiKey AFTER', e.target.value.slice(0,8)+'...');
-                }}
-                placeholder={hasOpenAi ? '•••••• (clave guardada)' : 'sk-...'}
+                value={openAiLocal}
+                onChange={(e) => handleOpenAiChange(e.target.value)}
+                placeholder={hasOpenAi ? '•••••• (clave guardada - ingresa para reemplazar)' : 'sk-...'}
               />
               {hasOpenAi && (
                 <div className="mt-1 text-xs text-muted-foreground flex items-center gap-2">
                   <span>Clave guardada: <span className="font-mono">{openAiPreview}</span></span>
+                  {openAiMeta && openAiMeta.updatedAt && (
+                    <span className="ml-2">Actualizada: {new Date(openAiMeta.updatedAt).toLocaleString()}</span>
+                  )}
                   <button
                     type="button"
-                    onClick={() => handleInputChange('integrations', 'openaiApiKey', null)}
+                    onClick={() => handleOpenAiChange(null)}
                     className="text-red-600 hover:underline"
                     title="Borrar clave (deberás guardar para aplicar)"
                   >
                     Borrar
                   </button>
+                  {openAiDirty && openAiLocal && (
+                    <span className="text-amber-600 dark:text-amber-400">(Pendiente de guardar)</span>
+                  )}
                 </div>
               )}
             </div>

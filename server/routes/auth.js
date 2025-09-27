@@ -4,7 +4,8 @@ const jwt = require('jsonwebtoken');
 const { pool } = require('../db');
 const authMiddleware = require('../middleware/auth');
 const { AppError } = require('../utils/errors');
-const { add: blacklistAdd } = require('../services/tokenStore');
+const { add: blacklistAdd, registerActiveToken, blacklistJti, revokeActive } = require('../services/tokenStore');
+const { incRevocation } = require('../metrics');
 
 const router = express.Router();
 const { validate } = require('../middleware/validate');
@@ -44,6 +45,7 @@ async function ensureAuthStructures() {
         email text UNIQUE NOT NULL,
         password_hash text NOT NULL,
         full_name text,
+        token_version integer DEFAULT 1,
         created_at timestamptz DEFAULT now()
       );
       CREATE INDEX IF NOT EXISTS idx_users_email_ci ON users (LOWER(email));
@@ -79,6 +81,7 @@ async function ensureAuthStructures() {
             email text UNIQUE NOT NULL,
             password_hash text NOT NULL,
             full_name text,
+            token_version integer DEFAULT 1,
             created_at timestamptz DEFAULT now()
           );
           CREATE INDEX IF NOT EXISTS idx_users_email_ci ON users (LOWER(email));
@@ -110,6 +113,14 @@ async function ensureAuthStructures() {
     }
   }
   // Add user_id column if missing
+  // Ensure token_version column
+  try {
+    const tv = await pool.query("SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='token_version'");
+    if (tv.rowCount === 0) {
+      await pool.query("ALTER TABLE users ADD COLUMN token_version integer DEFAULT 1");
+    }
+  } catch(_) {}
+
   const col = await pool.query("SELECT 1 FROM information_schema.columns WHERE table_name='profiles' AND column_name='user_id'");
   if (col.rowCount === 0) {
     try { await pool.query("ALTER TABLE profiles ADD COLUMN user_id uuid UNIQUE"); } catch(_) {}
@@ -195,8 +206,10 @@ router.post('/register', validate(registerSchema), audit('register','auth_user',
       try { await pool.query('INSERT INTO profiles(id, email, role) VALUES($1,$2,$3) ON CONFLICT DO NOTHING', [user.id, user.email, effectiveRole]); } catch(_) {}
     }
     res.locals.newUserId = user.id;
-  const token = jwt.sign({ id: user.id, email: user.email, role: effectiveRole }, process.env.JWT_SECRET || 'devsecret', { expiresIn: '12h' });
-  res.status(201).json({ user: { ...user, role: effectiveRole }, token });
+  const jti = (Date.now().toString(36) + Math.random().toString(36).slice(2,10));
+  const token = jwt.sign({ id: user.id, email: user.email, role: effectiveRole, jti, tv: 1 }, process.env.JWT_SECRET || 'devsecret', { expiresIn: '12h' });
+  try { const decoded = jwt.decode(token); if (decoded?.exp) registerActiveToken({ jti, userId: user.id, exp: decoded.exp, tokenVersion: 1 }); } catch(_) {}
+  res.status(201).json({ user: { ...user, role: effectiveRole, token_version: 1 }, token });
   } catch (e) {
     if (e.code === '23505') return next(new AppError(409,'Email ya registrado','EMAIL_EXISTS'));
     console.error(e);
@@ -208,7 +221,7 @@ router.post('/login', validate(loginSchema), audit('login','auth_user', req=>req
   const { email, password } = req.body || {};
   if (!email || !password) return next(new AppError(400,'Email y password requeridos','MISSING_FIELDS'));
   try {
-    const { rows } = await pool.query('SELECT * FROM users WHERE LOWER(email)=LOWER($1)', [email]);
+  const { rows } = await pool.query('SELECT id, email, password_hash, full_name, token_version, created_at FROM users WHERE LOWER(email)=LOWER($1)', [email]);
     const user = rows[0];
   if (!user) return next(new AppError(401,'Credenciales inválidas','BAD_CREDENTIALS'));
     const ok = await bcrypt.compare(password, user.password_hash);
@@ -224,8 +237,24 @@ router.post('/login', validate(loginSchema), audit('login','auth_user', req=>req
       const { rows: profileRows } = await pool.query('SELECT role FROM profiles WHERE id=$1', [user.id]);
       role = profileRows[0]?.role || role;
     }
-    const token = jwt.sign({ id: user.id, email: user.email, role }, process.env.JWT_SECRET || 'devsecret', { expiresIn: '12h' });
-  res.json({ user: { id: user.id, email: user.email, full_name: user.full_name, created_at: user.created_at, role }, token });
+  const jti = (Date.now().toString(36) + Math.random().toString(36).slice(2,10));
+  const payload = { id: user.id, email: user.email, role, jti, tv: user.token_version };
+  const token = jwt.sign(payload, process.env.JWT_SECRET || 'devsecret', { expiresIn: '12h' });
+    // Emitir cookie httpOnly adicional (fase de transición: mantenemos respuesta JSON con token por compatibilidad)
+    try {
+      const prod = process.env.NODE_ENV === 'production';
+      res.cookie('auth_token', token, {
+        httpOnly: true,
+        sameSite: prod ? 'lax' : 'lax',
+        secure: prod, // sólo en https en producción
+        maxAge: 12 * 60 * 60 * 1000, // 12h
+        path: '/',
+      });
+    } catch(cookieErr) {
+      if (process.env.DEBUG_AUTH) console.warn('[LOGIN] no se pudo establecer cookie', cookieErr.message);
+    }
+  try { const decoded = jwt.decode(token); if (decoded?.exp) registerActiveToken({ jti, userId: user.id, exp: decoded.exp, tokenVersion: user.token_version }); } catch(_) {}
+  res.json({ user: { id: user.id, email: user.email, full_name: user.full_name, created_at: user.created_at, role, token_version: user.token_version }, token });
   } catch (e) {
   if (process.env.DEBUG_AUTH) console.error('[LOGIN_ERROR]', { message: e.message, code: e.code, stack: e.stack });
   else console.error(e);
@@ -259,10 +288,19 @@ router.get('/me', authMiddleware, async (req, res, next) => {
 
 router.post('/logout', authMiddleware, audit('logout','auth_token', req=>req.user?.id), async (req, res, next) => {
   try {
-    const token = req.headers.authorization.split(' ')[1];
-    const decoded = jwt.decode(token);
-    if (decoded?.exp) blacklistAdd(token, decoded.exp);
-    res.json({ success: true });
+    // Siempre intentar revocar el token usado (Bearer o cookie) gracias a req.authToken
+    const token = req.authToken;
+    if (token) {
+      try {
+        const decoded = jwt.decode(token);
+        if (decoded?.exp) blacklistAdd(token, decoded.exp);
+        if (decoded?.jti && decoded?.exp) { blacklistJti(decoded.jti, decoded.exp); revokeActive(decoded.jti); }
+        incRevocation('logout');
+      } catch(_) {}
+    }
+    // Limpiar cookie si estaba presente
+    try { res.clearCookie('auth_token', { path: '/' }); } catch(_) {}
+    res.json({ success: true, loggedOut: true, revoked: Boolean(token) });
   } catch (e) { next(new AppError(500,'Error cerrando sesión','LOGOUT_FAIL')); }
 });
 

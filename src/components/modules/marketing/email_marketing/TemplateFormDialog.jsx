@@ -34,6 +34,9 @@ const TemplateFormDialog = ({ isOpen, onOpenChange, onSave, mode, initialData })
         <DialogContent className="sm:max-w-2xl max-h-[90vh]">
           <DialogHeader>
             <DialogTitle>{mode === 'new' ? 'Nueva Plantilla de Email' : 'Editar Plantilla'}</DialogTitle>
+            <DialogDescription className="sr-only">
+              Formulario para {mode === 'new' ? 'crear una nueva' : 'editar la'} plantilla de email incluyendo nombre, asunto y cuerpo del mensaje.
+            </DialogDescription>
           </DialogHeader>
           <ScrollArea className="max-h-[calc(90vh-200px)] pr-5">
             <div className="grid gap-4 py-4">

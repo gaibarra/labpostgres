@@ -189,6 +189,7 @@ CREATE TABLE IF NOT EXISTS lab_configuration (
   ui_settings jsonb DEFAULT '{}'::jsonb,
   regional_settings jsonb DEFAULT '{}'::jsonb,
   integrations_settings jsonb DEFAULT '{}'::jsonb,
+  integrations_meta jsonb DEFAULT '{}'::jsonb,
   tax_settings jsonb DEFAULT '{}'::jsonb,
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()

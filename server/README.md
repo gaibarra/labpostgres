@@ -84,6 +84,33 @@ Logout / revocación:
 
 Para múltiples instancias: usar Redis compartido para blacklist.
 
+### Protección de Información del Laboratorio (labInfo)
+La sección `labInfo` ahora está protegida contra modificaciones accidentales:
+
+- Cualquier intento de modificar campos de `labInfo` vía `PATCH /api/config` o `PUT /api/config` sin confirmación explícita devuelve **409 LABINFO_PROTECTED**.
+- Para realizar un cambio deliberado se debe incluir `forceUnlock=true` (query param) o `{"forceUnlock": true}` en el body junto con los campos a actualizar.
+- Enviar un objeto vacío `labInfo: {}` se ignora (no borra valores previos).
+- Esta capa evita sobrescrituras silenciosas ocasionadas por formularios parciales o estados incompletos del frontend.
+
+Ejemplo actualización legítima:
+```
+PATCH /api/config?forceUnlock=1
+{
+	"labInfo": { "phone": "555-9999" },
+	"forceUnlock": true
+}
+```
+Respuesta en caso de bloqueo (sin forceUnlock):
+```json
+{
+	"error": "LABINFO_PROTECTED",
+	"message": "Los campos de información del laboratorio están protegidos y no pueden modificarse sin confirmación explícita.",
+	"details": { "intentados": ["phone"], "requiere": "forceUnlock=true" }
+}
+```
+
+Para ampliar o ajustar los campos protegidos editar `PROTECTED_LABINFO_FIELDS` en `server/routes/config.js`.
+
 ## Próximas Mejoras
 - Conectar middleware de auditoría a todas mutaciones (create/update/delete).
 - Cobertura de tests para rutas de profiles (403 sin permiso).

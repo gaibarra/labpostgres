@@ -40,7 +40,16 @@ const StudiesTable = ({ studies, onEdit, onDeleteConfirm, onAssignPrices, getPar
               <TableCell className="whitespace-nowrap">
                 <Badge variant="secondary">{study.category}</Badge>
               </TableCell>
-              <TableCell className="text-slate-600 dark:text-slate-400 font-semibold whitespace-nowrap">{getParticularPrice(study.id)}</TableCell>
+              <TableCell className="text-slate-600 dark:text-slate-400 font-semibold whitespace-nowrap">
+                {(() => {
+                  const raw = getParticularPrice(study.id);
+                  // Si viene ya como string "0.00" o similar, parsear
+                  const num = parseFloat(raw);
+                  if (isNaN(num)) return raw || '-';
+                  // Formato moneda MXN sin decimales forzados si .00, conservando 2 decimales de lo contrario
+                  return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 2 }).format(num);
+                })()}
+              </TableCell>
               <TableCell className="text-slate-600 dark:text-slate-400 text-sm whitespace-nowrap">
                 {study.parameters && study.parameters.length > 0 ? 
                   `${study.parameters.length} Parámetro(s)`

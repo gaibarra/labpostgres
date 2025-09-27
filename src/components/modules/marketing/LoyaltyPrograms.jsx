@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+dimport React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -259,7 +259,12 @@ const LoyaltyPrograms = () => {
 
       <Dialog open={isProgramFormOpen} onOpenChange={(isOpen) => { setIsProgramFormOpen(isOpen); if (!isOpen) setCurrentProgram(initialProgramForm); }}>
         <DialogContent className="sm:max-w-3xl max-h-[90vh]">
-          <DialogHeader><DialogTitle>{programFormMode === 'new' ? 'Nuevo Programa de Lealtad' : 'Editar Programa'}</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>{programFormMode === 'new' ? 'Nuevo Programa de Lealtad' : 'Editar Programa'}</DialogTitle>
+            <DialogDescription className="sr-only">
+              Formulario para {programFormMode === 'new' ? 'crear un nuevo' : 'editar un'} programa de lealtad incluyendo nombre, tipo, fechas, estado y niveles.
+            </DialogDescription>
+          </DialogHeader>
           <ScrollArea className="max-h-[calc(90vh-250px)] pr-5">
             <div className="grid gap-4 py-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -322,7 +327,12 @@ const LoyaltyPrograms = () => {
 
       <Dialog open={isLevelFormOpen} onOpenChange={(isOpen) => { setIsLevelFormOpen(isOpen); if (!isOpen) { setCurrentLevel(initialLevelForm); setEditingProgramIdForLevel(null); } }}>
         <DialogContent className="sm:max-w-lg">
-          <DialogHeader><DialogTitle>{levelFormMode === 'new' ? 'Nuevo Nivel de Lealtad' : 'Editar Nivel'}</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>{levelFormMode === 'new' ? 'Nuevo Nivel de Lealtad' : 'Editar Nivel'}</DialogTitle>
+            <DialogDescription className="sr-only">
+              Formulario para {levelFormMode === 'new' ? 'crear un nuevo' : 'editar un'} nivel de un programa de lealtad, incluyendo nombre, puntos requeridos y recompensas.
+            </DialogDescription>
+          </DialogHeader>
           <div className="grid gap-4 py-4">
             <div><Label htmlFor="levelName">Nombre Nivel</Label><Input id="levelName" value={currentLevel.name} onChange={(e) => setCurrentLevel({...currentLevel, name: e.target.value})} /></div>
             {(programs.find(p => p.id === editingProgramIdForLevel)?.type === 'Puntos') && (

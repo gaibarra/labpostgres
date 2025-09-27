@@ -76,14 +76,14 @@ const ParameterEditDialog = ({ isOpen, onOpenChange, onSave, parameter: initialP
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-4xl mx-auto p-4">
+        <DialogContent className="max-w-4xl mx-auto p-4 max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>{parameter?.id ? 'Editar Parámetro' : 'Nuevo Parámetro'}</DialogTitle>
             <DialogDescription>
               Completa los datos del parámetro y sus valores de referencia.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-4 overflow-y-auto pr-2 custom-scroll flex-1" style={{ WebkitOverflowScrolling:'touch' }}>
             <div className="grid grid-cols-1 md:grid-cols-5 gap-4 py-4">
               <div className="md:col-span-2">
                 <Label htmlFor="name">Nombre del Parámetro</Label>
@@ -127,12 +127,12 @@ const ParameterEditDialog = ({ isOpen, onOpenChange, onSave, parameter: initialP
               </Button>
             </div>
 
-            <DialogFooter>
+            <div className="pt-2 sticky bottom-0 bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60 flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>Cancelar</Button>
               <Button type="button" onClick={handleSave} disabled={isSubmitting}>
                 {isSubmitting ? 'Guardando...' : 'Guardar Parámetro'}
               </Button>
-            </DialogFooter>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

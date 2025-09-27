@@ -3,28 +3,33 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter }
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { motion } from 'framer-motion';
-import { Settings2, Save, Info, FileText as FileTextIcon, Palette, MapPin, Loader2, Share2, HelpCircle } from 'lucide-react';
+import { Settings2, Save, Info, FileText as FileTextIcon, Palette, MapPin, Loader2, Share2, HelpCircle, ShieldAlert } from 'lucide-react';
 import { useToast } from "@/components/ui/use-toast";
 import { logAuditEvent } from '@/lib/auditUtils';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSettings } from '@/contexts/SettingsContext';
 
 import LabInfoSettings from '@/components/modules/administration/general_settings/LabInfoSettings';
+import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import ReportSettingsTab from '@/components/modules/administration/general_settings/ReportSettingsTab';
 import UISettings from '@/components/modules/administration/general_settings/UISettings';
 import RegionalSettingsTab from '@/components/modules/administration/general_settings/RegionalSettingsTab';
 import IntegrationsSettingsTab from '@/components/modules/administration/general_settings/IntegrationsSettingsTab';
 import HelpDialog from '@/components/modules/administration/general_settings/HelpDialog';
 
-const GeneralSettings = () => {
+const GeneralSettings = ({ initialActiveTab = "labInfo" }) => {
   const { toast } = useToast();
   const { user, loading: isAuthLoading } = useAuth();
   const { settings, isLoading: isLoadingSettings, updateSettings } = useSettings();
   
   const [localSettings, setLocalSettings] = useState(null);
-  const [activeTab, setActiveTab] = useState("labInfo");
+  const [activeTab, setActiveTab] = useState(initialActiveTab);
   const [isSaving, setIsSaving] = useState(false);
   const [isHelpDialogOpen, setIsHelpDialogOpen] = useState(false);
+  const [labInfoEditMode, setLabInfoEditMode] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pendingSave, setPendingSave] = useState(false);
 
   useEffect(() => {
     if (settings) {
@@ -48,13 +53,10 @@ const GeneralSettings = () => {
     handleInputChange(category, field, Boolean(checked));
   };
 
-  const handleSaveChanges = useCallback(async () => {
-    if (!localSettings || !user) return;
+  const doSave = useCallback(async (payload) => {
     setIsSaving(true);
     try {
-  console.log('[GeneralSettings] Guardar Cambios - BEFORE', { activeTab, settingsToSave: localSettings });
-      const result = await updateSettings(localSettings);
-      console.log('[GeneralSettings] Guardar Cambios - AFTER SUCCESS result', { hasResult: !!result, hasOpenAi: !!result?.integrations?.openaiApiKey });
+      const result = await updateSettings(payload);
       if (!result) {
         toast({ title: "Error", description: "El backend no devolvió configuración actualizada.", variant: 'destructive' });
         return;
@@ -62,14 +64,40 @@ const GeneralSettings = () => {
       toast({ title: "Éxito", description: "¡Configuración guardada correctamente!" });
       logAuditEvent('ConfiguracionGeneralGuardada', { settingsChanged: activeTab }, user.id)
         .catch(err => console.warn('Audit log failed', err));
+      if (activeTab === 'labInfo') {
+        setLabInfoEditMode(false);
+      }
     } catch (error) {
       console.error('Error guardando configuración:', error);
-  console.log('[GeneralSettings] Guardar Cambios - AFTER ERROR', error);
       toast({ title: "Error al guardar", description: error.message, variant: "destructive" });
     } finally {
       setIsSaving(false);
     }
-  }, [localSettings, user, updateSettings, toast, activeTab]);
+  }, [updateSettings, toast, activeTab, user]);
+
+  const handleSaveChanges = useCallback(async () => {
+    if (!localSettings || !user) return;
+    const payload = { ...localSettings };
+    // Detectar cambios reales en labInfo cuando en modo edición
+    if (activeTab === 'labInfo' && labInfoEditMode) {
+      payload.forceUnlock = true;
+      // Minimiza confirmaciones innecesarias (si no hay diff no mostramos confirm)
+      try {
+        const original = settings.labInfo || {};
+        const modified = payload.labInfo || {};
+        const changed = Object.keys(modified).some(k => (modified[k] || '') !== (original[k] || ''));
+        if (!changed) {
+          // Nada cambió, guarda directo (aunque tendrá forceUnlock no dañará)
+          return doSave(payload);
+        }
+      } catch {}
+      setPendingSave(true);
+      setConfirmOpen(true);
+      return;
+    }
+    // Otros tabs guardan directo
+    doSave(payload);
+  }, [localSettings, user, activeTab, labInfoEditMode, settings, doSave]);
 
   if (isLoadingSettings || !localSettings || isAuthLoading) {
     return (
@@ -81,7 +109,30 @@ const GeneralSettings = () => {
   }
   
   const tabComponents = {
-    labInfo: <LabInfoSettings settings={localSettings} handleInputChange={handleInputChange} />,
+    labInfo: (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="border-amber-500 text-amber-600 dark:text-amber-400">Protegido</Badge>
+            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md">
+              Los datos del laboratorio están bloqueados. Pulsa "Editar" para habilitar cambios (se enviará forceUnlock).
+            </p>
+          </div>
+          <div className="flex gap-2">
+            {!labInfoEditMode && (
+              <Button variant="outline" size="sm" onClick={() => setLabInfoEditMode(true)}>Editar</Button>
+            )}
+            {labInfoEditMode && (
+              <Button variant="ghost" size="sm" onClick={() => { setLocalSettings(s=>({ ...s, labInfo: settings.labInfo })); setLabInfoEditMode(false); }}>Cancelar</Button>
+            )}
+          </div>
+        </div>
+        <div className={labInfoEditMode ? '' : 'pointer-events-none opacity-70 select-none'}>
+          <LabInfoSettings settings={localSettings} handleInputChange={handleInputChange} />
+          {!labInfoEditMode && <p className="text-xs mt-2 text-slate-500">Modo lectura. Haz clic en "Editar" para modificar.</p>}
+        </div>
+      </div>
+    ),
     reportSettings: <ReportSettingsTab settings={localSettings} handleInputChange={handleInputChange} handleCheckboxChange={handleCheckboxChange} />,
     uiSettings: <UISettings settings={localSettings} handleInputChange={handleInputChange} handleCheckboxChange={handleCheckboxChange} />,
     regionalSettings: <RegionalSettingsTab settings={localSettings} handleInputChange={handleInputChange} />,
@@ -148,6 +199,35 @@ const GeneralSettings = () => {
           </Button>
         </CardFooter>
       </Card>
+
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600 dark:text-red-400"><ShieldAlert className="h-5 w-5"/>Confirmar Cambios Sensibles</DialogTitle>
+            <DialogDescription>
+              Estás a punto de modificar datos críticos del laboratorio. Esto requiere confirmación explícita.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 text-sm text-slate-600 dark:text-slate-300">
+            <p>Los cambios se aplicarán de forma inmediata y quedarán registrados.</p>
+            <ul className="list-disc ml-5">
+              <li>Verifica que los datos fiscales y de contacto sean correctos.</li>
+              <li>Evita editar sin necesidad; estos campos están protegidos.</li>
+            </ul>
+          </div>
+          <DialogFooter className="pt-4 flex gap-2">
+            <Button variant="outline" onClick={() => { setConfirmOpen(false); setPendingSave(false); }} disabled={isSaving}>Cancelar</Button>
+            <Button onClick={() => {
+              setConfirmOpen(false);
+              if (pendingSave) {
+                const payload = { ...localSettings, forceUnlock: true };
+                doSave(payload);
+                setPendingSave(false);
+              }
+            }} disabled={isSaving} className="bg-red-600 hover:bg-red-700 text-white">Confirmar y Guardar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </motion.div>
   );
 };

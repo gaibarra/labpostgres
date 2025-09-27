@@ -6,6 +6,7 @@ const { httpLogger } = require('./logger');
 const cors = require('cors');
 const { AppError, errorResponse } = require('./utils/errors');
 const { metricsMiddleware, metricsEndpoint } = require('./metrics');
+const cookieParser = require('cookie-parser');
 
 const app = express();
 
@@ -54,6 +55,7 @@ app.use(security);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(metricsMiddleware);
+app.use(cookieParser());
 
 // Basic route
 app.get('/', (req, res) => {
@@ -80,6 +82,10 @@ app.use('/api/users', userRoutes);
 const auditRoutes = require('./routes/audit');
 app.use('/api/audit', auditRoutes);
 
+// Rutas Admin Tokens (gestión tokens activos / revocación)
+const adminTokensRoutes = require('./routes/adminTokens');
+app.use('/api/auth/admin', adminTokensRoutes);
+
 // Rutas Marketing AI (placeholder)
 const marketingRoutes = require('./routes/marketing');
 app.use('/api/marketing', marketingRoutes);
@@ -104,8 +110,10 @@ const aiRoutes = require('./routes/ai');
 app.use('/api/ai', aiRoutes);
 // Configuración laboratorio
 const configRoutes = require('./routes/config');
+const configValidateRoutes = require('./routes/configValidate');
 const financeRoutes = require('./routes/finance');
 app.use('/api/config', configRoutes);
+app.use('/api/config', configValidateRoutes); // sub-ruta validate
 app.use('/api/finance', financeRoutes);
 // Parámetros del sistema
 const parametersRoutes = require('./routes/parameters');

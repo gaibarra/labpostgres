@@ -60,7 +60,12 @@ const AdCampaigns = () => {
         ...c,
         start_date: c.start_date ? parseISO(c.start_date) : null,
         end_date: c.end_date ? parseISO(c.end_date) : null,
-        budget: c.budget
+        budget: c.budget,
+        // Asegura estructura kpis para evitar errores al renderizar detalles
+        kpis: {
+          ...initialCampaignForm.kpis,
+          ...(c.kpis || {})
+        }
       })));
     } catch (error) {
       toast({ title: 'Error', description: 'No se pudieron cargar las campañas.', variant: 'destructive' });
@@ -318,19 +323,26 @@ const AdCampaigns = () => {
               <div className="space-y-3 py-2">
                 <p><strong>Plataforma:</strong> {selectedCampaignDetails.platform}</p>
                 <p><strong>Fechas:</strong> {selectedCampaignDetails.start_date ? format(selectedCampaignDetails.start_date, 'dd/MM/yyyy') : 'N/A'} - {selectedCampaignDetails.end_date ? format(selectedCampaignDetails.end_date, 'dd/MM/yyyy') : 'N/A'}</p>
-                <p><strong>Presupuesto:</strong> ${selectedCampaignDetails.budget?.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                <p><strong>Presupuesto:</strong> ${typeof selectedCampaignDetails.budget === 'number' ? selectedCampaignDetails.budget.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : (parseFloat(selectedCampaignDetails.budget) || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                 <p><strong>Estado:</strong> {selectedCampaignDetails.status}</p>
                 <p><strong>Objetivos:</strong> {selectedCampaignDetails.objectives || 'No especificados'}</p>
                 <p><strong>Notas:</strong> {selectedCampaignDetails.notes || 'Ninguna'}</p>
                 <Card className="mt-4 bg-slate-50 dark:bg-theme-davy-dark/30">
                   <CardHeader><CardTitle className="text-md">Métricas de Rendimiento (Simuladas)</CardTitle></CardHeader>
                   <CardContent className="grid grid-cols-2 gap-2 text-sm">
-                    <p><strong>Impresiones:</strong> {selectedCampaignDetails.kpis.impressions.toLocaleString()}</p>
-                    <p><strong>Clicks:</strong> {selectedCampaignDetails.kpis.clicks.toLocaleString()}</p>
-                    <p><strong>Conversiones:</strong> {selectedCampaignDetails.kpis.conversions.toLocaleString()}</p>
-                    <p><strong>CTR:</strong> {selectedCampaignDetails.kpis.ctr}</p>
-                    <p><strong>CPC:</strong> {selectedCampaignDetails.kpis.cpc}</p>
-                    <p><strong>CPA:</strong> {selectedCampaignDetails.kpis.cpa}</p>
+                    {(() => {
+                      const k = selectedCampaignDetails.kpis || initialCampaignForm.kpis;
+                      return (
+                        <>
+                          <p><strong>Impresiones:</strong> {(k.impressions ?? 0).toLocaleString()}</p>
+                          <p><strong>Clicks:</strong> {(k.clicks ?? 0).toLocaleString()}</p>
+                          <p><strong>Conversiones:</strong> {(k.conversions ?? 0).toLocaleString()}</p>
+                          <p><strong>CTR:</strong> {k.ctr ?? '0%'}</p>
+                          <p><strong>CPC:</strong> {k.cpc ?? '$0.00'}</p>
+                          <p><strong>CPA:</strong> {k.cpa ?? '$0.00'}</p>
+                        </>
+                      );
+                    })()}
                   </CardContent>
                 </Card>
               </div>

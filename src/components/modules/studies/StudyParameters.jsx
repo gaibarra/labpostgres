@@ -43,6 +43,7 @@ function mapReferenceValues(values) {
   });
 }
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { PlusCircle, Edit, Trash2, Loader2, ArrowUp, ArrowDown } from "lucide-react";
 import {
@@ -63,6 +64,22 @@ const StudyParameters = forwardRef(
     const [localParameters, setLocalParameters] = useState(parameters);
   const [isParamSaving, setIsParamSaving] = useState(false);
   const [savingIds, setSavingIds] = useState(new Set());
+  // Inline name editing state
+  const [editingNameId, setEditingNameId] = useState(null);
+  const [editingNameValue, setEditingNameValue] = useState("");
+  // Inline unit & decimals editing state
+  const [editingUnitId, setEditingUnitId] = useState(null);
+  const [editingUnitValue, setEditingUnitValue] = useState("");
+  const [editingDecimalsValue, setEditingDecimalsValue] = useState(0);
+  // Inline group editing state
+  const [editingGroupId, setEditingGroupId] = useState(null);
+  const [editingGroupValue, setEditingGroupValue] = useState("");
+  // Inline ref type editing (applies to all valorReferencia entries of a parameter)
+  const TIPO_SEQUENCE = ['numerico','alfanumerico','textoLibre'];
+  const cycleTipo = (current) => {
+    const idx = TIPO_SEQUENCE.indexOf(current);
+    return TIPO_SEQUENCE[(idx + 1) % TIPO_SEQUENCE.length];
+  };
   // Reordenamiento reactivado
 
     // Asegura que cada parámetro tenga un identificador (id o tempId) para evitar
@@ -253,6 +270,165 @@ const StudyParameters = forwardRef(
       }
     }, [localParameters, onParametersChange, onImmediateSave, studyId]);
 
+    // --- Inline name editing helpers ---
+    const startInlineEdit = useCallback((param) => {
+      if (isSubmitting || isParamSaving) return;
+      const key = param.id || param.tempId;
+      setEditingNameId(key);
+      setEditingNameValue(param.name || "");
+    }, [isSubmitting, isParamSaving]);
+
+    const cancelInlineEdit = useCallback(() => {
+      setEditingNameId(null);
+      setEditingNameValue("");
+    }, []);
+
+    const commitInlineEdit = useCallback(async () => {
+      const key = editingNameId;
+      if (!key) return;
+      const trimmed = (editingNameValue||"").trim();
+      if (!trimmed) { toast.error('El nombre no puede estar vacío'); return; }
+      // Unicidad
+      const duplicate = localParameters.find(p => (p.id || p.tempId) !== key && (p.name||'').trim().toLowerCase() === trimmed.toLowerCase());
+      if (duplicate) { toast.error('Nombre duplicado', { description: 'Ya existe otro parámetro con ese nombre.' }); return; }
+      const target = localParameters.find(p => (p.id || p.tempId) === key);
+      if (!target) { cancelInlineEdit(); return; }
+      const updated = { ...target, name: trimmed };
+      // Actualiza local inmediatamente
+      setLocalParameters(prev => {
+        const next = prev.map(p => (p.id || p.tempId) === key ? updated : p);
+        queueMicrotask(()=> onParametersChange(next));
+        return next;
+      });
+      cancelInlineEdit();
+      // Persistir si aplica
+      if (studyId && onImmediateSave) {
+        try {
+          setIsParamSaving(true);
+          setSavingIds(prev => new Set([...Array.from(prev), key]));
+          await onImmediateSave(studyId, updated);
+        } finally {
+          setIsParamSaving(false);
+          setSavingIds(prev => { const n = new Set(prev); n.delete(key); return n; });
+        }
+      }
+    }, [editingNameId, editingNameValue, localParameters, onParametersChange, studyId, onImmediateSave, cancelInlineEdit]);
+
+    // ---- Inline unit & decimals editing ----
+    const startUnitEdit = useCallback((param) => {
+      if (isSubmitting || isParamSaving) return;
+      const key = param.id || param.tempId;
+      setEditingUnitId(key);
+      setEditingUnitValue(param.unit || "");
+      setEditingDecimalsValue(typeof param.decimal_places === 'number' ? param.decimal_places : 0);
+    }, [isSubmitting, isParamSaving]);
+
+    const cancelUnitEdit = useCallback(() => {
+      setEditingUnitId(null);
+      setEditingUnitValue("");
+      setEditingDecimalsValue(0);
+    }, []);
+
+    const commitUnitEdit = useCallback(async () => {
+      const key = editingUnitId;
+      if (!key) return;
+      let decimals = parseInt(editingDecimalsValue, 10);
+      if (isNaN(decimals) || decimals < 0) decimals = 0;
+      if (decimals > 6) decimals = 6; // límite razonable
+      const target = localParameters.find(p => (p.id || p.tempId) === key);
+      if (!target) { cancelUnitEdit(); return; }
+      const updated = { ...target, unit: editingUnitValue.trim(), decimal_places: decimals };
+      setLocalParameters(prev => {
+        const next = prev.map(p => (p.id || p.tempId) === key ? updated : p);
+        queueMicrotask(()=> onParametersChange(next));
+        return next;
+      });
+      cancelUnitEdit();
+      if (studyId && onImmediateSave) {
+        try {
+          setIsParamSaving(true);
+          setSavingIds(prev => new Set([...Array.from(prev), key]));
+          await onImmediateSave(studyId, updated);
+        } finally {
+          setIsParamSaving(false);
+          setSavingIds(prev => { const n = new Set(prev); n.delete(key); return n; });
+        }
+      }
+    }, [editingUnitId, editingUnitValue, editingDecimalsValue, localParameters, onParametersChange, studyId, onImmediateSave, cancelUnitEdit]);
+
+    // ---- Inline group editing ----
+    const startGroupEdit = useCallback((param) => {
+      if (isSubmitting || isParamSaving) return;
+      const key = param.id || param.tempId;
+      setEditingGroupId(key);
+      setEditingGroupValue(param.group || "");
+    }, [isSubmitting, isParamSaving]);
+
+    const cancelGroupEdit = useCallback(() => {
+      setEditingGroupId(null);
+      setEditingGroupValue("");
+    }, []);
+
+    const commitGroupEdit = useCallback(async () => {
+      const key = editingGroupId;
+      if (!key) return;
+      const value = (editingGroupValue || '').trim();
+      const target = localParameters.find(p => (p.id || p.tempId) === key);
+      if (!target) { cancelGroupEdit(); return; }
+      const updated = { ...target, group: value || 'General' };
+      setLocalParameters(prev => {
+        const next = prev.map(p => (p.id || p.tempId) === key ? updated : p);
+        queueMicrotask(()=> onParametersChange(next));
+        return next;
+      });
+      cancelGroupEdit();
+      if (studyId && onImmediateSave) {
+        try {
+          setIsParamSaving(true);
+          setSavingIds(prev => new Set([...Array.from(prev), key]));
+          await onImmediateSave(studyId, updated);
+        } finally {
+          setIsParamSaving(false);
+          setSavingIds(prev => { const n = new Set(prev); n.delete(key); return n; });
+        }
+      }
+    }, [editingGroupId, editingGroupValue, localParameters, onParametersChange, studyId, onImmediateSave, cancelGroupEdit]);
+
+    // ---- Inline tipoValor editing (batch for all reference ranges) ----
+    const unifiedTipo = (param) => {
+      const list = Array.isArray(param.valorReferencia) ? param.valorReferencia : [];
+      if (list.length === 0) return 'numerico';
+      const first = list[0]?.tipoValor || 'numerico';
+      const allSame = list.every(v => (v.tipoValor || 'numerico') === first);
+      return allSame ? first : 'mixto';
+    };
+
+    const handleCycleTipo = useCallback(async (param) => {
+      if (isSubmitting || isParamSaving) return;
+      const currentUnified = unifiedTipo(param);
+      // If mixed, start from numerico
+      const base = currentUnified === 'mixto' ? 'numerico' : currentUnified;
+      const next = cycleTipo(base);
+      const key = param.id || param.tempId;
+      const updatedVR = (param.valorReferencia||[]).map(v => ({ ...v, tipoValor: next }));
+      const updatedParam = { ...param, valorReferencia: updatedVR };
+      setLocalParameters(prev => {
+        const nextList = prev.map(p => (p.id || p.tempId) === key ? updatedParam : p);
+        queueMicrotask(()=> onParametersChange(nextList));
+        return nextList;
+      });
+      if (studyId && onImmediateSave) {
+        try {
+          setIsParamSaving(true);
+          setSavingIds(prev => new Set([...Array.from(prev), key]));
+          await onImmediateSave(studyId, updatedParam);
+        } finally {
+          setIsParamSaving(false);
+          setSavingIds(prev => { const n = new Set(prev); n.delete(key); return n; });
+        }
+      }
+    }, [isSubmitting, isParamSaving, onParametersChange, studyId, onImmediateSave, localParameters]);
+
   // Duplicar parámetro eliminado
 
     return (
@@ -290,6 +466,7 @@ const StudyParameters = forwardRef(
               <TableRow>
                 <TableHead>Parámetro</TableHead>
                 <TableHead className="w-[35%]">Valores de Referencia</TableHead>
+                <TableHead>Grupo</TableHead>
                 <TableHead>Unidades</TableHead>
                 <TableHead className="text-right w-[100px]">Acciones</TableHead>
               </TableRow>
@@ -307,16 +484,137 @@ const StudyParameters = forwardRef(
                 >
                   <TableCell className="font-medium py-2 flex items-center gap-2">
                     {/* Eliminado drag handle */}
-                    {param.name}
+                    {editingNameId === (param.id || param.tempId) ? (
+                      <div className="flex items-center gap-1">
+                        <Input
+                          autoFocus
+                          value={editingNameValue}
+                          onChange={e => setEditingNameValue(e.target.value)}
+                          onBlur={commitInlineEdit}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') { e.preventDefault(); commitInlineEdit(); }
+                            else if (e.key === 'Escape') { cancelInlineEdit(); }
+                          }}
+                          className="h-7 w-40"
+                          disabled={isSubmitting || isParamSaving}
+                        />
+                      </div>
+                    ) : (
+                      <span
+                        className="cursor-text hover:underline decoration-dotted"
+                        title="Doble clic o clic en el nombre para editar"
+                        onClick={() => startInlineEdit(param)}
+                        onDoubleClick={() => startInlineEdit(param)}
+                      >{param.name}</span>
+                    )}
                     <Badge variant={persisted ? 'secondary' : 'outline'} className="text-[10px] px-1 py-0">
                       {persisted ? 'DB' : 'Local'}
                     </Badge>
           {busy && <Loader2 className="h-3 w-3 animate-spin text-sky-500" />}
                   </TableCell>
                   <TableCell className="py-2">
-                    <ReferenceValueSummary values={param.valorReferencia} />
+                    <div className="flex flex-col gap-1">
+                      <ReferenceValueSummary values={param.valorReferencia} />
+                      <div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="xs"
+                          className="h-6 text-[10px] px-2"
+                          disabled={isSubmitting || isParamSaving}
+                          onClick={() => handleCycleTipo(param)}
+                          title="Clic para cambiar el tipo de valor (numerico → alfanumerico → textoLibre)"
+                        >
+                          {(() => {
+                            const t = unifiedTipo(param);
+                            if (t === 'mixto') return 'tipo: mixto';
+                            if (t === 'numerico') return 'tipo: numérico';
+                            if (t === 'alfanumerico') return 'tipo: alfanum';
+                            if (t === 'textoLibre') return 'tipo: texto';
+                            return t;
+                          })()}
+                        </Button>
+                      </div>
+                    </div>
                   </TableCell>
-                  <TableCell className="py-2">{param.unit}</TableCell>
+                  <TableCell className="py-2">
+                    {editingGroupId === (param.id || param.tempId) ? (
+                      <Input
+                        autoFocus
+                        value={editingGroupValue}
+                        placeholder="Grupo"
+                        className="h-7 w-36"
+                        onChange={e => setEditingGroupValue(e.target.value)}
+                        onBlur={commitGroupEdit}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') { e.preventDefault(); commitGroupEdit(); }
+                          else if (e.key === 'Escape') { cancelGroupEdit(); }
+                        }}
+                        disabled={isSubmitting || isParamSaving}
+                      />
+                    ) : (
+                      <span
+                        className="cursor-text hover:underline decoration-dotted"
+                        title="Clic para editar el grupo"
+                        onClick={() => startGroupEdit(param)}
+                        onDoubleClick={() => startGroupEdit(param)}
+                      >{param.group || <span className="text-xs text-muted-foreground">General</span>}</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="py-2">
+                    {editingUnitId === (param.id || param.tempId) ? (
+                      <div className="flex items-center gap-1">
+                        <Input
+                          value={editingUnitValue}
+                          placeholder="Unidad"
+                          onChange={e => setEditingUnitValue(e.target.value)}
+                          className="h-7 w-24"
+                          autoFocus
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') { e.preventDefault(); commitUnitEdit(); }
+                            else if (e.key === 'Escape') { cancelUnitEdit(); }
+                          }}
+                        />
+                        <Input
+                          type="number"
+                          value={editingDecimalsValue}
+                          onChange={e => setEditingDecimalsValue(e.target.value)}
+                          className="h-7 w-16"
+                          min={0}
+                          max={6}
+                          title="Decimales"
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') { e.preventDefault(); commitUnitEdit(); }
+                            else if (e.key === 'Escape') { cancelUnitEdit(); }
+                          }}
+                        />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-green-600"
+                          onClick={commitUnitEdit}
+                          disabled={isSubmitting || isParamSaving}
+                        >OK</Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-red-500"
+                          onClick={cancelUnitEdit}
+                          disabled={isSubmitting || isParamSaving}
+                        >X</Button>
+                      </div>
+                    ) : (
+                      <div
+                        className="cursor-text hover:underline decoration-dotted"
+                        title="Clic para editar unidad y decimales"
+                        onClick={() => startUnitEdit(param)}
+                        onDoubleClick={() => startUnitEdit(param)}
+                      >
+                        {param.unit || <span className="text-xs text-muted-foreground">(sin unidad)</span>}
+                        {typeof param.decimal_places === 'number' && <span className="ml-1 text-[10px] text-slate-500">[{param.decimal_places}]</span>}
+                      </div>
+                    )}
+                  </TableCell>
                   <TableCell className="text-right py-2">
                     <div className="inline-flex flex-col mr-1 align-top">
                       <Button

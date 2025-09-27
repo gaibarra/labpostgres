@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { motion } from 'framer-motion';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { ShieldCheck, LockKeyhole, Save, AlertTriangle, RefreshCw, UserCog } from 'lucide-react';
 import { useToast } from "@/components/ui/use-toast";
 import { apiClient } from '@/lib/apiClient';
@@ -77,12 +79,13 @@ const RolesAndPermissions = () => {
   const isAdmin = useMemo(() => user?.profile?.role === 'Administrador', [user]);
 
   // Keep role attributes in sync when role changes
+  // Mantener sincronizados label y color asegurando siempre string
   useEffect(() => {
     if (roles && selectedRole) {
       const info = roles.find(r => r.role_name === selectedRole);
       if (info) {
-        setRoleLabel(info.label);
-        setRoleColorClass(info.color_class);
+        setRoleLabel(typeof info.label === 'string' ? info.label : '');
+        setRoleColorClass(typeof info.color_class === 'string' ? info.color_class : '');
       }
     }
   }, [roles, selectedRole]);
@@ -237,13 +240,27 @@ const RolesAndPermissions = () => {
               <div className="grid grid-cols-4 items-center gap-4 mb-4">
                 <Label htmlFor="role-select" className="text-right">Rol</Label>
                 <Select id="role-select" onValueChange={handleRoleChange} value={selectedRole} disabled={!isAdmin}>
-                  <SelectTrigger>
+                  <SelectTrigger className="min-w-[220px] font-medium text-slate-800 dark:text-slate-100">
+                    {/* SelectValue puede renderizar vacío si la opción aún no está montada; añadimos fallback */}
                     <SelectValue placeholder="Selecciona un rol" />
+                    {!roleOptions.some(r=> r.role_name === selectedRole) ? null : (
+                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-800 dark:text-slate-100 select-none">
+                        {(() => {
+                          const found = roleOptions.find(r=> r.role_name === selectedRole);
+                          return (found && (found.label?.trim()||found.role_name)) || selectedRole || '';
+                        })()}
+                      </span>
+                    )}
                   </SelectTrigger>
                   <SelectContent>
-                    {roleOptions.map(({ role_name, label }) => (
-                      <SelectItem key={role_name} value={role_name}>{label}</SelectItem>
-                    ))}
+                    {roleOptions.map(({ role_name, label }) => {
+                      const display = (typeof label === 'string' && label.trim().length>0) ? label : role_name;
+                      return (
+                        <SelectItem key={role_name} value={role_name} className="text-slate-800 dark:text-slate-100">
+                          {display}
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
               </div>
@@ -251,11 +268,11 @@ const RolesAndPermissions = () => {
               {/* Role attributes editor */}
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="role-label">Etiqueta</Label>
-              <Input id="role-label" value={roleLabel} onChange={e => setRoleLabel(e.target.value)} className="col-span-3" disabled={!isAdmin} />
+              <Input id="role-label" value={roleLabel || ''} onChange={e => setRoleLabel(e.target.value)} className="col-span-3" disabled={!isAdmin} />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="role-color">Clase Color</Label>
-              <Input id="role-color" value={roleColorClass} onChange={e => setRoleColorClass(e.target.value)} className="col-span-3" disabled={!isAdmin} />
+              <Input id="role-color" value={roleColorClass || ''} onChange={e => setRoleColorClass(e.target.value)} className="col-span-3" disabled={!isAdmin} />
             </div>
             <div className="mt-4">
               <span className={`${roleColorClass} px-2 py-1 rounded-full text-xs font-semibold`}>{roleLabel || selectedRole}</span>

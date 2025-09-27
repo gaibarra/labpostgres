@@ -23,9 +23,17 @@ async function ensureAudit() {
     if (!cols.includes('created_at') && cols.includes('timestamp')) {
       try { await pool.query('ALTER TABLE system_audit_logs RENAME COLUMN "timestamp" TO created_at'); } catch(_) {}
     }
+    // Add missing columns (migration from older minimal schema without entity/entity_id)
+    if (!cols.includes('entity')) {
+      try { await pool.query('ALTER TABLE system_audit_logs ADD COLUMN entity text'); } catch(e){ if (process.env.AUDIT_DEBUG) console.error('Add entity column failed', e.message); }
+    }
+    if (!cols.includes('entity_id')) {
+      try { await pool.query('ALTER TABLE system_audit_logs ADD COLUMN entity_id text'); } catch(e){ if (process.env.AUDIT_DEBUG) console.error('Add entity_id column failed', e.message); }
+    }
     // Indices (idempotent)
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_audit_action ON system_audit_logs(action);`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_audit_created ON system_audit_logs(created_at DESC);`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_audit_entity ON system_audit_logs(entity);`);
     auditEnsured = true;
   } catch(e) {
     if (process.env.AUDIT_DEBUG) console.error('ensureAudit failed', e);
@@ -34,10 +42,21 @@ async function ensureAudit() {
 async function writeAudit(entry) {
   try {
     await ensureAudit();
-    await pool.query(
-      'INSERT INTO system_audit_logs(action, entity, entity_id, details, performed_by) VALUES($1,$2,$3,$4,$5)',
-      [entry.action, entry.entity, entry.entityId || null, entry.details || {}, entry.userId || null]
-    );
+    try {
+      await pool.query(
+        'INSERT INTO system_audit_logs(action, entity, entity_id, details, performed_by) VALUES($1,$2,$3,$4,$5)',
+        [entry.action, entry.entity, entry.entityId || null, entry.details || {}, entry.userId || null]
+      );
+    } catch (insertErr) {
+      // Fallback para esquemas antiguos sin entity/entity_id
+      if (/column .* does not exist/i.test(insertErr.message)) {
+        if (process.env.AUDIT_DEBUG) console.warn('Falling back to minimal audit insert (legacy schema)');
+        await pool.query(
+          'INSERT INTO system_audit_logs(action, details, performed_by) VALUES($1,$2,$3)',
+          [entry.action, entry.details || {}, entry.userId || null]
+        );
+      } else throw insertErr;
+    }
   } catch (e) {
     if (process.env.AUDIT_DEBUG) console.error('Audit write failed', e);
   }

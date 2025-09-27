@@ -18,6 +18,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import StudiesCardView from './studies/StudiesCardView';
 import { useAppData } from '@/contexts/AppDataContext';
+import apiClient from '@/lib/apiClient';
 
 const Studies = () => {
   const { user } = useAuth();
@@ -207,6 +208,41 @@ const Studies = () => {
               onAIAssist={() => {
                 setIsFormOpen(false);
                 setIsAIAssistOpen(true);
+              }}
+              onAIAddParameter={async (ctx, done)=>{
+                try {
+                  const desiredName = prompt('Nombre del nuevo parámetro (o dejar vacío para que IA sugiera uno):') || undefined;
+                  const resp = await apiClient.post('/ai/generate-parameter', {
+                    studyName: ctx.studyName,
+                    category: ctx.category,
+                    existingParameters: ctx.existingParameters,
+                    desiredParameterName: desiredName
+                  }, { timeoutMs: 30000 });
+                  if (resp?.parameter) {
+                    done(resp.parameter);
+                    toast.success('Parámetro IA generado');
+                  } else {
+                    toast.error(resp?.error || 'No se generó parámetro');
+                  }
+                } catch(e){
+                  console.warn('[AI Add Parameter] error', e);
+                  const details = e.details || e.response?.data || {};
+                  const code = details.code || details.error;
+                  let uiMsg;
+                  switch(code){
+                    case 'OPENAI_MISSING_KEY':
+                      uiMsg = 'No hay clave OpenAI configurada. Ve a Configuración → Integraciones.'; break;
+                    case 'OPENAI_INVALID_KEY_FORMAT':
+                      uiMsg = 'Formato de clave OpenAI inválido. Revisa que empiece con sk- y no esté truncada.'; break;
+                    case 'OPENAI_INVALID_KEY':
+                      uiMsg = 'La clave OpenAI es inválida o fue revocada. Actualízala en Configuración.'; break;
+                    case 'PARAM_SCHEMA_INVALID':
+                      uiMsg = 'La IA devolvió un parámetro con esquema inválido.'; break;
+                    default:
+                      uiMsg = details.message || details.error || e.message || 'Error IA';
+                  }
+                  toast.error(uiMsg);
+                }
               }}
               onCancel={() => {
                 setIsFormOpen(false);

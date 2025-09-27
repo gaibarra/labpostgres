@@ -228,33 +228,46 @@ import React, { useState, useEffect, useCallback } from 'react';
                   <TableBody>
                     {isLoading ? (
                       <TableRow><TableCell colSpan={4} className="text-center py-8"><Loader2 className="mx-auto h-8 w-8 animate-spin text-sky-600" /></TableCell></TableRow>
-                    ) : logs.length > 0 ? logs.map(log => (
-                      <TableRow key={log.id}>
-                        <TableCell className="whitespace-nowrap">{getFormattedTimestamp(log.timestamp)}</TableCell>
-                        <TableCell>{log.profiles ? `${log.profiles.first_name || ''} ${log.profiles.last_name || ''}`.trim() : 'Sistema'}</TableCell>
-                        <TableCell>{log.action}</TableCell>
-                        <TableCell>
-                          <Dialog>
-                            <DialogTrigger asChild>
-                              <Button variant="outline" size="sm" onClick={() => setSelectedLogDetails(log.details)}>
-                                <Eye className="h-4 w-4 mr-1" /> Ver
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent className="sm:max-w-md">
-                              <DialogHeader>
-                                <DialogTitle>Detalles del Log</DialogTitle>
-                                <DialogDescription>ID del Log: {log.id}</DialogDescription>
-                              </DialogHeader>
-                              <ScrollArea className="max-h-[60vh] mt-4">
-                                <pre className="bg-slate-100 dark:bg-slate-800 p-4 rounded-md text-sm overflow-x-auto">
-                                  {typeof selectedLogDetails === 'object' ? JSON.stringify(selectedLogDetails, null, 2) : String(selectedLogDetails)}
-                                </pre>
-                              </ScrollArea>
-                            </DialogContent>
-                          </Dialog>
-                        </TableCell>
-                      </TableRow>
-                    )) : (
+                    ) : logs.length > 0 ? logs.map(log => {
+                      const displayTimestamp = getFormattedTimestamp(log.created_at || log.created_at_fallback || log.timestamp);
+                      const displayUser = (log.user_name && log.user_name.trim()) || 'Sistema';
+                      return (
+                        <TableRow key={log.id}>
+                          <TableCell className="whitespace-nowrap">{displayTimestamp}</TableCell>
+                          <TableCell>{displayUser}</TableCell>
+                          <TableCell>{log.action}</TableCell>
+                          <TableCell>
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setSelectedLogDetails(log.details)}
+                                >
+                                  <Eye className="h-4 w-4 mr-1" /> Ver
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="sm:max-w-md">
+                                <DialogHeader>
+                                  <DialogTitle>Detalles del Log</DialogTitle>
+                                  <DialogDescription className="space-y-1 text-xs">
+                                    <div><strong>ID:</strong> {log.id}</div>
+                                    <div><strong>Fecha:</strong> {displayTimestamp}</div>
+                                    <div><strong>Usuario:</strong> {displayUser}</div>
+                                    {log.performed_by && <div><strong>User ID:</strong> {log.performed_by}</div>}
+                                  </DialogDescription>
+                                </DialogHeader>
+                                <ScrollArea className="max-h-[60vh] mt-4">
+                                  <pre className="bg-slate-100 dark:bg-slate-800 p-4 rounded-md text-sm overflow-x-auto">
+{typeof selectedLogDetails === 'object' ? JSON.stringify(selectedLogDetails, null, 2) : String(selectedLogDetails)}
+                                  </pre>
+                                </ScrollArea>
+                              </DialogContent>
+                            </Dialog>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    }) : (
                       <TableRow>
                         <TableCell colSpan={4} className="text-center py-8 text-slate-500 dark:text-slate-400">
                           <ListFilter className="mx-auto h-12 w-12 mb-2 opacity-50" />

@@ -10,18 +10,32 @@ const SelectGroup = SelectPrimitive.Group
 
 const SelectValue = SelectPrimitive.Value
 
-const SelectTrigger = React.forwardRef(({ className, children, ...props }, ref) => (
+const triggerSizeClasses = {
+  sm: 'h-8 text-xs px-2',
+  md: 'h-10 text-sm px-3',
+  lg: 'h-12 text-base px-4'
+};
+const triggerVariantClasses = {
+  default: 'bg-white border-input',
+  subtle: 'bg-slate-50 border-slate-200 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700',
+  ghost: 'bg-transparent border-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+};
+
+const SelectTrigger = React.forwardRef(({ className, children, size='md', variant='default', ...props }, ref) => (
   <SelectPrimitive.Trigger
     ref={ref}
     className={cn(
-      "flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1",
-      "dark:bg-slate-800 dark:border-slate-700 dark:text-slate-50 dark:placeholder:text-slate-400 dark:focus:ring-sky-500",
+      'flex w-full items-center justify-between rounded-md border text-slate-800 dark:text-slate-50 ring-offset-background focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1 placeholder:text-slate-500 dark:placeholder:text-slate-400 transition-colors',
+      triggerSizeClasses[size] || triggerSizeClasses.md,
+      triggerVariantClasses[variant] || triggerVariantClasses.default,
+      'dark:border-slate-700',
       className
     )}
-    {...props}>
+    {...props}
+  >
     {children}
     <SelectPrimitive.Icon asChild>
-      <ChevronDown className="h-4 w-4 opacity-50" />
+      <ChevronDown className="h-4 w-4 opacity-60" />
     </SelectPrimitive.Icon>
   </SelectPrimitive.Trigger>
 ))
@@ -84,17 +98,21 @@ const SelectItem = React.forwardRef(({ className, children, ...props }, ref) => 
   <SelectPrimitive.Item
     ref={ref}
     className={cn(
-      "relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
-      "dark:focus:bg-slate-700 dark:text-slate-50 dark:data-[highlighted]:bg-slate-700",
+      'relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors',
+      'data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+      // Estados de foco / hover / seleccionado accesibles
+      'focus:bg-sky-100 focus:text-slate-900 data-[highlighted]:bg-sky-100 data-[highlighted]:text-slate-900',
+      'data-[state=checked]:bg-sky-200 data-[state=checked]:text-slate-900 data-[state=checked]:font-semibold',
+      'dark:text-slate-100 dark:focus:bg-slate-700 dark:data-[highlighted]:bg-slate-700 dark:data-[state=checked]:bg-slate-600',
       className
     )}
-    {...props}>
+    {...props}
+  >
     <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
       <SelectPrimitive.ItemIndicator>
         <Check className="h-4 w-4" />
       </SelectPrimitive.ItemIndicator>
     </span>
-
     <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
   </SelectPrimitive.Item>
 ))

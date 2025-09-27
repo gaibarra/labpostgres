@@ -1,7 +1,8 @@
 // Simple fetch-based API client for the custom backend.
 // Automatically attaches JWT token from storage and handles JSON.
 
-const STORAGE_KEY = 'app_jwt_token';
+// Eliminado localStorage: token sólo en memoria temporal (se restablece tras reload via login)
+let inMemoryToken = null;
 
 // Robust resolution of API base URL with diagnostics.
 function resolveApiBase() {
@@ -32,13 +33,9 @@ function resolveApiBase() {
 
 const API_BASE = resolveApiBase();
 
-export function getToken() {
-  try { return localStorage.getItem(STORAGE_KEY); } catch { return null; }
-}
-export function setToken(token) {
-  try { token ? localStorage.setItem(STORAGE_KEY, token) : localStorage.removeItem(STORAGE_KEY); } catch {}
-}
-export function clearToken() { setToken(null); }
+export function getToken() { return inMemoryToken; }
+export function setToken(token) { inMemoryToken = token || null; }
+export function clearToken() { inMemoryToken = null; }
 
 async function request(path, { method = 'GET', body, headers = {}, auth = true, timeoutMs = 15000 } = {}) {
   const token = getToken();
