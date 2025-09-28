@@ -1,5 +1,8 @@
 # labpostgres
 
+## Política de Fechas (Civil Dates)
+Para fechas civiles (actualmente `patients.date_of_birth`) se aplica una política estricta: siempre `YYYY-MM-DD` sin zona horaria ni hora. Ver detalles completos en `docs/date_handling.md`.
+
 ## Documentación de Configuración y Seguridad de Secretos
 La aplicación implementa un mecanismo de masking y metadatos para llaves API (OpenAI, Deepseek, etc.) evitando exponer valores completos en respuestas estándar.
 

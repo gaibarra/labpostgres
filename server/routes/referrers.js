@@ -17,7 +17,8 @@ router.get('/', auth, requirePermission('referrers','read'), async (req,res,next
     const { clause, params } = buildSearchFilter(req.query.search,['name','entity_type','specialty','email']);
     let base='FROM referring_entities';
     if(clause) base+=' WHERE '+clause;
-    const rowsQ=`SELECT * ${base} ORDER BY created_at DESC LIMIT $${params.length+1} OFFSET $${params.length+2}`;
+  // Orden: 'Particular' primero y luego resto por created_at DESC
+  const rowsQ=`SELECT * ${base} ORDER BY (LOWER(name)='particular') DESC, created_at DESC LIMIT $${params.length+1} OFFSET $${params.length+2}`;
     const cntQ=`SELECT COUNT(*)::int AS total ${base}`;
     const [r,c]=await Promise.all([
       pool.query(rowsQ.replace(/\$SEARCH/g,'$'),[...params,limit,offset]),

@@ -21,10 +21,26 @@ const loginSchema = z.object({
 });
 
 // Patients
+// Política civil date:
+//  - Aceptar YYYY-MM-DD directamente.
+//  - Aceptar ISO con tiempo (ej: 1990-03-05T10:15:30.000Z) y truncar a la parte de fecha.
+//  - Rechazar cadena vacía.
+//  - Permitir null.
+//  - Validación lógica (mes/día válidos, bisiesto) antes de ir a la BD.
+const { isValidCivilDateString, normalizeCivilDate } = require('../utils/dates');
+const dateInput = z.string().refine(v=>{
+  if (v.includes('T')) {
+    const base = v.split('T')[0];
+    return /^\d{4}-\d{2}-\d{2}$/.test(base) && isValidCivilDateString(base);
+  }
+  return /^\d{4}-\d{2}-\d{2}$/.test(v) && isValidCivilDateString(v);
+}, 'Formato de fecha debe ser YYYY-MM-DD (opcional sufijo ISO) y ser una fecha válida');
+const nullableDateInput = dateInput.optional().nullable();
+
 const createPatientSchema = z.object({
   body: z.object({
     full_name: z.string().min(1),
-    date_of_birth: z.string().date().optional().nullable().or(z.string().length(0)).optional(),
+  date_of_birth: nullableDateInput,
     sex: z.string().optional().nullable(),
     email: z.string().email().optional().nullable(),
     phone_number: z.string().optional().nullable(),
@@ -99,13 +115,39 @@ const analysisUpdateSchema = z.object({
   body: analysisCreateSchema.shape.body.partial()
 });
 
+// Normalización de entity_type entrante a solo 'Médico' | 'Institución'
+function normalizeEntityType(v){
+  if (!v) return null;
+  const s = String(v).trim().toLowerCase();
+  if (['medico','médico','doctor','dr','dra'].includes(s)) return 'Médico';
+  if (['institucion','institución','institución','institucion'].includes(s) || s.startsWith('inst')) return 'Institución';
+  return null; // cualquier otro valor se tratará como inválido si es requerido
+}
+
+const allowedEntityTypes = ['Médico','Institución'];
+
 const referrerCreateSchema = z.object({
   body: z.object({
     name: z.string().min(2),
-    entity_type: z.string().optional().nullable(),
+    entity_type: z.preprocess(v=>normalizeEntityType(v), z.enum(['Médico','Institución']).nullable().optional()),
     specialty: z.string().optional().nullable(),
-    email: z.string().email().optional().nullable(),
-    phone_number: z.string().min(7).max(20).optional().nullable(),
+    // email opcional: permitir cadena vacía y normalizar a null antes de validar.
+    // Usamos preprocess para convertir '' -> null y luego validamos email | null | undefined.
+    email: z.preprocess(
+      (v) => {
+        // Tratar '', '@' (artefacto observado tras sanitize) o undefined/null como null lógico
+        if (v === '' || v === '@' || v == null) return null;
+        return v;
+      },
+      z.union([ z.string().email(), z.null() ]).optional().nullable()
+    ),
+    phone_number: z.preprocess(
+      v => (v === '' ? null : v),
+      z.union([
+        z.string().regex(/^[+\d\s-]{7,20}$/,"Teléfono debe tener entre 7 y 20 caracteres válidos"),
+        z.null()
+      ]).optional().nullable()
+    ),
     address: z.string().optional().nullable(),
     listaprecios: z.any().optional().nullable()
   })

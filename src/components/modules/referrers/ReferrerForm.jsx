@@ -7,7 +7,14 @@ import { DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Loader2 } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-const referrerTypes = ["Médico", "Institución", "Empresa", "Otro"];
+// Solo dos tipos permitidos ahora: Médico | Institución
+const referrerTypes = ["Médico", "Institución"];
+
+function isDoctorType(value){
+  if(!value) return false;
+  const v = value.toLowerCase();
+  return v.startsWith('médic') || v.startsWith('medic');
+}
 
 const ReferrerForm = ({ currentReferrer, handleInputChange, handleSelectChange, handleSubmit, closeForm, isSubmitting }) => {
   const isParticular = currentReferrer.name === 'Particular';
@@ -49,7 +56,7 @@ const ReferrerForm = ({ currentReferrer, handleInputChange, handleSelectChange, 
               </Select>
             </div>
           </div>
-          {currentReferrer.entity_type === 'Médico' && (
+          {isDoctorType(currentReferrer.entity_type) && (
             <div>
               <Label htmlFor="specialty">Especialidad</Label>
               <Input id="specialty" name="specialty" value={currentReferrer.specialty || ''} onChange={handleInputChange} placeholder="Ej: Cardiología" disabled={isSubmitting} />
@@ -61,8 +68,8 @@ const ReferrerForm = ({ currentReferrer, handleInputChange, handleSelectChange, 
               <Input id="phone_number" name="phone_number" type="tel" value={currentReferrer.phone_number || ''} onChange={handleInputChange} placeholder="Ej: 5512345678" disabled={isSubmitting} />
             </div>
             <div>
-              <Label htmlFor="email">Email <span className="text-red-500">*</span></Label>
-              <Input id="email" name="email" type="email" value={currentReferrer.email || ''} onChange={handleInputChange} placeholder="correo@ejemplo.com" required disabled={isSubmitting} />
+              <Label htmlFor="email">Email <span className="text-xs text-slate-400 dark:text-slate-500 font-normal">(opcional)</span></Label>
+              <Input id="email" name="email" type="email" value={currentReferrer.email || ''} onChange={handleInputChange} placeholder="correo@ejemplo.com (opcional)" disabled={isSubmitting} />
             </div>
           </div>
            <div>

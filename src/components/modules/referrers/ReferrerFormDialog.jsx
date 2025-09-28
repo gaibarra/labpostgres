@@ -36,22 +36,26 @@ const ReferrerFormDialog = ({ isOpen, onOpenChange, referrer, onSave, isSubmitti
   };
 
   const validateForm = () => {
-    if (!currentReferrer.name || !currentReferrer.entity_type || !currentReferrer.email) {
+    // Email ya no es obligatorio. Solo validamos formato si viene NO vacío.
+    if (!currentReferrer.name || !currentReferrer.entity_type) {
       toast({
         title: "Campos obligatorios",
-        description: "Por favor, complete Nombre, Tipo y Email.",
+        description: "Por favor, complete Nombre y Tipo.",
         variant: "destructive",
       });
       return false;
     }
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(currentReferrer.email)) {
-      toast({
-        title: "Email inválido",
-        description: "Por favor, ingrese una dirección de correo electrónico válida.",
-        variant: "destructive",
-      });
-      return false;
+    const rawEmail = (currentReferrer.email || '').trim();
+    if (rawEmail.length > 0) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(rawEmail)) {
+        toast({
+          title: "Email inválido",
+          description: "Formato de correo no válido.",
+          variant: "destructive",
+        });
+        return false;
+      }
     }
     return true;
   };

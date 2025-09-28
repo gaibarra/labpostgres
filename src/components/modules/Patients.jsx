@@ -13,7 +13,10 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Label } from '@/components/ui/label';
 import { PlusCircle, Edit, Trash2, Search, Loader2, BarChart2 } from 'lucide-react';
 import { useDebounce } from 'use-debounce';
-import { format, parseISO, isValid } from 'date-fns';
+// Import de date-fns removido para date_of_birth porque provocar parse a Date genera desplazamientos
+// en zonas horarias negativas (ej: América) al interpretar 'YYYY-MM-DD' como UTC midnight.
+// Mantener fechas de nacimiento como cadenas evita el bug 1965-01-03 -> 1965-01-02.
+import { format } from 'date-fns'; // queda para otros usos potenciales, no usar en DOB
 
 const PatientForm = ({ patient, onSave, onCancel, isLoading }) => {
   const initialPatientState = {
@@ -32,11 +35,11 @@ const PatientForm = ({ patient, onSave, onCancel, isLoading }) => {
 
   useEffect(() => {
     if (patient) {
-      const birthDate = patient.date_of_birth ? parseISO(patient.date_of_birth) : null;
+      // NO parsear a Date para evitar cambios de día por offset. Usar la cadena tal cual.
       setCurrentPatient({
         ...initialPatientState,
         ...patient,
-        date_of_birth: birthDate && isValid(birthDate) ? format(birthDate, 'yyyy-MM-dd') : '',
+        date_of_birth: patient.date_of_birth || '',
       });
     } else {
       setCurrentPatient(initialPatientState);
@@ -239,7 +242,9 @@ const Patients = () => {
                       <TableCell className="hidden sm:table-cell">{p.email}</TableCell>
                       <TableCell className="hidden md:table-cell">{p.phone_number}</TableCell>
                       <TableCell>{p.sex}</TableCell>
-                      <TableCell className="hidden lg:table-cell">{p.date_of_birth ? format(parseISO(p.date_of_birth), 'dd/MM/yyyy') : 'N/A'}</TableCell>
+                      <TableCell className="hidden lg:table-cell">{
+                        p.date_of_birth ? (()=>{ const parts = p.date_of_birth.split('-'); if(parts.length===3) return `${parts[2]}/${parts[1]}/${parts[0]}`; return p.date_of_birth; })() : 'N/A'
+                      }</TableCell>
                       <TableCell className="text-right space-x-2">
                         <Button variant="outline" size="icon" onClick={() => handleViewHistory(p.id)}>
                           <BarChart2 className="h-4 w-4" />

@@ -127,20 +127,26 @@ router.patch('/', requireAuth, requirePermission('settings','update'), configLim
     const payload = req.body || {};
     const forceUnlock = Boolean(payload.forceUnlock) || req.query.forceUnlock === '1';
 
-    // Protección labInfo: si se intenta modificar campos protegidos sin forceUnlock => 409
+    // Protección labInfo: permitir set inicial de campos protegidos pero bloquear cambios posteriores sin forceUnlock
     if (payload.labInfo && typeof payload.labInfo === 'object') {
       const attemptedKeys = Object.keys(payload.labInfo);
-      const protectedTouched = attemptedKeys.filter(k => PROTECTED_LABINFO_FIELDS.includes(k));
-      if (protectedTouched.length > 0 && !forceUnlock) {
-        return res.status(409).json({
-          error: 'LABINFO_PROTECTED',
-            message: 'Los campos de información del laboratorio están protegidos y no pueden modificarse sin confirmación explícita.',
-            details: { intentados: protectedTouched, requiere: 'forceUnlock=true' }
-        });
-      }
-      // Si viene un objeto vacío ({}), ignorar para no sobreescribir con vacío
+      // Si viene un objeto vacío ({}) ignorar para no sobreescribir con vacío
       if (attemptedKeys.length === 0) {
-        delete payload.labInfo; // no tiene sentido aplicar merge vacío
+        delete payload.labInfo;
+      } else {
+        const currentLabInfo = (current.lab_info || {});
+        const protectedTouched = attemptedKeys.filter(k => PROTECTED_LABINFO_FIELDS.includes(k));
+        if (protectedTouched.length > 0 && !forceUnlock) {
+          // Separar cuáles son modificaciones (ya existen) vs inicializaciones (no existen aún)
+            const modifying = protectedTouched.filter(k => Object.prototype.hasOwnProperty.call(currentLabInfo, k));
+          if (modifying.length > 0) {
+            return res.status(409).json({
+              error: 'LABINFO_PROTECTED',
+              message: 'Los campos de información del laboratorio están protegidos y no pueden modificarse sin confirmación explícita.',
+              details: { intentados: modifying, permiteInicial: protectedTouched.filter(k=>!modifying.includes(k)), requiere: 'forceUnlock=true' }
+            });
+          }
+        }
       }
     }
 
@@ -336,10 +342,13 @@ router.put('/', requireAuth, requirePermission('settings','update'), configLimit
       if (labInfoIncoming && typeof labInfoIncoming === 'object') {
         const attemptedKeys = Object.keys(labInfoIncoming);
         const protectedTouched = attemptedKeys.filter(k => PROTECTED_LABINFO_FIELDS.includes(k));
+        // Diferencia intencional con PATCH: para PUT (reemplazo declarativo) exigimos forceUnlock
+        // incluso para la asignación inicial de campos protegidos, porque semánticamente el
+        // cliente está "re-declarando" toda la sección y los tests esperan 409 en ese caso.
         if (protectedTouched.length > 0 && !forceUnlock) {
           return res.status(409).json({
             error: 'LABINFO_PROTECTED',
-            message: 'Los campos de información del laboratorio están protegidos y no pueden modificarse sin confirmación explícita.',
+            message: 'Los campos de información del laboratorio están protegidos y requieren confirmación explícita (forceUnlock) al usar PUT.',
             details: { intentados: protectedTouched, requiere: 'forceUnlock=true' }
           });
         }

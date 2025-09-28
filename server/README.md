@@ -1,5 +1,8 @@
 # Backend API (Migración Supabase -> Node/Express + PostgreSQL)
 
+## Fechas Civiles (DOB y similares)
+Las fechas de nacimiento y otras fechas "civiles" se manejan como strings `YYYY-MM-DD` (sin parseo a Date para evitar desplazamientos por TZ). Política completa: ver `../../docs/date_handling.md`.
+
 ## Endpoints Principales
 Auth:
 - POST /api/auth/register { email, password, full_name, role? }
