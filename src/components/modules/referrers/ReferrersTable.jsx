@@ -22,12 +22,13 @@ const ReferrersTable = ({
         <TableHeader className="sticky top-0 bg-slate-100 dark:bg-slate-800 z-10">
           <TableRow>
             {/* Nombre más ancho */}
-            <TableHead className="w-[280px] text-slate-700 dark:text-slate-300">Nombre</TableHead>
-            <TableHead className="text-slate-700 dark:text-slate-300">Tipo</TableHead>
+            <TableHead className="w-[240px] md:w-[280px] text-slate-700 dark:text-slate-300">Nombre</TableHead>
+            <TableHead className="text-slate-700 dark:text-slate-300 hidden sm:table-cell">Tipo</TableHead>
             {/* Especialidad más angosta */}
-            <TableHead className="w-[140px] text-slate-700 dark:text-slate-300">Especialidad</TableHead>
-            <TableHead className="text-slate-700 dark:text-slate-300">Teléfono</TableHead>
-            <TableHead className="text-slate-700 dark:text-slate-300">Email</TableHead>
+            <TableHead className="w-[120px] md:w-[140px] text-slate-700 dark:text-slate-300 hidden md:table-cell">Especialidad</TableHead>
+            <TableHead className="text-slate-700 dark:text-slate-300 hidden lg:table-cell">Teléfono</TableHead>
+            <TableHead className="text-slate-700 dark:text-slate-300 hidden lg:table-cell">Email</TableHead>
+            <TableHead className="text-slate-700 dark:text-slate-300 hidden xl:table-cell w-[280px]">Dirección</TableHead>
             <TableHead className="text-right text-slate-700 dark:text-slate-300 sticky right-0 z-10 bg-slate-100 dark:bg-slate-800">Acciones</TableHead>
           </TableRow>
         </TableHeader>
@@ -35,11 +36,24 @@ const ReferrersTable = ({
           {referrers.length > 0 ? (
             referrers.map((referrer) => (
               <TableRow key={referrer.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                <TableCell className="font-medium text-slate-800 dark:text-slate-200 w-[280px]">{referrer.name}</TableCell>
-                <TableCell className="text-slate-600 dark:text-slate-400">{referrer.entity_type}</TableCell>
-                <TableCell className="text-slate-600 dark:text-slate-400 w-[140px] truncate" title={referrer.specialty || ''}>{referrer.specialty || '___'}</TableCell>
-                <TableCell className="text-slate-600 dark:text-slate-400">{referrer.phone_number || '___'}</TableCell>
-                <TableCell className="text-slate-600 dark:text-slate-400">{referrer.email || '___'}</TableCell>
+                <TableCell className="font-medium text-slate-800 dark:text-slate-200 w-[240px] md:w-[280px] align-top">
+                  <div className="space-y-1">
+                    <div>{referrer.name}</div>
+                    {/* Bloque compacto sólo visible en pantallas < sm */}
+                    <div className="sm:hidden text-xs text-slate-500 dark:text-slate-400 leading-snug space-y-0.5">
+                      <div><span className="font-semibold">Tipo:</span> {referrer.entity_type || '___'}</div>
+                      <div><span className="font-semibold">Esp:</span> {referrer.specialty || '___'}</div>
+                      <div><span className="font-semibold">Tel:</span> {referrer.phone_number || '___'}</div>
+                      <div><span className="font-semibold">Email:</span> {referrer.email || '___'}</div>
+                      <div className="truncate" title={referrer.address || ''}><span className="font-semibold">Dir:</span> {referrer.address || '___'}</div>
+                    </div>
+                  </div>
+                </TableCell>
+                <TableCell className="text-slate-600 dark:text-slate-400 hidden sm:table-cell">{referrer.entity_type}</TableCell>
+                <TableCell className="text-slate-600 dark:text-slate-400 w-[120px] md:w-[140px] truncate hidden md:table-cell" title={referrer.specialty || ''}>{referrer.specialty || '___'}</TableCell>
+                <TableCell className="text-slate-600 dark:text-slate-400 hidden lg:table-cell">{referrer.phone_number || '___'}</TableCell>
+                <TableCell className="text-slate-600 dark:text-slate-400 hidden lg:table-cell">{referrer.email || '___'}</TableCell>
+                <TableCell className="text-slate-600 dark:text-slate-400 hidden xl:table-cell w-[280px] truncate" title={referrer.address || ''}>{referrer.address || '___'}</TableCell>
                 <TableCell className="text-right sticky right-0 z-10 bg-slate-50 dark:bg-slate-900">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -80,7 +94,7 @@ const ReferrersTable = ({
             ))
           ) : (
             <TableRow>
-              <TableCell colSpan={6} className="h-24 text-center text-slate-500 dark:text-slate-400">
+              <TableCell colSpan={7} className="h-24 text-center text-slate-500 dark:text-slate-400">
                 No se encontraron referentes.
               </TableCell>
             </TableRow>
