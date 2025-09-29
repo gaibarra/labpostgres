@@ -199,9 +199,12 @@ import { useState, useEffect, useCallback, useRef } from 'react';
       }, [toast, loadData]);
 
       const handleSaveResults = useCallback(async (orderId, results, status, notes, openFinalReportModalCallback) => {
-            try {
-        const updatedOrder = await apiClient.put(`/work-orders/${orderId}`, { results, status, validation_notes: notes });
-              await loadData();
+      try {
+    // Optimistic: actualizar local antes de recargar
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, results, status, validation_notes: notes } : o));
+    const updatedOrder = await apiClient.put(`/work-orders/${orderId}`, { results, status, validation_notes: notes });
+    // Sincronizar con datos frescos (pero no bloquear percepción inmediata)
+    loadData();
         await logAuditEvent('ResultadosGuardados', { orderId: orderId, folio: updatedOrder?.folio, status: status });
               
               if (openFinalReportModalCallback && updatedOrder) {
