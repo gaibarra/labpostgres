@@ -154,7 +154,8 @@ const Packages = () => {
     const priceForParticular = getParticularPrice(pkg.id);
     setCurrentPackage({
       ...pkg,
-      items: pkg.items || [],
+      // Normalize backend 'analysis' to UI 'study' so checkboxes pre-check
+      items: (pkg.items || []).map(it => it.item_type === 'analysis' ? { ...it, item_type: 'study' } : it),
       particularPrice: priceForParticular === 'N/A' ? '' : priceForParticular
     });
     setIsFormOpen(true);
@@ -191,11 +192,12 @@ const Packages = () => {
   };
 
   const getItemNameByIdAndType = useCallback((itemId, itemType) => {
-    if (itemType === 'study') {
+    const normalizedType = itemType === 'analysis' ? 'study' : itemType;
+    if (normalizedType === 'study') {
       const study = availableStudies.find(s => s.id === itemId);
       return study ? study.name : 'Estudio desconocido';
     }
-    if (itemType === 'package') {
+    if (normalizedType === 'package') {
       const pkg = packages.find(p => p.id === itemId);
       return pkg ? pkg.name : 'Paquete desconocido';
     }

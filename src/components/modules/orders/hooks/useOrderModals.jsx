@@ -9,9 +9,17 @@ import React, { useState, useMemo, useCallback, useEffect } from 'react';
     import AIRecommendationsModal from '@/components/modules/orders/AIRecommendationsModal';
     import AIRecommendationsPreviewModal from '@/components/modules/orders/AIRecommendationsPreviewModal';
     import { useToast } from "@/components/ui/use-toast";
-    import { useOrderManagement } from './useOrderManagement';
-
-    export const useOrderModals = ({ studiesDetails, packagesDetails, patients, referrers, onSubmit, referrerRef }) => {
+    export const useOrderModals = ({ 
+      studiesDetails,
+      packagesDetails,
+      patients,
+      referrers,
+      onSubmit,
+      handleSaveResults,
+      getStudiesAndParametersForOrder,
+      loadData,
+      referrerRef 
+    }) => {
       const { toast } = useToast();
       const [modalState, setModalState] = useState({
         isOpen: false,
@@ -23,7 +31,6 @@ import React, { useState, useMemo, useCallback, useEffect } from 'react';
       });
       const [isSubmitting, setIsSubmitting] = useState(false);
 
-      const { handleSaveResults, loadData, getStudiesAndParametersForOrder } = useOrderManagement();
 
       const getDetails = useCallback((order) => {
         if (!order || !order.patient_id) return { patient: null, referrer: null };

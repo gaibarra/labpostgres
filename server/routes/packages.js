@@ -18,13 +18,26 @@ router.get('/detailed', auth, requirePermission('packages','read'), async (req,r
 	try {
 		const { limit, offset } = parsePagination(req.query);
 		const { clause, params } = buildSearchFilter(req.query.search,['name']);
-		let where = clause ? ` WHERE ${clause}` : '';
+		const where = clause ? ` WHERE ${clause}` : '';
+		// Resolver nombres de items según tipo (por ahora sólo 'analysis')
 		const q = `
 			SELECT p.*, COALESCE(items.items,'[]') AS items
 			FROM analysis_packages p
 			LEFT JOIN LATERAL (
-				SELECT json_agg(json_build_object('id', i.id,'item_id', i.item_id,'item_type', i.item_type) ORDER BY i.created_at) AS items
-				FROM analysis_package_items i WHERE i.package_id = p.id
+				SELECT json_agg(
+					json_build_object(
+						'id', i.id,
+						'item_id', i.item_id,
+						'item_type', i.item_type,
+						'name', CASE 
+							WHEN i.item_type = 'analysis' THEN a.name
+							ELSE NULL
+						END
+					) ORDER BY i.created_at
+				) AS items
+				FROM analysis_package_items i
+				LEFT JOIN analysis a ON a.id = i.item_id AND i.item_type='analysis'
+				WHERE i.package_id = p.id
 			) items ON true
 			${where}
 			ORDER BY p.created_at DESC
@@ -35,7 +48,15 @@ router.get('/detailed', auth, requirePermission('packages','read'), async (req,r
 			pool.query(q, [...params, limit, offset]),
 			pool.query(cntQ, params)
 		]);
-		res.json({ data: rowsR.rows, page: { limit, offset, total: cntR.rows[0].total } });
+		// Fallback name for unresolved items
+		const data = rowsR.rows.map(pkg => ({
+			...pkg,
+			items: (pkg.items || []).map(it => ({
+				...it,
+				name: it.name || 'Item desconocido'
+			}))
+		}));
+		res.json({ data, page: { limit, offset, total: cntR.rows[0].total } });
 	} catch(e){ console.error(e); next(new AppError(500,'Error listando paquetes detallados','PACKAGE_DETAILED_LIST_FAIL')); }
 });
 
@@ -50,7 +71,23 @@ router.get('/count/all', auth, requirePermission('packages','read'), async (_req
 
 router.post('/', auth, requirePermission('packages','create'), sanitizeBody(['name','description']), validate(packageCreateSchema), audit('create','package', (req,r)=>r.locals?.createdId, (req)=>({ body: req.body })), async (req,res,next)=>{ const { name, description, price } = req.body || {}; try { const { rows } = await pool.query('INSERT INTO analysis_packages(name, description, price) VALUES($1,$2,$3) RETURNING *',[name,description||null,price||null]); const created=rows[0]; res.locals.createdId = created.id; res.status(201).json(created); } catch(e){ console.error(e); next(new AppError(500,'Error creando paquete','PACKAGE_CREATE_FAIL'));} });
 
-router.get('/:id/items', auth, requirePermission('packages','read'), async (req,res,next)=>{ try { const { rows } = await pool.query('SELECT * FROM analysis_package_items WHERE package_id=$1',[req.params.id]); res.json(rows); } catch(e){ console.error(e); next(new AppError(500,'Error listando items','PACKAGE_ITEMS_LIST_FAIL'));} });
+router.get('/:id/items', auth, requirePermission('packages','read'), async (req,res,next)=>{
+	try {
+		const { rows } = await pool.query(`
+			SELECT i.*, CASE WHEN i.item_type='analysis' THEN a.name ELSE NULL END AS name
+			FROM analysis_package_items i
+			LEFT JOIN analysis a ON a.id = i.item_id AND i.item_type='analysis'
+			WHERE i.package_id = $1
+			ORDER BY i.created_at
+		`,[req.params.id]);
+		// Provide same fallback as detailed endpoint to keep UI consistent
+		const data = rows.map(r => ({ ...r, name: r.name || 'Item desconocido' }));
+		res.json(data);
+	} catch(e){
+		console.error(e);
+		next(new AppError(500,'Error listando items','PACKAGE_ITEMS_LIST_FAIL'));
+	}
+});
 
 router.post('/:id/items', auth, requirePermission('packages','update'), audit('create','package_item', (req,r)=>r.locals?.pkgItemId, (req)=>({ body: req.body, package_id: req.params.id })), async (req,res,next)=>{ const { item_id, item_type } = req.body || {}; if(!item_id) return next(new AppError(400,'item_id requerido','ITEM_ID_REQUIRED')); try { const { rows } = await pool.query('INSERT INTO analysis_package_items(package_id,item_id,item_type) VALUES($1,$2,$3) RETURNING *',[req.params.id,item_id,item_type||'analysis']); const created=rows[0]; res.locals.pkgItemId = created.id; res.status(201).json(created); } catch(e){ console.error(e); next(new AppError(500,'Error agregando item','PACKAGE_ITEM_ADD_FAIL'));} });
 

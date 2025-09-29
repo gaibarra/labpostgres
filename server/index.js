@@ -7,6 +7,8 @@ const cors = require('cors');
 const { AppError, errorResponse } = require('./utils/errors');
 const { metricsMiddleware, metricsEndpoint } = require('./metrics');
 const cookieParser = require('cookie-parser');
+const net = require('net');
+const { execSync, spawn } = require('child_process');
 
 const app = express();
 
@@ -163,10 +165,20 @@ function start(port, attempts=0){
     if (attempts>0 && !strictPort) console.log(`[SERVER] Usando puerto alternativo ${port}`);
     console.log(`Servidor corriendo en el puerto ${port}${strictPort ? ' (PORT_STRICT)' : ''}`);
   });
-  srv.on('error', (err)=>{
+  srv.on('error', async (err)=>{
     if (err.code === 'EADDRINUSE') {
       if (strictPort) {
-        console.error(`[SERVER] PORT_STRICT=1 y el puerto ${port} está en uso. Abortando para mantener coherencia con frontend.`);
+        // Verificar si el proceso que ocupa el puerto sigue vivo tras intento de steal
+        let occupyingPids = [];
+        try {
+          const raw = require('child_process').execSync(`lsof -ti:${port}`, { stdio:['ignore','pipe','ignore'] }).toString().trim();
+          occupyingPids = raw.split(/\s+/).filter(Boolean).map(n=>parseInt(n,10));
+        } catch {}
+        if (occupyingPids.length === 1 && occupyingPids.includes(process.pid)) {
+          console.warn(`[SERVER] Aviso: evento EADDRINUSE emitido pero el PID actual posee el puerto ${port}. Ignorando falso positivo.`);
+          return; // no abortar
+        }
+        console.error(`[SERVER] PORT_STRICT=1 y el puerto ${port} está en uso por otros procesos (${occupyingPids.filter(p=>p!==process.pid).join(', ')||'desconocido'}). Abortando.`);
         process.exit(1);
       }
       if (attempts < 5) {
@@ -179,6 +191,46 @@ function start(port, attempts=0){
     process.exit(1);
   });
 }
-if (require.main === module) start(basePort);
+async function portInUse(port){
+  return new Promise(resolve => {
+    const tester = net.createServer()
+      .once('error', err => {
+        if (err.code === 'EADDRINUSE') return resolve(true);
+        resolve(false);
+      })
+      .once('listening', () => tester.close(()=>resolve(false)))
+      .listen(port, '0.0.0.0');
+  });
+}
+
+async function maybeStealPort(port){
+  if (process.env.PORT_STRICT !== '1') return; // only relevant in strict mode
+  if (process.env.PORT_STRICT_STEAL !== '1') return; // opt-in
+  const inUse = await portInUse(port);
+  if (!inUse) return;
+  let pidsRaw='';
+  try { pidsRaw = execSync(`lsof -ti:${port}`, { stdio:['ignore','pipe','ignore'] }).toString().trim(); } catch { return; }
+  if (!pidsRaw) return;
+  const pids = [...new Set(pidsRaw.split(/\s+/).filter(Boolean))];
+  for (const pid of pids){
+    if (parseInt(pid,10) === process.pid) continue;
+    try {
+      const cwd = execSync(`readlink -f /proc/${pid}/cwd`, { stdio:['ignore','pipe','ignore'] }).toString().trim();
+      if (cwd === process.cwd()) {
+        console.warn(`[SERVER] PORT_STRICT_STEAL=1: Terminando proceso previo ${pid} en ${port}`);
+        process.kill(parseInt(pid,10), 'SIGTERM');
+      }
+    } catch{}
+  }
+  // breve espera a liberar socket
+  await new Promise(r=>setTimeout(r, 800));
+}
+
+if (require.main === module) {
+  (async ()=> {
+    try { await maybeStealPort(basePort); } catch(e){ console.error('[SERVER] Error en maybeStealPort', e); }
+    start(basePort);
+  })();
+}
 
 module.exports = app;

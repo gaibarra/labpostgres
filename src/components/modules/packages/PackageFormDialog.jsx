@@ -20,6 +20,7 @@ const PackageFormDialog = ({ isOpen, onOpenChange, currentPackage, onSubmit, ava
           initialPackageForm={initialPackageForm}
           closeForm={() => onOpenChange(false)}
           isSubmitting={isSubmitting}
+          // embedded mode expects closeForm prop
         />
       </DialogContent>
     </Dialog>

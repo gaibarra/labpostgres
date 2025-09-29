@@ -40,8 +40,9 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
             if (studyDetail && studyDetail.id && Array.isArray(studyDetail.parameters)) {
               initialResults[studyDetail.id] = studyDetail.parameters.map(param => {
                 const existingResultForStudy = order.results?.[studyDetail.id];
+                // Normaliza tipos para comparación robusta (string vs number vs uuid)
                 const existingParamResult = Array.isArray(existingResultForStudy) 
-                  ? existingResultForStudy.find(r => r.parametroId === param.id)
+                  ? existingResultForStudy.find(r => String(r.parametroId) === String(param.id))
                   : null;
                 
                 return {
@@ -78,30 +79,46 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
         }));
       };
 
+      const mergeWithExisting = (partialEdited) => {
+        const existing = order.results || {};
+        const merged = { ...existing };
+        Object.keys(partialEdited).forEach(studyId => {
+          const editedSet = partialEdited[studyId] || [];
+          const existingSet = Array.isArray(existing[studyId]) ? existing[studyId] : [];
+          const map = new Map();
+          existingSet.forEach(r => map.set(String(r.parametroId), { ...r }));
+          editedSet.forEach(r => map.set(String(r.parametroId), { ...map.get(String(r.parametroId)), ...r }));
+          merged[studyId] = Array.from(map.values());
+        });
+        return merged;
+      };
+
       const handleSave = () => {
-        const resultsToSave = {};
+        const edited = {};
         for (const studyId in resultsData) {
           if (Array.isArray(resultsData[studyId])) {
-            resultsToSave[studyId] = resultsData[studyId].map(param => ({
+            edited[studyId] = resultsData[studyId].map(param => ({
               parametroId: param.parametroId,
               valor: param.valor === '' ? null : param.valor,
             }));
           }
         }
-        onSaveResults(order.id, resultsToSave, orderStatus, validationNotes);
+        const merged = mergeWithExisting(edited);
+        onSaveResults(order.id, merged, orderStatus, validationNotes);
       };
 
       const handleValidateAndPreviewAction = () => {
-        const resultsToSave = {};
-         for (const studyId in resultsData) {
+        const edited = {};
+        for (const studyId in resultsData) {
           if (Array.isArray(resultsData[studyId])) {
-            resultsToSave[studyId] = resultsData[studyId].map(param => ({
+            edited[studyId] = resultsData[studyId].map(param => ({
               parametroId: param.parametroId,
               valor: param.valor === '' ? null : param.valor,
             }));
           }
         }
-        onValidateAndPreview(order.id, resultsToSave, orderStatus, validationNotes);
+        const merged = mergeWithExisting(edited);
+        onValidateAndPreview(order.id, merged, orderStatus, validationNotes);
       };
 
       return (

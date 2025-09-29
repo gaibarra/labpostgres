@@ -16,8 +16,10 @@ import React, { useState, useEffect } from 'react';
       availablePackagesForSelection, 
       initialPackageForm,
       handleAIAssistPackage,
-      isSubmitting
+      isSubmitting,
+      closeForm
     }) => {
+      const embedded = typeof isOpen === 'undefined'; // embedded mode when wrapped by external dialog
       const [currentPackage, setCurrentPackage] = useState(initialCurrentPackage || initialPackageForm);
       const [studySearchTerm, setStudySearchTerm] = useState('');
       const [packageSearchTerm, setPackageSearchTerm] = useState('');
@@ -69,24 +71,8 @@ import React, { useState, useEffect } from 'react';
         pkg && pkg.name && pkg.name.toLowerCase().includes(packageSearchTerm.toLowerCase())
       );
 
-      return (
-        <Dialog open={isOpen} onOpenChange={onOpenChange}>
-          <DialogTrigger asChild>
-            <Button className="bg-gradient-to-r from-sky-500 to-cyan-500 hover:from-sky-600 hover:to-cyan-600 text-white" onClick={() => setCurrentPackage(initialPackageForm)}>
-              <PackagePlus className="mr-2 h-4 w-4" /> Nuevo Paquete
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-lg bg-slate-50 dark:bg-slate-900 max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle className="text-sky-700 dark:text-sky-400 flex items-center">
-                {currentPackage.id ? 'Editar Paquete' : 'Registrar Nuevo Paquete'}
-                 <Button variant="ghost" size="sm" onClick={handleAIAssistPackage} className="ml-auto text-purple-500 hover:text-purple-700">
-                  <Sparkles className="mr-2 h-4 w-4" /> Asistente IA
-                </Button>
-              </DialogTitle>
-              <DialogDescription>Define los detalles del paquete, su precio base para "Particular", y los estudios o paquetes que incluye.</DialogDescription>
-            </DialogHeader>
-            <form onSubmit={handleSubmitForm} className="grid gap-4 py-4 px-2">
+  const formCore = (
+    <form onSubmit={handleSubmitForm} className="grid gap-4 py-4 px-2">
               <div>
                 <Label htmlFor="name" className="text-slate-700 dark:text-slate-300">Nombre del Paquete</Label>
                 <Input id="name" name="name" value={currentPackage.name} onChange={handleInputChange} placeholder="Ej: Perfil Básico, Checkup Completo" className="bg-white/80 dark:bg-slate-800/80" required />
@@ -187,13 +173,54 @@ import React, { useState, useEffect } from 'react';
                 </div>
               </div>
 
-              <DialogFooter>
-                <DialogClose asChild><Button type="button" variant="outline">Cancelar</Button></DialogClose>
+              <DialogFooter className="mt-2">
+                {embedded ? (
+                  <Button type="button" variant="outline" onClick={closeForm}>Cancelar</Button>
+                ) : (
+                  <DialogClose asChild><Button type="button" variant="outline">Cancelar</Button></DialogClose>
+                )}
                 <Button type="submit" disabled={isSubmitting} className="bg-gradient-to-r from-sky-500 to-cyan-500 hover:from-sky-600 hover:to-cyan-600 text-white">
                   {isSubmitting ? 'Guardando...' : (currentPackage.id ? 'Guardar Cambios' : 'Registrar Paquete')}
                 </Button>
               </DialogFooter>
             </form>
+      );
+
+      if (embedded) {
+        // Render only form (used inside external dialog wrapper)
+        return (
+          <div className="max-h-[70vh] overflow-y-auto">
+            <div className="flex items-center mb-2">
+              <h3 className="text-lg font-semibold text-sky-700 dark:text-sky-400 flex-1">{currentPackage.id ? 'Editar Paquete' : 'Registrar Nuevo Paquete'}</h3>
+              {handleAIAssistPackage && (
+                <Button variant="ghost" size="sm" onClick={handleAIAssistPackage} className="text-purple-500 hover:text-purple-700">
+                  <Sparkles className="mr-2 h-4 w-4" /> IA
+                </Button>
+              )}
+            </div>
+            {formCore}
+          </div>
+        );
+      }
+
+      return (
+        <Dialog open={isOpen} onOpenChange={onOpenChange}>
+          <DialogTrigger asChild>
+            <Button className="bg-gradient-to-r from-sky-500 to-cyan-500 hover:from-sky-600 hover:to-cyan-600 text-white" onClick={() => setCurrentPackage(initialPackageForm)}>
+              <PackagePlus className="mr-2 h-4 w-4" /> Nuevo Paquete
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-lg bg-slate-50 dark:bg-slate-900 max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="text-sky-700 dark:text-sky-400 flex items-center">
+                {currentPackage.id ? 'Editar Paquete' : 'Registrar Nuevo Paquete'}
+                 <Button variant="ghost" size="sm" onClick={handleAIAssistPackage} className="ml-auto text-purple-500 hover:text-purple-700">
+                  <Sparkles className="mr-2 h-4 w-4" /> Asistente IA
+                </Button>
+              </DialogTitle>
+              <DialogDescription>Define los detalles del paquete, su precio base para "Particular", y los estudios o paquetes que incluye.</DialogDescription>
+            </DialogHeader>
+            {formCore}
           </DialogContent>
         </Dialog>
       );

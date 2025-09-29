@@ -30,19 +30,20 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
         isLoading,
         handleSubmitOrder,
         handleDeleteOrder,
+        handleSaveResults,
+        getStudiesAndParametersForOrder,
         loadData,
       } = useOrderManagement();
 
-      const {
-        modalState,
-        openModal,
-        modalComponent
-      } = useOrderModals({
+      const { modalState, openModal, modalComponent } = useOrderModals({
         studiesDetails: studies,
         packagesDetails: packages,
         patients,
         referrers,
         onSubmit: handleSubmitOrder,
+        handleSaveResults,
+        getStudiesAndParametersForOrder,
+        loadData,
         referrerRef,
       });
 

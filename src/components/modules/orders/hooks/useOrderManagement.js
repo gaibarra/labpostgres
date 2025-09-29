@@ -224,7 +224,12 @@ import { useState, useEffect, useCallback, useRef } from 'react';
             const studiesMap = new Map(allStudies.map(s => [s.id, s]));
             const packagesMap = new Map(allPackages.map(p => [p.id, p]));
 
-            const stack = [...(orderItems || []).map(item => ({...item, id: item.id || item.item_id, type: item.type || item.item_type}))];
+            const stack = [...(orderItems || []).map(item => ({
+              ...item,
+              id: item.id || item.item_id,
+              // Normaliza 'analysis' a 'study'
+              type: (item.type || item.item_type) === 'analysis' ? 'study' : (item.type || item.item_type)
+            }))];
 
             while (stack.length > 0) {
                 const item = stack.pop();
@@ -241,10 +246,10 @@ import { useState, useEffect, useCallback, useRef } from 'react';
                 } else if (item.type === 'package') {
                     const packageDetail = packagesMap.get(item.id);
                     if (packageDetail && Array.isArray(packageDetail.items)) {
-                        const subItems = packageDetail.items.map(sub => ({
-                            id: sub.item_id,
-                            type: sub.item_type
-                        }));
+            const subItems = packageDetail.items.map(sub => ({
+              id: sub.item_id,
+              type: sub.item_type === 'analysis' ? 'study' : sub.item_type
+            }));
                         stack.push(...subItems);
                     }
                 }

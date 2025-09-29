@@ -26,6 +26,15 @@ const PROTECTED_LABINFO_FIELDS = [
   'name','razonSocial','taxId','logoUrl','calle','numeroExterior','numeroInterior','colonia','codigoPostal','ciudad','estado','pais','phone','secondaryPhone','email','website','responsableSanitarioNombre','responsableSanitarioCedula'
 ];
 
+// Helper audit (no throw): registra evento de cambio en OpenAI key sin exponer secreto completo
+async function auditOpenAI(req, action, details){
+  try {
+    await pool.query('INSERT INTO system_audit_logs(action, details, performed_by) VALUES($1,$2,$3)', [action, details, req.user?.id || null]);
+  } catch(e){
+    console.error('[CONFIG AUDIT openaiApiKey]', e.message);
+  }
+}
+
 function rowToFrontend(row){
   const out = { id: row.id, created_at: row.created_at, updated_at: row.updated_at };
   for (const [dbKey, feKey] of Object.entries(dbToFrontend)) {
@@ -126,6 +135,7 @@ router.patch('/', requireAuth, requirePermission('settings','update'), configLim
     const current = await getOrCreateConfigRow(req);
     const payload = req.body || {};
     const forceUnlock = Boolean(payload.forceUnlock) || req.query.forceUnlock === '1';
+  const admin = isAdmin(req);
 
     // Protección labInfo: permitir set inicial de campos protegidos pero bloquear cambios posteriores sin forceUnlock
     if (payload.labInfo && typeof payload.labInfo === 'object') {
@@ -181,6 +191,10 @@ router.patch('/', requireAuth, requirePermission('settings','update'), configLim
           val = { ...val, openaiApiKey: val.openAIKey };
           delete val.openAIKey;
         }
+        // Seguridad: sólo admin puede crear, actualizar o eliminar la openaiApiKey
+        if ((Object.prototype.hasOwnProperty.call(val,'openaiApiKey')) && !admin) {
+          return res.status(403).json({ error:'OPENAI_KEY_ADMIN_ONLY', message:'Solo un administrador puede crear, actualizar o eliminar la clave OpenAI.' });
+        }
         // Detectar cambios en secretos
         for (const f of secretFields) {
           if (Object.prototype.hasOwnProperty.call(val, f)) {
@@ -215,7 +229,7 @@ router.patch('/', requireAuth, requirePermission('settings','update'), configLim
       updateFragments.push(`${frontendToDb[feKey]} = COALESCE(${frontendToDb[feKey]}, '{}'::jsonb) || $${idx++}::jsonb`);
       values.push(val);
     }
-    if (metaNeedsUpdate) {
+  if (metaNeedsUpdate) {
       updateFragments.push(`integrations_meta = COALESCE(integrations_meta, '{}'::jsonb) || $${idx++}::jsonb`);
       values.push(newMeta);
     }
@@ -243,6 +257,21 @@ router.patch('/', requireAuth, requirePermission('settings','update'), configLim
       }
     }
   if (process.env.DEBUG_CONFIG) console.log('[CONFIG PATCH] updated row', updated.rows[0].id);
+    // Audit OpenAI key change events (create / rotate / remove)
+    try {
+      if (metaNeedsUpdate && newMeta.openaiApiKey) {
+        const prevMeta = current.integrations_meta?.openaiApiKey;
+        const meta = newMeta.openaiApiKey;
+        let action, info = { last4: meta.last4, updatedAt: meta.updatedAt, removedAt: meta.removedAt };
+        if (meta.removedAt) {
+          if (!prevMeta || !prevMeta.removedAt) action = 'Config.Integrations.OpenAIKeyRemoved';
+        } else if (meta.updatedAt) {
+          if (prevMeta && prevMeta.hash && prevMeta.hash !== meta.hash) action = 'Config.Integrations.OpenAIKeyRotated';
+          else if (!prevMeta || !prevMeta.hash) action = 'Config.Integrations.OpenAIKeyCreated';
+        }
+        if (action) await auditOpenAI(req, action, info);
+      }
+    } catch(ae){ console.error('[CONFIG AUDIT PATCH] error', ae); }
     return res.json(rowToFrontend(updated.rows[0]));
   } catch(err){
     next(err);
@@ -255,6 +284,7 @@ router.patch('/integrations', requireAuth, requirePermission('settings','update'
     const partialRaw = req.body || {};
     // Clonar para no mutar referencia externa
     const partial = { ...partialRaw };
+  const admin = isAdmin(req);
     if (partial.openAIKey && !partial.openaiApiKey) {
       partial.openaiApiKey = partial.openAIKey;
       delete partial.openAIKey;
@@ -269,6 +299,9 @@ router.patch('/integrations', requireAuth, requirePermission('settings','update'
       }
     }
     const current = await getOrCreateConfigRow(req);
+    if (Object.prototype.hasOwnProperty.call(partial,'openaiApiKey') && !admin) {
+      return res.status(403).json({ error:'OPENAI_KEY_ADMIN_ONLY', message:'Solo un administrador puede crear, actualizar o eliminar la clave OpenAI.' });
+    }
     // Construir metadata
   const secretFields = SECRET_FIELDS;
     let metaNeedsUpdate = false;
@@ -301,7 +334,7 @@ router.patch('/integrations', requireAuth, requirePermission('settings','update'
     }
     let sql;
     let params;
-    if (metaNeedsUpdate) {
+  if (metaNeedsUpdate) {
       sql = "UPDATE lab_configuration SET integrations_settings = COALESCE(integrations_settings, '{}'::jsonb) || $1::jsonb, integrations_meta = COALESCE(integrations_meta, '{}'::jsonb) || $2::jsonb WHERE id = $3 RETURNING *";
       params = [partial, newMeta, current.id];
     } else {
@@ -324,6 +357,21 @@ router.patch('/integrations', requireAuth, requirePermission('settings','update'
       }
     }
   if (process.env.DEBUG_CONFIG) console.log('[CONFIG PATCH /integrations] keys', Object.keys(partial), 'row', current.id);
+    // Audit single-endpoint modifications
+    try {
+      if (metaNeedsUpdate && newMeta.openaiApiKey) {
+        const prevMeta = current.integrations_meta?.openaiApiKey;
+        const meta = newMeta.openaiApiKey;
+        let action, info = { last4: meta.last4, updatedAt: meta.updatedAt, removedAt: meta.removedAt };
+        if (meta.removedAt) {
+          if (!prevMeta || !prevMeta.removedAt) action = 'Config.Integrations.OpenAIKeyRemoved';
+        } else if (meta.updatedAt) {
+          if (prevMeta && prevMeta.hash && prevMeta.hash !== meta.hash) action = 'Config.Integrations.OpenAIKeyRotated';
+          else if (!prevMeta || !prevMeta.hash) action = 'Config.Integrations.OpenAIKeyCreated';
+        }
+        if (action) await auditOpenAI(req, action, info);
+      }
+    } catch(ae){ console.error('[CONFIG AUDIT PATCH /integrations] error', ae); }
     return res.json(rowToFrontend(updated.rows[0]));
   } catch(err){
     next(err);
@@ -336,6 +384,7 @@ router.put('/', requireAuth, requirePermission('settings','update'), configLimit
     const current = await getOrCreateConfigRow(req);
     const payload = req.body || {};
     const forceUnlock = Boolean(payload.forceUnlock) || req.query.forceUnlock === '1';
+  const admin = isAdmin(req);
 
     if (Object.prototype.hasOwnProperty.call(payload,'labInfo')) {
       const labInfoIncoming = payload.labInfo || {};
@@ -357,12 +406,46 @@ router.put('/', requireAuth, requirePermission('settings','update'), configLimit
     const updateFragments = [];
     const values = [];
     let idx = 1;
+    // Preparar metadatos de rotación para PUT (similar a PATCH) si integra openaiApiKey
+    let putMetaNeedsUpdate = false; let putNewMeta = current.integrations_meta || {};
+    const secretFieldsPut = SECRET_FIELDS;
+    if (payload.integrations && typeof payload.integrations === 'object') {
+      const integ = payload.integrations;
+      if (integ.openAIKey && !integ.openaiApiKey) { integ.openaiApiKey = integ.openAIKey; delete integ.openAIKey; }
+      for (const f of secretFieldsPut) {
+        if (Object.prototype.hasOwnProperty.call(integ, f)) {
+          const incoming = integ[f];
+          const prevMeta = current.integrations_meta?.[f];
+          if (incoming === null) {
+            if (!prevMeta || !prevMeta.removedAt) { putNewMeta[f] = { removedAt: new Date().toISOString(), removedBy: req.user?.id || null }; putMetaNeedsUpdate = true; }
+            continue;
+          }
+          if (typeof incoming === 'string' && incoming !== '') {
+            const hash = crypto.createHash('sha256').update(incoming).digest('hex');
+            const prevHash = prevMeta && prevMeta.hash;
+            if (prevHash === hash) {
+              // misma -> no metadata nuevo
+            } else {
+              putNewMeta[f] = { updatedAt: new Date().toISOString(), updatedBy: req.user?.id || null, last4: incoming.slice(-4), hash };
+              putMetaNeedsUpdate = true;
+            }
+          }
+        }
+      }
+    }
     for (const [feKey, dbKey] of Object.entries(frontendToDb)) {
       if (Object.prototype.hasOwnProperty.call(payload, feKey)) {
+        if (feKey === 'integrations' && payload.integrations && typeof payload.integrations === 'object') {
+          const integ = payload.integrations;
+          if ((Object.prototype.hasOwnProperty.call(integ,'openaiApiKey') || Object.prototype.hasOwnProperty.call(integ,'openAIKey')) && !admin) {
+            return res.status(403).json({ error:'OPENAI_KEY_ADMIN_ONLY', message:'Solo un administrador puede crear, actualizar o eliminar la clave OpenAI.' });
+          }
+        }
         updateFragments.push(`${dbKey} = $${idx++}`);
         values.push(payload[feKey]);
       }
     }
+    if (putMetaNeedsUpdate) { updateFragments.push(`integrations_meta = COALESCE(integrations_meta, '{}'::jsonb) || $${idx++}::jsonb`); values.push(putNewMeta); }
     if (updateFragments.length === 0) {
       return res.json(rowToFrontend(current));
     }
@@ -370,6 +453,21 @@ router.put('/', requireAuth, requirePermission('settings','update'), configLimit
     const sql = `UPDATE lab_configuration SET ${updateFragments.join(', ')} WHERE id = $${idx} RETURNING *`;
   if (process.env.DEBUG_CONFIG) console.log('[CONFIG PUT] replace keys', Object.keys(payload));
     const updated = await pool.query(sql, values);
+    // Audit events for PUT
+    try {
+      if (putMetaNeedsUpdate && putNewMeta.openaiApiKey) {
+        const prevMeta = current.integrations_meta?.openaiApiKey;
+        const meta = putNewMeta.openaiApiKey;
+        let action, info = { last4: meta.last4, updatedAt: meta.updatedAt, removedAt: meta.removedAt };
+        if (meta.removedAt) {
+          if (!prevMeta || !prevMeta.removedAt) action = 'Config.Integrations.OpenAIKeyRemoved';
+        } else if (meta.updatedAt) {
+          if (prevMeta && prevMeta.hash && prevMeta.hash !== meta.hash) action = 'Config.Integrations.OpenAIKeyRotated';
+          else if (!prevMeta || !prevMeta.hash) action = 'Config.Integrations.OpenAIKeyCreated';
+        }
+        if (action) await auditOpenAI(req, action, info);
+      }
+    } catch(ae){ console.error('[CONFIG AUDIT PUT] error', ae); }
     return res.json(rowToFrontend(updated.rows[0]));
   } catch(err){
     next(err);
