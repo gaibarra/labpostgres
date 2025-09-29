@@ -51,6 +51,9 @@ const EmailMarketing = () => {
   const [isTemplateFormOpen, setIsTemplateFormOpen] = useState(false);
   const [currentTemplate, setCurrentTemplate] = useState(initialTemplateForm);
   const [templateFormMode, setTemplateFormMode] = useState('new');
+  const [pendingDeleteTemplate, setPendingDeleteTemplate] = useState(null);
+  const [templateUsageCount, setTemplateUsageCount] = useState(null);
+  const [confirmNameInput, setConfirmNameInput] = useState('');
   
   const [searchTerm, setSearchTerm] = useState('');
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
@@ -199,6 +202,21 @@ const EmailMarketing = () => {
       toast({ title: 'Error guardando plantilla', description: error.message, variant: 'destructive' });
     }
   };
+
+  const handleDeleteTemplate = async (templateId, templateName) => {
+    try {
+      await apiClient.delete(`/marketing/email/templates/${templateId}`);
+      logAuditEvent('Marketing:EmailPlantillaEliminada', { templateId, name: templateName }, user?.id);
+      toast({ title: 'Plantilla Eliminada', description: `La plantilla "${templateName}" ha sido eliminada.`, variant: 'destructive' });
+      // Optimistic local removal
+      setTemplates(prev => prev.filter(t => t.id !== templateId));
+      setPendingDeleteTemplate(null);
+  setTemplateUsageCount(null);
+  setConfirmNameInput('');
+    } catch (e) {
+      toast({ title: 'Error eliminando plantilla', description: e.message, variant: 'destructive' });
+    }
+  };
   
   const openCampaignForm = (mode = 'new', campaign = null) => {
     setCampaignFormMode(mode);
@@ -293,6 +311,15 @@ const EmailMarketing = () => {
                       searchTerm={searchTerm}
                       setSearchTerm={setSearchTerm}
                       openTemplateForm={openTemplateForm}
+                      onRequestDelete={async (tpl)=> {
+                        setPendingDeleteTemplate(tpl);
+                        setTemplateUsageCount(null);
+                        setConfirmNameInput('');
+                        try {
+                          const usage = await apiClient.get(`/marketing/email/templates/${tpl.id}/usage`);
+                          setTemplateUsageCount(usage.count);
+                        } catch { setTemplateUsageCount(0); }
+                      }}
                     />
                   </TabsContent>
                 </>
@@ -372,6 +399,42 @@ const EmailMarketing = () => {
         onClose={() => setIsManageSubscribersModalOpen(false)}
         onListUpdate={loadLists}
       />
+
+      {/* Delete Template Confirmation Dialog */}
+      <Dialog open={!!pendingDeleteTemplate} onOpenChange={(open)=> { if(!open){ setPendingDeleteTemplate(null); setTemplateUsageCount(null); setConfirmNameInput(''); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Eliminar Plantilla</DialogTitle>
+            <DialogDescription>
+              Esta acción eliminará permanentemente la plantilla
+              {pendingDeleteTemplate ? ` "${pendingDeleteTemplate.name}"` : ''}. No se puede deshacer.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            {templateUsageCount === null ? (
+              <p className="text-muted-foreground">Verificando uso...</p>
+            ) : templateUsageCount > 0 ? (
+              <p className="text-amber-600 dark:text-amber-400">Esta plantilla está referenciada por {templateUsageCount} campaña(s). Considera desvincularlas antes de eliminar.</p>
+            ) : (
+              <p>No hay campañas que la referencien.</p>
+            )}
+            <div>
+              <p className="mb-1">Escribe el nombre exacto para confirmar:</p>
+              <input
+                type="text"
+                className="w-full border rounded px-2 py-1 text-sm bg-white dark:bg-slate-800"
+                value={confirmNameInput}
+                onChange={(e)=> setConfirmNameInput(e.target.value)}
+                placeholder={pendingDeleteTemplate?.name || ''}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={()=> setPendingDeleteTemplate(null)}>Cancelar</Button>
+            <Button variant="destructive" disabled={!pendingDeleteTemplate || confirmNameInput !== pendingDeleteTemplate.name} onClick={()=> pendingDeleteTemplate && handleDeleteTemplate(pendingDeleteTemplate.id, pendingDeleteTemplate.name)}>Eliminar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
     </motion.div>
   );

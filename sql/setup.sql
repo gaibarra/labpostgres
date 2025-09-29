@@ -272,6 +272,8 @@ CREATE TABLE IF NOT EXISTS email_campaign_templates (
   name text NOT NULL,
   subject text NOT NULL,
   body text NOT NULL,
+  guide text,
+  deleted_at timestamptz,
   created_at timestamptz DEFAULT now()
 );
 

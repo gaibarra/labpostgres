@@ -3,13 +3,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Edit3, PlusCircle, Wand2 } from 'lucide-react';
+import { Edit3, PlusCircle, Trash2 } from 'lucide-react';
 
 const TemplatesTab = ({
   templates,
   searchTerm,
   setSearchTerm,
   openTemplateForm,
+  onRequestDelete,
 }) => {
   const filteredTemplates = templates.filter(t => 
     t.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -46,9 +47,12 @@ const TemplatesTab = ({
               <TableRow key={t.id}>
                 <TableCell>{t.name}</TableCell>
                 <TableCell>{t.subject}</TableCell>
-                <TableCell className="text-right">
+                <TableCell className="text-right flex gap-2 justify-end">
                   <Button variant="outline" size="icon" onClick={() => openTemplateForm('edit', t)}>
                     <Edit3 className="h-4 w-4" />
+                  </Button>
+                  <Button variant="destructive" size="icon" onClick={() => onRequestDelete?.(t)}>
+                    <Trash2 className="h-4 w-4" />
                   </Button>
                 </TableCell>
               </TableRow>

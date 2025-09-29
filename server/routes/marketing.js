@@ -260,34 +260,68 @@ router.get('/loyalty/participants', auth, requirePermission('marketing','manage_
 // Email Templates CRUD (simple)
 router.get('/email/templates', auth, requirePermission('marketing','manage_email_marketing'), async (_req, res, next) => {
   try {
-    const { rows } = await pool.query(`SELECT id, name, subject, body, created_at FROM email_campaign_templates ORDER BY created_at DESC LIMIT 2000`);
-    res.json(rows);
-  } catch (e) { next(new AppError(500,'Error listando plantillas','EMAIL_TEMPLATES_LIST_FAIL')); }
+  const { rows } = await pool.query(`SELECT id, name, subject, body, guide, created_at FROM email_campaign_templates WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 2000`);
+    return res.json(rows);
+  } catch (e) {
+  // Fallback si columnas nuevas aún no existen (migración no aplicada)
+  if (/column\s+"?(guide|deleted_at)"?\s+does not exist/i.test(e.message)) {
+      try {
+        await pool.query('ALTER TABLE email_campaign_templates ADD COLUMN IF NOT EXISTS guide text');
+    await pool.query('ALTER TABLE email_campaign_templates ADD COLUMN IF NOT EXISTS deleted_at timestamptz');
+    const { rows } = await pool.query(`SELECT id, name, subject, body, guide, created_at FROM email_campaign_templates WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 2000`);
+        return res.json(rows);
+      } catch (inner) {
+        return next(new AppError(500,'Error auto‑ajustando esquema de plantillas','EMAIL_TEMPLATES_LIST_FAIL'));
+      }
+    }
+    next(new AppError(500,'Error listando plantillas','EMAIL_TEMPLATES_LIST_FAIL'));
+  }
 });
 
 router.post('/email/templates', auth, requirePermission('marketing','manage_email_marketing'), async (req, res, next) => {
-  const { name, subject, body } = req.body || {};
+  const { name, subject, body, guide } = req.body || {};
   if (!name || !subject || !body) return next(new AppError(400,'name, subject y body requeridos','EMAIL_TEMPLATE_VALIDATION'));
   try {
-    const { rows } = await pool.query(`INSERT INTO email_campaign_templates(name, subject, body) VALUES ($1,$2,$3) RETURNING *`, [name, subject, body]);
+    const { rows } = await pool.query(`INSERT INTO email_campaign_templates(name, subject, body, guide) VALUES ($1,$2,$3,$4) RETURNING *`, [name, subject, body, guide || null]);
     res.status(201).json(rows[0]);
   } catch (e) { next(new AppError(500,'Error creando plantilla','EMAIL_TEMPLATE_CREATE_FAIL')); }
 });
 
 router.put('/email/templates/:id', auth, requirePermission('marketing','manage_email_marketing'), async (req, res, next) => {
-  const { id } = req.params; const { name, subject, body } = req.body || {};
+  const { id } = req.params; const { name, subject, body, guide } = req.body || {};
   try {
-    const { rows } = await pool.query(`UPDATE email_campaign_templates SET name=COALESCE($2,name), subject=COALESCE($3,subject), body=COALESCE($4,body) WHERE id=$1 RETURNING *`, [id, name, subject, body]);
+    const { rows } = await pool.query(`UPDATE email_campaign_templates SET name=COALESCE($2,name), subject=COALESCE($3,subject), body=COALESCE($4,body), guide=COALESCE($5,guide) WHERE id=$1 RETURNING *`, [id, name, subject, body, typeof guide === 'undefined' ? null : guide]);
     if (!rows[0]) return next(new AppError(404,'Plantilla no encontrada','EMAIL_TEMPLATE_NOT_FOUND'));
     res.json(rows[0]);
   } catch (e) { next(new AppError(500,'Error actualizando plantilla','EMAIL_TEMPLATE_UPDATE_FAIL')); }
 });
 
+// Pre-chequeo campañas referenciando plantilla (retorna conteo)
+router.get('/email/templates/:id/usage', auth, requirePermission('marketing','manage_email_marketing'), async (req, res, next) => {
+  const { id } = req.params; try {
+    // Si la columna template_id no existe, asumimos 0
+    let count = 0;
+    try {
+      const q = await pool.query('SELECT COUNT(*)::int AS c FROM email_campaigns WHERE template_id = $1', [id]);
+      count = q.rows[0]?.c || 0;
+    } catch(e){ if (/column "template_id" does not exist/i.test(e.message)) count = 0; else throw e; }
+    res.json({ count });
+  } catch(e){ next(new AppError(500,'Error verificando uso','EMAIL_TEMPLATE_USAGE_FAIL')); }
+});
+
 router.delete('/email/templates/:id', auth, requirePermission('marketing','manage_email_marketing'), async (req, res, next) => {
   const { id } = req.params; try {
-    const { rowCount } = await pool.query(`DELETE FROM email_campaign_templates WHERE id=$1`, [id]);
-    if (!rowCount) return next(new AppError(404,'Plantilla no encontrada','EMAIL_TEMPLATE_NOT_FOUND'));
-    res.json({ success: true });
+    let rows;
+    try {
+      rows = (await pool.query('UPDATE email_campaign_templates SET deleted_at = now() WHERE id=$1 AND deleted_at IS NULL RETURNING id', [id])).rows;
+    } catch(e) {
+      if (/column "deleted_at" does not exist/i.test(e.message)) {
+        await pool.query('ALTER TABLE email_campaign_templates ADD COLUMN IF NOT EXISTS deleted_at timestamptz');
+        rows = (await pool.query('UPDATE email_campaign_templates SET deleted_at = now() WHERE id=$1 AND deleted_at IS NULL RETURNING id', [id])).rows;
+      } else throw e;
+    }
+    if (!rows[0]) return next(new AppError(404,'Plantilla no encontrada o ya eliminada','EMAIL_TEMPLATE_NOT_FOUND'));
+    res.json({ success: true, softDeleted: true });
   } catch (e) { next(new AppError(500,'Error eliminando plantilla','EMAIL_TEMPLATE_DELETE_FAIL')); }
 });
 
@@ -438,13 +472,89 @@ router.post('/email/lists/:id/subscribers', auth, requirePermission('marketing',
 
 // AI email generation placeholder (migrated from supabase function invoke)
 router.post('/email/generate-template', auth, requirePermission('marketing','manage_email_marketing'), async (req, res, next) => {
-  const { audience, topic, tone, labName, userName } = req.body || {};
+  const { audience, topic, tone, labName, userName, prompt, includeGuide } = req.body || {};
   if (!audience || !topic) return next(new AppError(400,'audience y topic requeridos','EMAIL_AI_VALIDATION'));
+  const crypto = require('node:crypto');
+  const promptStr = typeof prompt === 'string' ? prompt : '';
+  const promptHash = promptStr ? crypto.createHash('sha256').update(promptStr).digest('hex').slice(0,32) : null;
+  // Obtener API key (similar a ai.js getApiKey simplificado)
+  let apiKey = null;
   try {
-    const subject = `[${labName||'Laboratorio'}] ${topic} para ${audience}`;
-    const body = `Hola {{nombre_suscriptor}},\n\n${tone||'Información'} sobre ${topic} dirigida a ${audience}.\n\nAtentamente,\n${userName||'Equipo'}`;
-    res.json({ subject, body });
-  } catch (e) { next(new AppError(500,'Error generando plantilla','EMAIL_AI_GEN_FAIL')); }
+    const { rows } = await pool.query("SELECT COALESCE(integrations_settings->>'openaiApiKey', integrations_settings->>'openAIKey') AS key FROM lab_configuration ORDER BY created_at ASC LIMIT 1");
+    apiKey = rows[0]?.key?.trim() || null;
+  } catch(_) {}
+  if (!apiKey && process.env.OPENAI_API_KEY) apiKey = process.env.OPENAI_API_KEY.trim();
+  const hasKey = !!apiKey;
+  const model = 'gpt-4o-mini';
+  const systemMsg = 'Eres un asistente de marketing de un laboratorio clínico. Devuelves SOLO JSON válido.';
+  const baseInstruction = `Genera asunto y cuerpo de email marketing para ${audience} sobre ${topic} con tono ${tone}. Incluir saludo con {{nombre_suscriptor}} y CTA.`;
+  const guideInstruction = includeGuide ? ` También genera un objeto "guide" con: title, intro, sections (array de objetos {heading, content}), cta. La guía debe ser educativa, empática, 300-450 palabras total, español neutro.` : '';
+  const jsonShape = includeGuide ? '{"subject":"...","body":"...","guide":{"title":"...","intro":"...","sections":[{"heading":"...","content":"..."}],"cta":"..."}}' : '{"subject":"...","body":"..."}';
+  const userMsg = promptStr || `${baseInstruction}${guideInstruction} Devuelve SOLO JSON válido: ${jsonShape}`;
+  let usedFallback = false;
+  let subject='', body='', guide=null;
+  if (hasKey) {
+    try {
+      const controller = new AbortController();
+      const tId = setTimeout(()=> controller.abort(), 12000); // 12s timeout
+      const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model,
+          messages:[ { role:'system', content: systemMsg }, { role:'user', content: userMsg } ],
+          temperature:0.65,
+          max_tokens: 600,
+          response_format:{ type:'json_object' }
+        }),
+        signal: controller.signal
+      });
+      clearTimeout(tId);
+      if (!resp.ok) throw new Error('OpenAI status '+resp.status);
+      const data = await resp.json();
+      let raw = (data?.choices?.[0]?.message?.content||'').trim();
+      raw = raw.replace(/```[a-zA-Z]*\n?/g,'').replace(/```/g,'').trim();
+      let parsed; try { parsed = JSON.parse(raw); } catch(_) {}
+      if (!parsed || typeof parsed !== 'object') throw new Error('JSON inválido IA');
+      subject = (parsed.subject||'').toString().trim();
+      body = (parsed.body||'').toString().trim();
+      if (includeGuide && parsed.guide) {
+        guide = parsed.guide;
+      }
+    } catch(err) {
+      usedFallback = true;
+      if (process.env.AI_DEBUG) console.warn('[EMAIL_AI] fallback por error:', err.name, err.message);
+    }
+  } else {
+    usedFallback = true;
+  }
+  if (usedFallback) {
+    subject = `[${labName||'Laboratorio'}] ${topic} para ${audience}`.slice(0,60);
+    body = `Hola {{nombre_suscriptor}},\n\n${tone||'Información'} sobre ${topic} dirigida a ${audience}.\n\nCTA: Agenda tu cita hoy.\n\nAtentamente,\n${userName||'Equipo'}`;
+    if (includeGuide) {
+      guide = {
+        title: `Guía sobre ${topic}`.slice(0,80),
+        intro: `Esta guía resume puntos clave sobre ${topic} para ${audience}. No sustituye consejo médico individualizado.`,
+        sections: [
+          { heading: '1. Visión General', content: `Descripción breve y contextual de ${topic} y su relevancia para ${audience}.` },
+          { heading: '2. Recomendaciones Clave', content: 'Lista concisa de acciones prácticas priorizadas.' },
+          { heading: '3. Siguientes Pasos', content: 'Motivación y próximos pasos sugeridos con enfoque preventivo.' }
+        ],
+        cta: 'Agenda una consulta o solicita más información hoy.'
+      };
+    }
+  }
+  // Normalizaciones
+  if (subject.length>60) subject = subject.slice(0,57)+'…';
+  if (!/{{nombre_suscriptor}}/i.test(body)) body = body.replace(/^Hola/i,'Hola {{nombre_suscriptor}}');
+  // Audit
+  try {
+    await pool.query('INSERT INTO system_audit_logs(action, entity, entity_id, details, performed_by) VALUES($1,$2,$3,$4,$5)', [
+      'ai_generate_email','marketing_email', null,
+      { audience, topic, tone, labName, prompt_hash: promptHash, prompt_chars: promptStr.length, used_fallback: usedFallback, includeGuide: !!includeGuide }, req.user?.id || null
+    ]);
+  } catch(_) {}
+  res.json({ subject, body, guide, _meta: { promptHash, usedFallback, includeGuide: !!includeGuide } });
 });
 
 // Retrieve subscribers ids for a list
