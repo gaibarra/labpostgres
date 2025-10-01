@@ -256,11 +256,30 @@ router.post('/login', validate(loginSchema), audit('login','auth_user', req=>req
   try { const decoded = jwt.decode(token); if (decoded?.exp) registerActiveToken({ jti, userId: user.id, exp: decoded.exp, tokenVersion: user.token_version }); } catch(_) {}
   res.json({ user: { id: user.id, email: user.email, full_name: user.full_name, created_at: user.created_at, role, token_version: user.token_version }, token });
   } catch (e) {
+  // Logging detallado si DEBUG_AUTH
   if (process.env.DEBUG_AUTH) console.error('[LOGIN_ERROR]', { message: e.message, code: e.code, stack: e.stack });
-  else console.error(e);
-    next(new AppError(500,'Error iniciando sesión','LOGIN_FAIL'));
+  else console.error('[LOGIN_ERROR]', e.message);
+  // Causas comunes: credenciales DB incorrectas, tabla users inexistente, columna faltante, password_hash nulo
+  const devDetails = (process.env.NODE_ENV !== 'production' && (process.env.DEV_ERROR_DETAILS === '1' || process.env.DEBUG_AUTH));
+  if (devDetails) {
+    return res.status(500).json({ error: 'LOGIN_FAIL', message: e.message, code: e.code || null });
+  }
+  next(new AppError(500,'Error iniciando sesión','LOGIN_FAIL'));
   }
 });
+
+// Ruta diagnóstica opcional para inspeccionar columnas de users/profiles (habilitar con DEBUG_AUTH_DIAG=1)
+if (process.env.DEBUG_AUTH_DIAG === '1') {
+  router.get('/_diag/login-columns', async (_req, res) => {
+    try {
+      const usersCols = await pool.query("SELECT column_name FROM information_schema.columns WHERE table_name='users' ORDER BY ordinal_position");
+      const profilesCols = await pool.query("SELECT column_name FROM information_schema.columns WHERE table_name='profiles' ORDER BY ordinal_position");
+      res.json({ users: usersCols.rows.map(r=>r.column_name), profiles: profilesCols.rows.map(r=>r.column_name) });
+    } catch (e) {
+      res.status(500).json({ error: 'DIAG_FAIL', message: e.message });
+    }
+  });
+}
 
 router.get('/me', authMiddleware, async (req, res, next) => {
   try {

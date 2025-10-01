@@ -12,6 +12,23 @@ const { execSync, spawn } = require('child_process');
 
 const app = express();
 
+// --- Lightweight ping (sin DB) para diagnóstico rápido de bloqueo ---
+app.get('/api/ping', (_req,res)=>{ res.type('application/json').send(JSON.stringify({ pong:true, t:Date.now(), uptimeSeconds: process.uptime() })); });
+
+// Medir lag de event loop (simple)
+let lastLagSample = { maxMs: 0, lastMs: 0 };
+let lagTimerStart = Date.now();
+setInterval(()=>{
+  const start = Date.now();
+  setImmediate(()=>{
+    const d = Date.now() - start;
+    lastLagSample.lastMs = d;
+    if (d > lastLagSample.maxMs) lastLagSample.maxMs = d;
+  });
+  // Reinicio window cada 10 min para que max no crezca indef.
+  if (Date.now() - lagTimerStart > 600000) { lagTimerStart = Date.now(); lastLagSample.maxMs = 0; }
+}, 1000).unref();
+
 // Middleware
 // CORS origins (comma separated). Supports wildcards '*'.
 // Example: CORS_ORIGINS="http://localhost:5173,http://127.0.0.1:5173,http://192.168.*:5173,https://app.midominio.com"
@@ -28,7 +45,13 @@ const allowedOriginMatchers = rawOrigins.split(',')
     return { pattern, test: (origin) => origin === pattern };
   });
 function isAllowedOrigin(origin){
-  return allowedOriginMatchers.some(m => m.test(origin));
+  if (allowedOriginMatchers.some(m => m.test(origin))) return true;
+  // Auto-allow localhost in development if not explicitly listed
+  if (process.env.NODE_ENV !== 'production') {
+    if (/^https?:\/\/localhost:\d+$/i.test(origin)) return true;
+    if (/^https?:\/\/127\.0\.0\.1:\d+$/i.test(origin)) return true;
+  }
+  return false;
 }
 const corsDebug = !!process.env.CORS_LOG;
 if (corsDebug) console.log('[CORS] Allowed origin patterns:', allowedOriginMatchers.map(m=>m.pattern));
@@ -42,8 +65,11 @@ app.use(cors({
       if (corsDebug) console.log('[CORS] allow', origin);
       return callback(null, true);
     }
-    if (corsDebug) console.warn('[CORS] reject', origin);
-    return callback(new Error('CORS: origin not allowed'));
+  if (corsDebug) console.warn('[CORS] reject', origin, 'allowedPatterns=', allowedOriginMatchers.map(m=>m.pattern));
+  // Responder 403 clara en vez de cortar sin encabezados para debug más fácil
+  const err = new Error('CORS: origin not allowed');
+  err.statusCode = 403;
+  return callback(err);
   },
   credentials: true
 }));

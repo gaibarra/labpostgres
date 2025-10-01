@@ -13,7 +13,15 @@ function resolveApiBase() {
   if (explicit && typeof explicit === 'string') {
     // Permitir base relativa (ej. /api) para usar proxy de Vite o misma-origin en prod.
     if (explicit.startsWith('/')) {
-      return explicit.replace(/\/$/, '');
+      const cleaned = explicit.replace(/\/$/, '');
+      // Caso especial: 'vite preview' (puerto 4173) NO implementa el proxy dev.
+      // Si estamos en ese puerto y el backend corre separado en 4100, redirigimos a absoluto.
+      if (typeof window !== 'undefined' && window.location && window.location.port === '4173') {
+        const alt = 'http://localhost:4100' + cleaned;
+        console.warn('[apiClient] Remapeando base relativa', cleaned, '→', alt, 'porque vite preview no hace proxy');
+        return alt;
+      }
+      return cleaned;
     }
     if (!/^https?:\/\//.test(explicit)) {
       console.warn('[apiClient] VITE_API_BASE_URL no incluye protocolo (http/https). Corrígelo o usa formato relativo \'/api\'. Usando fallback:', fallback);
@@ -24,9 +32,15 @@ function resolveApiBase() {
   const dev = import.meta.env?.DEV;
   if (!explicit) {
     const msg = `[apiClient] VITE_API_BASE_URL no definido. Usando fallback ${fallback}. Puedes definir VITE_API_BASE_URL=/api en .env para explicitarlo.`;
-    if (dev) console.warn(msg); else console.error(msg);
-    // En producción preferimos fallar explícitamente para no apuntar al puerto incorrecto.
-    if (!dev) throw new Error('VITE_API_BASE_URL ausente en build de producción');
+    if (dev) console.warn(msg); else console.warn(msg);
+    // Fallback especial: si estamos sirviendo build con `vite preview` (puerto 4173) y el backend corre en 4100
+    // usar URL absoluta para evitar 500/404 cuando no hay reverse proxy.
+    if (typeof window !== 'undefined' && window.location && window.location.port === '4173') {
+      const alt = 'http://localhost:4100/api';
+      console.warn('[apiClient] Usando fallback alternativo', alt, 'porque no hay VITE_API_BASE_URL y estamos en puerto 4173');
+      return alt;
+    }
+    // En producción ya no lanzamos excepción: permitimos fallback para single-host (/api).
   }
   return fallback;
 }
@@ -52,27 +66,53 @@ async function request(path, { method = 'GET', body, headers = {}, auth = true, 
     try { ac.abort('timeout'); } catch { ac.abort(); }
   }, timeoutMs);
   let res;
-  try {
-    res = await fetch(url, {
-      method,
-      headers: finalHeaders,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-      signal: ac.signal
-    });
-  } catch (netErr) {
-    clearTimeout(t);
-    const isConnRefused = /Failed to fetch|NetworkError/i.test(netErr?.message || '') || netErr?.name === 'TypeError';
-    const isAbort = netErr?.name === 'AbortError';
-    if (isAbort) {
-      const abortErr = new Error('La solicitud se canceló (timeout o navegación).');
-      abortErr.name = 'AbortError';
-      abortErr.cause = netErr;
-      throw abortErr;
+  let attemptedAlternate = false;
+  while (true) {
+    try {
+      res = await fetch(url, {
+        method,
+        headers: finalHeaders,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+        signal: ac.signal
+      });
+      break; // success
+    } catch (netErr) {
+      clearTimeout(t);
+      const isAbort = netErr?.name === 'AbortError';
+      const msg = netErr?.message || '';
+      const isConnRefused = /Failed to fetch|NetworkError|ECONNREFUSED/i.test(msg);
+      if (isAbort) {
+        const abortErr = new Error('Timeout de solicitud (' + timeoutMs + 'ms).');
+        abortErr.name = 'TimeoutError';
+        abortErr.cause = netErr;
+        throw abortErr;
+      }
+      if (!attemptedAlternate && isConnRefused && /localhost:4100/.test(url)) {
+        attemptedAlternate = true;
+        const altUrl = url.replace('localhost:4100','127.0.0.1:4100');
+        if (import.meta.env.DEV) console.warn('[apiClient] Reintentando con 127.0.0.1:', altUrl);
+        // reiniciar timeout para el intento alterno
+        try { ac.abort(); } catch {}
+        const ac2 = new AbortController();
+        setTimeout(()=>{ try { ac2.abort('timeout'); } catch {} }, timeoutMs/2);
+        try {
+          res = await fetch(altUrl, {
+            method,
+            headers: finalHeaders,
+            body: body !== undefined ? JSON.stringify(body) : undefined,
+            signal: ac2.signal
+          });
+          break; // succeeded alternate
+        } catch (altErr) {
+          if (import.meta.env.DEV) console.error('[apiClient] Falla intento alterno 127.0.0.1', altErr.message);
+          throw altErr;
+        }
+      }
+      if (isConnRefused) {
+        console.error(`[apiClient] No se pudo conectar a ${url}. Backend caído o puerto incorrecto.`);
+      }
+      throw netErr;
     }
-    if (isConnRefused) {
-      console.error(`[apiClient] No se pudo conectar a ${url}. Verifica que el backend esté corriendo y que VITE_API_BASE_URL sea correcto.`);
-    }
-    throw netErr;
   }
   clearTimeout(t);
   if (res.status === 204) return null;
