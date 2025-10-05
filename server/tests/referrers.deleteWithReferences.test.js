@@ -27,8 +27,9 @@ describe('Referrers delete protections when referenced', () => {
     expect(wo.status).toBe(201);
 
     // intentar borrar referente
-    const del = await request(app).delete(`/api/referrers/${refId}`).set(auth(token));
-    expect([409,500]).toContain(del.status); // 409 esperado por regla explícita
+  const del = await request(app).delete(`/api/referrers/${refId}`).set(auth(token));
+  expect(del.status).toBe(409);
+  expect(del.body.code).toBe('REFERRER_IN_USE');
 
     // cleanup: borrar la orden y luego el referente
     const delWo = await request(app).delete(`/api/work-orders/${wo.body.id}`).set(auth(token));

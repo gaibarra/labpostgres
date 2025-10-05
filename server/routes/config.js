@@ -26,10 +26,12 @@ const PROTECTED_LABINFO_FIELDS = [
   'name','razonSocial','taxId','logoUrl','calle','numeroExterior','numeroInterior','colonia','codigoPostal','ciudad','estado','pais','phone','secondaryPhone','email','website','responsableSanitarioNombre','responsableSanitarioCedula'
 ];
 
+// Multi-tenant: seleccionar pool activo
+function activePool(req){ return req.tenantPool || pool; }
 // Helper audit (no throw): registra evento de cambio en OpenAI key sin exponer secreto completo
 async function auditOpenAI(req, action, details){
   try {
-    await pool.query('INSERT INTO system_audit_logs(action, details, performed_by) VALUES($1,$2,$3)', [action, details, req.user?.id || null]);
+    await activePool(req).query('INSERT INTO system_audit_logs(action, details, performed_by) VALUES($1,$2,$3)', [action, details, req.user?.id || null]);
   } catch(e){
     console.error('[CONFIG AUDIT openaiApiKey]', e.message);
   }
@@ -57,14 +59,14 @@ function rowToFrontend(row){
 async function getOrCreateConfigRow(req) {
   if (process.env.TEST_MODE === '1' && req.user && req.user.id) {
     // Buscar una fila que pertenezca al usuario actual
-    const sel = await pool.query(
+  const sel = await activePool(req).query(
       "SELECT * FROM lab_configuration WHERE COALESCE(lab_info->>'_testOwner','') = $1 ORDER BY created_at ASC LIMIT 1",
       [String(req.user.id)]
     );
     if (sel.rows.length > 0) return sel.rows[0];
     // Crear una nueva fila con la marca _testOwner
     const baseLabInfo = { _testOwner: String(req.user.id) };
-    const ins = await pool.query(
+  const ins = await activePool(req).query(
       'INSERT INTO lab_configuration (lab_info) VALUES ($1) RETURNING *',
       [baseLabInfo]
     );
@@ -72,9 +74,9 @@ async function getOrCreateConfigRow(req) {
     return ins.rows[0];
   }
   // Modo normal: fila única determinística
-  const { rows } = await pool.query('SELECT * FROM lab_configuration ORDER BY created_at ASC LIMIT 1');
+  const { rows } = await activePool(req).query('SELECT * FROM lab_configuration ORDER BY created_at ASC LIMIT 1');
   if (rows.length === 0) {
-    const insert = await pool.query('INSERT INTO lab_configuration DEFAULT VALUES RETURNING *');
+    const insert = await activePool(req).query('INSERT INTO lab_configuration DEFAULT VALUES RETURNING *');
     return insert.rows[0];
   }
   return rows[0];
@@ -140,20 +142,32 @@ router.patch('/', requireAuth, requirePermission('settings','update'), configLim
     // Protección labInfo: permitir set inicial de campos protegidos pero bloquear cambios posteriores sin forceUnlock
     if (payload.labInfo && typeof payload.labInfo === 'object') {
       const attemptedKeys = Object.keys(payload.labInfo);
-      // Si viene un objeto vacío ({}) ignorar para no sobreescribir con vacío
       if (attemptedKeys.length === 0) {
-        delete payload.labInfo;
+        delete payload.labInfo; // nada que hacer
       } else {
-        const currentLabInfo = (current.lab_info || {});
+        const currentLabInfo = current.lab_info || {};
         const protectedTouched = attemptedKeys.filter(k => PROTECTED_LABINFO_FIELDS.includes(k));
-        if (protectedTouched.length > 0 && !forceUnlock) {
-          // Separar cuáles son modificaciones (ya existen) vs inicializaciones (no existen aún)
-            const modifying = protectedTouched.filter(k => Object.prototype.hasOwnProperty.call(currentLabInfo, k));
-          if (modifying.length > 0) {
+        if (protectedTouched.length > 0) {
+          // Determinar cambios reales (valor distinto). Si el campo existe pero el valor es igual => ignorar silenciosamente.
+          const changed = protectedTouched.filter(k => Object.prototype.hasOwnProperty.call(currentLabInfo,k) && currentLabInfo[k] !== payload.labInfo[k]);
+          // Remover del payload los protegidos que no cambian, para evitar escrituras innecesarias y falsos positivos.
+          for (const k of protectedTouched) {
+            if (!changed.includes(k) && Object.prototype.hasOwnProperty.call(currentLabInfo,k)) {
+              delete payload.labInfo[k];
+            }
+          }
+          // Si después de limpiar, labInfo quedó vacío, eliminar la sección para no generar UPDATE vacío.
+          if (Object.keys(payload.labInfo).length === 0) delete payload.labInfo;
+          // Si hay cambios reales en campos ya existentes y no viene forceUnlock => bloquear.
+          if (changed.length > 0 && !forceUnlock) {
             return res.status(409).json({
               error: 'LABINFO_PROTECTED',
               message: 'Los campos de información del laboratorio están protegidos y no pueden modificarse sin confirmación explícita.',
-              details: { intentados: modifying, permiteInicial: protectedTouched.filter(k=>!modifying.includes(k)), requiere: 'forceUnlock=true' }
+              details: {
+                intentados: changed,
+                permiteInicial: protectedTouched.filter(k => !Object.prototype.hasOwnProperty.call(currentLabInfo,k)),
+                requiere: 'forceUnlock=true'
+              }
             });
           }
         }
@@ -242,13 +256,13 @@ router.patch('/', requireAuth, requirePermission('settings','update'), configLim
   if (process.env.DEBUG_CONFIG) console.log('[CONFIG PATCH] payload keys', Object.keys(payload), 'sql', sql);
     let updated;
     try {
-      updated = await pool.query(sql, values);
+    updated = await activePool(req).query(sql, values);
     } catch(dbErr) {
       if (/integrations_meta/.test(dbErr.message)) {
         // Intentar crear columna on-the-fly (backfill) para entornos donde migración aún no corrió.
         try {
-          await pool.query("ALTER TABLE lab_configuration ADD COLUMN IF NOT EXISTS integrations_meta jsonb DEFAULT '{}'::jsonb");
-          updated = await pool.query(sql, values); // retry
+      await activePool(req).query("ALTER TABLE lab_configuration ADD COLUMN IF NOT EXISTS integrations_meta jsonb DEFAULT '{}'::jsonb");
+      updated = await activePool(req).query(sql, values); // retry
         } catch(alterErr) {
           return next(alterErr);
         }
@@ -343,12 +357,12 @@ router.patch('/integrations', requireAuth, requirePermission('settings','update'
     }
     let updated;
     try {
-      updated = await pool.query(sql, params);
+    updated = await activePool(req).query(sql, params);
     } catch(dbErr) {
       if (/integrations_meta/.test(dbErr.message)) {
         try {
-          await pool.query("ALTER TABLE lab_configuration ADD COLUMN IF NOT EXISTS integrations_meta jsonb DEFAULT '{}'::jsonb");
-          updated = await pool.query(sql, params);
+      await activePool(req).query("ALTER TABLE lab_configuration ADD COLUMN IF NOT EXISTS integrations_meta jsonb DEFAULT '{}'::jsonb");
+      updated = await activePool(req).query(sql, params);
         } catch(alterErr) {
           return next(alterErr);
         }
@@ -452,7 +466,7 @@ router.put('/', requireAuth, requirePermission('settings','update'), configLimit
     values.push(current.id);
     const sql = `UPDATE lab_configuration SET ${updateFragments.join(', ')} WHERE id = $${idx} RETURNING *`;
   if (process.env.DEBUG_CONFIG) console.log('[CONFIG PUT] replace keys', Object.keys(payload));
-    const updated = await pool.query(sql, values);
+  const updated = await activePool(req).query(sql, values);
     // Audit events for PUT
     try {
       if (putMetaNeedsUpdate && putNewMeta.openaiApiKey) {

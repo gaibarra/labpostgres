@@ -111,3 +111,69 @@ Para invalidar todo lo anterior a un evento crítico:
 2. Tokens antiguos (tv desfasada) serán rechazados con `TOKEN_VERSION_MISMATCH`.
 3. Opcional: revocar jtis activos listados para acelerar limpieza (aunque ya no son aceptados).
 
+## Multi-Tenancy (una base de datos por laboratorio)
+
+Modo opcional activando `MULTI_TENANT=1` en `.env`. Requiere una base "master" que contiene:
+* `tenants` (slug, db_name, estado, plan, versión de migración)
+* `tenant_admins` (credenciales de acceso iniciales/owners)
+* `tenant_events` (auditoría de provisión, cambios de plan, suspensiones, etc.)
+
+### Variables de entorno clave
+```
+MULTI_TENANT=1
+MASTER_PGHOST=localhost
+MASTER_PGPORT=5432
+MASTER_PGUSER=postgres
+MASTER_PGPASSWORD=postgres
+MASTER_PGDATABASE=lab_master
+TENANT_PGHOST=localhost
+TENANT_PGPORT=5432
+TENANT_PGUSER=postgres
+TENANT_PGPASSWORD=postgres
+```
+
+### Inicialización del esquema master
+```
+psql -d lab_master -f sql/20251001_create_tenant_master_schema.sql
+```
+
+### Provisionar un laboratorio
+```
+node server/scripts/provisionTenant.js --slug=demo --email=admin@demo.com --password=Secret123
+```
+Genera (si no existe) la DB `lab_demo`, crea estructura mínima y registra el tenant + admin.
+
+### Login multi-tenant
+`/api/auth/login` ahora, si `MULTI_TENANT=1`, busca primero en `tenant_admins` de la master. Si encuentra credenciales válidas, el JWT incluye `tenant_id`. Las rutas protegidas con middleware `tenantMiddleware` reciben `req.tenantPool` apuntando a la DB del laboratorio.
+
+### Health extendido
+`GET /api/health?master=1&tenant_id=<id>` devuelve estado master y (opcional) del tenant.
+
+### Próximos pasos sugeridos
+1. Orquestador de migraciones por tenant (recorre `active_tenants`).
+2. Métricas por tenant (con etiquetas `tenant_id`).
+3. Rotación / suspensión (`status` en `tenants`).
+4. Límite de pools simultáneos y LRU para entornos de alta cardinalidad.
+
+
+## Modales Persistentes y Plan de Rollback
+
+Para reducir errores `NotFoundError: removeChild` ocasionados por desmontajes rápidos de portales Radix, se adoptó un patrón de montaje persistente en los modales de órdenes.
+
+Flags de entorno (frontend Vite):
+```
+VITE_PERSISTENT_MODALS=on   # (default) Usa montaje persistente
+VITE_PERSISTENT_MODALS=off  # Fuerza modo legacy condicional
+VITE_DIALOG_OBSERVER=on     # Activa MutationObserver de diagnóstico
+```
+
+El observer (cuando `VITE_DIALOG_OBSERVER=on`) registra en consola eventos `[DialogObserver][removed subtree]` con IDs de contenidos desmontados para rastrear detach inesperados.
+
+Rollback rápido:
+1. Establecer `VITE_PERSISTENT_MODALS=off` en el entorno.
+2. Rebuild / redeploy.
+3. Verificar desaparición de logs continuos de montaje y ausencia de nuevos `NotFoundError`.
+
+Si el error sólo desaparece en legacy, revisar secuencia de apertura/cierre encadenada para aislar un caso que aún provoque doble removeChild.
+
+

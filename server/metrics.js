@@ -5,7 +5,8 @@ client.collectDefaultMetrics();
 const httpRequestDuration = new client.Histogram({
   name: 'http_request_duration_seconds',
   help: 'Duración de solicitudes HTTP',
-  labelNames: ['method','route','status'],
+  // tenant opcional (si no hay tenant_id se usa 'none')
+  labelNames: ['method','route','status','tenant'],
   buckets: [0.01,0.05,0.1,0.3,0.5,1,2,5]
 });
 
@@ -13,9 +14,38 @@ function metricsMiddleware(req, res, next) {
   const start = process.hrtime.bigint();
   res.on('finish', () => {
     const diff = Number(process.hrtime.bigint() - start) / 1e9;
-    httpRequestDuration.labels(req.method, req.route?.path || req.path, String(res.statusCode)).observe(diff);
+    const tenantLabel = req.auth?.tenant_id || 'none';
+    httpRequestDuration.labels(req.method, req.route?.path || req.path, String(res.statusCode), tenantLabel).observe(diff);
   });
   next();
+}
+
+// Per-tenant pool gauges (only counts active cached pools if multi-tenant enabled)
+const tenantPoolActive = new client.Gauge({ name: 'tenant_pools_active_total', help: 'Cantidad de pools de tenants activos (cache)' });
+const tenantPoolDbConnections = new client.Gauge({ name: 'tenant_pools_connections_total', help: 'Suma de conexiones (totalCount) en pools de tenants' });
+
+let lastTenantPoolRefresh = 0;
+async function refreshTenantPoolMetrics(){
+  if (Date.now() - lastTenantPoolRefresh < 5000) return; // throttle 5s
+  lastTenantPoolRefresh = Date.now();
+  try {
+    if (process.env.MULTI_TENANT === '1') {
+      // Cargar on-demand tenantResolver sin romper si no existe
+      const resolver = require('./services/tenantResolver');
+      const cache = resolver.__getCache ? resolver.__getCache() : null;
+      if (cache && typeof cache === 'object') {
+        let pools = 0, totalConnections = 0;
+        for (const v of cache.values()) {
+          if (v?.pool) {
+            pools += 1;
+            totalConnections += (v.pool.totalCount || 0);
+          }
+        }
+        tenantPoolActive.set(pools);
+        tenantPoolDbConnections.set(totalConnections);
+      }
+    }
+  } catch(_) { /* ignore */ }
 }
 
 async function metricsEndpoint(_req, res) {
@@ -27,6 +57,7 @@ async function metricsEndpoint(_req, res) {
       dbPoolWaiting.set(pool.waitingCount || 0);
     } catch (_) { /* ignore */ }
   }
+  await refreshTenantPoolMetrics();
   res.set('Content-Type', client.register.contentType);
   res.end(await client.register.metrics());
 }

@@ -27,16 +27,18 @@ async function detectProfileSchema() {
   PROFILE_SCHEMA_DETECTED = true;
 }
 
-// List users (administration)
-router.get('/', auth, requirePermission('administration','manage_users'), async (_req, res, next) => {
+function activePool(req){ return req.tenantPool || pool; }
+
+// List users (administration) aislado por tenant (cada tenantPool apunta a su base)
+router.get('/', auth, requirePermission('administration','manage_users'), async (req, res, next) => {
   try {
     await detectProfileSchema();
     const joinCondition = PROFILE_HAS_USER_ID ? 'p.user_id = u.id' : 'p.id = u.id';
     const cols = ['u.id','u.email','u.created_at','p.role'];
     if (PROFILE_HAS_FULL_NAME) cols.push('p.full_name');
     if (PROFILE_HAS_FIRST_LAST) { cols.push('p.first_name','p.last_name'); }
-    const sql = `SELECT ${cols.join(', ')} FROM users u LEFT JOIN profiles p ON ${joinCondition} ORDER BY u.created_at ASC`;
-    const { rows } = await pool.query(sql);
+  const sql = `SELECT ${cols.join(', ')} FROM users u LEFT JOIN profiles p ON ${joinCondition} ORDER BY u.created_at ASC`;
+  const { rows } = await activePool(req).query(sql);
     const normalized = rows.map(r => {
       let first = r.first_name || null;
       let last = r.last_name || null;
@@ -55,20 +57,23 @@ router.get('/', auth, requirePermission('administration','manage_users'), async 
 });
 
 // Simple admin check placeholder: in future use roles table / permissions
-async function isAdmin(userId) {
-  // For now: first created user is admin. Improve by joining roles later.
-  const { rows } = await pool.query('SELECT id FROM users ORDER BY created_at ASC LIMIT 1');
-  return rows[0] && rows[0].id === userId;
+async function isAdmin(userId, req) {
+  try {
+    const { rows } = await activePool(req).query('SELECT id FROM users ORDER BY created_at ASC LIMIT 1');
+    return rows[0] && rows[0].id === userId;
+  } catch {
+    return false;
+  }
 }
 
 // Delete user (migrated from supabase function delete-user)
 router.delete('/:id', auth, requirePermission('administration','manage_users'), async (req, res, next) => {
   try {
-  // Additional admin fallback (first user) allowed
-  if (!(await isAdmin(req.user.id))) return next(new AppError(403,'No autorizado','NOT_ADMIN'));
+  // Admin fallback dentro del tenant actual
+  if (!(await isAdmin(req.user.id, req))) return next(new AppError(403,'No autorizado','NOT_ADMIN'));
     const userId = req.params.id;
     // Remove any profile references if you later create profiles table
-    await pool.query('DELETE FROM users WHERE id=$1', [userId]);
+  await activePool(req).query('DELETE FROM users WHERE id=$1', [userId]);
     res.json({ success: true });
   } catch (e) { console.error(e); next(new AppError(500,'Error eliminando usuario','USER_DELETE_FAIL')); }
 });

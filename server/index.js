@@ -1,4 +1,8 @@
 require('dotenv').config();
+// Log inicial de variables clave para depuración multi-tenant
+try {
+  console.log('[BOOT] MULTI_TENANT=', process.env.MULTI_TENANT, 'TENANT_DEBUG=', process.env.TENANT_DEBUG, 'NODE_ENV=', process.env.NODE_ENV);
+} catch {}
 const express = require('express');
 const security = require('./middleware/security');
 const requestId = require('./middleware/requestId');
@@ -9,6 +13,7 @@ const { metricsMiddleware, metricsEndpoint } = require('./metrics');
 const cookieParser = require('cookie-parser');
 const net = require('net');
 const { execSync, spawn } = require('child_process');
+const authMiddleware = require('./middleware/auth');
 
 const app = express();
 
@@ -94,21 +99,46 @@ app.get('/', (req, res) => {
 const authRoutes = require('./routes/auth');
 app.use('/api/auth', authRoutes);
 
+// Multi-tenant (habilitar con MULTI_TENANT=1). Carga perezosa ANTES de registrar rutas.
+let tenantMw = null;
+let masterHealthFn = null;
+if (process.env.MULTI_TENANT === '1') {
+  try {
+    const { tenantMiddleware, masterHealth } = require('./services/tenantResolver');
+    tenantMw = tenantMiddleware();
+    masterHealthFn = masterHealth;
+    console.log('[MT] Multi-tenancy habilitado');
+  } catch (e) {
+    console.error('[MT] No se pudo cargar tenantResolver:', e.message);
+  }
+}
+
+// Helper para registrar rutas con soporte multi-tenant opcional
+function registerRoute(path, router, opts = {}) {
+  const { tenant = true } = opts;
+  if (tenant && tenantMw) {
+  // Orden: auth primero (decodifica JWT y llena req.auth), luego tenantMw
+  app.use(path, authMiddleware, tenantMw, router);
+  } else {
+    app.use(path, router);
+  }
+}
+
 // Rutas Pacientes
 const patientRoutes = require('./routes/patients');
-app.use('/api/patients', patientRoutes);
+registerRoute('/api/patients', patientRoutes, { tenant: true });
 
 // Rutas Work Orders
 const workOrderRoutes = require('./routes/workOrders');
-app.use('/api/work-orders', workOrderRoutes);
+registerRoute('/api/work-orders', workOrderRoutes, { tenant: true });
 
-// Rutas Usuarios (admin)
+// Rutas Usuarios (admin) (en muchos casos son globales al tenant)
 const userRoutes = require('./routes/users');
-app.use('/api/users', userRoutes);
+registerRoute('/api/users', userRoutes, { tenant: true });
 
 // Rutas Auditoría
 const auditRoutes = require('./routes/audit');
-app.use('/api/audit', auditRoutes);
+registerRoute('/api/audit', auditRoutes, { tenant: true });
 
 // Rutas Admin Tokens (gestión tokens activos / revocación)
 const adminTokensRoutes = require('./routes/adminTokens');
@@ -116,50 +146,58 @@ app.use('/api/auth/admin', adminTokensRoutes);
 
 // Rutas Marketing AI (placeholder)
 const marketingRoutes = require('./routes/marketing');
-app.use('/api/marketing', marketingRoutes);
+registerRoute('/api/marketing', marketingRoutes, { tenant: true });
 
-// Roles (solo listado por ahora)
+// Roles (solo listado por ahora) - si multi-tenant, aplicar middleware para inyectar pool
 const rolesRoutes = require('./routes/roles');
-app.use('/api/roles', rolesRoutes);
+if (tenantMw) app.use('/api/roles', authMiddleware, tenantMw, rolesRoutes); else app.use('/api/roles', rolesRoutes);
 
 // Rutas Profiles (restaurada)
 const profilesRoutes = require('./routes/profiles');
-app.use('/api/profiles', profilesRoutes);
+registerRoute('/api/profiles', profilesRoutes, { tenant: true });
 
 // Rutas dominio laboratorio adicionales
 const analysisRoutes = require('./routes/analysis');
-app.use('/api/analysis', analysisRoutes);
+registerRoute('/api/analysis', analysisRoutes, { tenant: true });
 const referrersRoutes = require('./routes/referrers');
-app.use('/api/referrers', referrersRoutes);
+registerRoute('/api/referrers', referrersRoutes, { tenant: true });
 const packagesRoutes = require('./routes/packages');
-app.use('/api/packages', packagesRoutes);
+registerRoute('/api/packages', packagesRoutes, { tenant: true });
 // AI assist
 const aiRoutes = require('./routes/ai');
-app.use('/api/ai', aiRoutes);
+registerRoute('/api/ai', aiRoutes, { tenant: true });
 // Configuración laboratorio
 const configRoutes = require('./routes/config');
 const configValidateRoutes = require('./routes/configValidate');
 const financeRoutes = require('./routes/finance');
-app.use('/api/config', configRoutes);
-app.use('/api/config', configValidateRoutes); // sub-ruta validate
-app.use('/api/finance', financeRoutes);
+registerRoute('/api/config', configRoutes, { tenant: true });
+registerRoute('/api/config', configValidateRoutes, { tenant: true }); // sub-ruta validate
+registerRoute('/api/finance', financeRoutes, { tenant: true });
 // Parámetros del sistema
 const parametersRoutes = require('./routes/parameters');
-app.use('/api/parameters', parametersRoutes);
+registerRoute('/api/parameters', parametersRoutes, { tenant: true });
 // Plantillas
 const templatesRoutes = require('./routes/templates');
-app.use('/api/templates', templatesRoutes);
+registerRoute('/api/templates', templatesRoutes, { tenant: true });
 // Sucursales
 const branchesRoutes = require('./routes/branches');
-app.use('/api/branches', branchesRoutes);
+registerRoute('/api/branches', branchesRoutes, { tenant: true });
 
 // Health
 const { pool } = require('./db');
-app.get('/api/health', async (_req, res) => {
+app.get('/api/health', async (req, res) => {
   const start = Date.now();
   let dbOk = false;
   try { await pool.query('SELECT 1'); dbOk = true; } catch { dbOk = false; }
   const latency = Date.now() - start;
+  if (masterHealthFn && (req.query.master === '1')) {
+    try {
+      const mh = await masterHealthFn(req.query.tenant_id);
+      return res.json({ status: dbOk ? 'ok' : 'degraded', dbLatencyMs: latency, master: mh.master, tenant: mh.tenant, uptimeSeconds: process.uptime() });
+    } catch (e) {
+      return res.json({ status: dbOk ? 'ok' : 'degraded', dbLatencyMs: latency, master: false, error: e.message, uptimeSeconds: process.uptime() });
+    }
+  }
   res.json({ status: dbOk ? 'ok' : 'degraded', dbLatencyMs: latency, uptimeSeconds: process.uptime() });
 });
 app.get('/api/metrics', metricsEndpoint);

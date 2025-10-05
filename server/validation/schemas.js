@@ -37,17 +37,18 @@ const dateInput = z.string().refine(v=>{
 }, 'Formato de fecha debe ser YYYY-MM-DD (opcional sufijo ISO) y ser una fecha válida');
 const nullableDateInput = dateInput.optional().nullable();
 
+// Ajuste multi-tenant mínimo: sólo validamos campos realmente presentes
 const createPatientSchema = z.object({
   body: z.object({
     full_name: z.string().min(1),
-  date_of_birth: nullableDateInput,
+    date_of_birth: nullableDateInput,
     sex: z.string().optional().nullable(),
     email: z.string().email().optional().nullable(),
-    phone_number: z.string().optional().nullable(),
-    address: z.string().optional().nullable(),
-    contact_name: z.string().optional().nullable(),
-    contact_phone: z.string().optional().nullable(),
-    clinical_history: z.string().optional().nullable()
+  phone_number: z.string().optional().nullable(),
+  address: z.string().optional().nullable(),
+  contact_name: z.string().optional().nullable(),
+  contact_phone: z.string().optional().nullable(),
+  clinical_history: z.string().optional().nullable()
   })
 });
 
@@ -63,6 +64,7 @@ const createWorkOrderSchema = z.object({
     patient_id: uuid.optional().nullable(),
     referring_entity_id: uuid.optional().nullable(),
     referring_doctor_id: uuid.optional().nullable(),
+  institution_reference: z.string().optional().nullable(),
   order_date: z.string().datetime().optional().nullable(),
     status: z.string().optional().nullable(),
     selected_items: z.any().optional().nullable(),

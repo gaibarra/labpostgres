@@ -10,21 +10,25 @@ import { Toaster } from '@/components/ui/toaster';
 import { AppDataProvider } from '@/contexts/AppDataContext';
 import AppWrapper from '@/AppWrapper';
 
+// Cargar domGuards si estamos en DEV o si forzamos auditoría en producción vía variable VITE_ENABLE_DOM_GUARDS
+if (import.meta.env.DEV || import.meta.env.VITE_ENABLE_DOM_GUARDS === '1') {
+  import('./dev/domGuards').catch(e => console.warn('[domGuards] load failed', e));
+}
+
 ReactDOM.createRoot(document.getElementById('root')).render(
-  <React.StrictMode>
-    <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-      <AuthProvider>
-        <ThemeProvider>
-          <SettingsProvider>
-            <AppDataProvider>
-              <AppWrapper>
-                <App />
-              </AppWrapper>
-            </AppDataProvider>
-          </SettingsProvider>
-          <Toaster />
-        </ThemeProvider>
-      </AuthProvider>
-    </Router>
-  </React.StrictMode>
+  // StrictMode removido temporalmente para diagnosticar doble invocación de efectos
+  <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+    <AuthProvider>
+      <ThemeProvider>
+        <SettingsProvider>
+          <AppDataProvider>
+            <AppWrapper>
+              <App />
+            </AppWrapper>
+          </AppDataProvider>
+        </SettingsProvider>
+        <Toaster />
+      </ThemeProvider>
+    </AuthProvider>
+  </Router>
 );

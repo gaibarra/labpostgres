@@ -23,11 +23,13 @@ const slugify = (s) =>
     .toUpperCase()
     .slice(0, 20);
 
-const StudyForm = ({ initialStudy, onSubmit, onCancel, isSubmitting, onAIAssist, onImmediateParameterSave, onImmediateParameterDelete, onPersistParameterOrder, onAIAddParameter }) => {
+const StudyForm = ({ initialStudy, onSubmit, onCancel, isSubmitting, onAIAssist, onImmediateParameterSave, onImmediateParameterDelete, onPersistParameterOrder, onAIAddParameter, invalidHighlight }) => {
   const [study, setStudy] = useState(initialStudy);
   const [aiParamLoading, setAiParamLoading] = useState(false);
   const [showParameters, setShowParameters] = useState(true);
   const paramsCompRef = useRef(null);
+  const lastHighlightRef = useRef(null);
+  const highlightTimerRef = useRef(null);
   // Importante: NO usar el hook genérico useStudies aquí porque no sincroniza rangos de referencia.
   // El componente padre (Studies.jsx) inyecta onSubmit que ya ejecuta:
   // 1) upsert del estudio
@@ -40,6 +42,40 @@ const StudyForm = ({ initialStudy, onSubmit, onCancel, isSubmitting, onAIAssist,
     setStudy(initialStudy);
     if (initialStudy?.parameters?.length > 0) setShowParameters(true);
   }, [initialStudy]);
+
+  // Efecto: cuando recibimos invalidHighlight, expandimos parámetros, abrimos el parámetro e intentamos resaltar el rango
+  useEffect(() => {
+    if (!invalidHighlight) return;
+    if (lastHighlightRef.current && lastHighlightRef.current.ts === invalidHighlight.ts) return; // ya aplicado
+    lastHighlightRef.current = invalidHighlight;
+    // Asegura que la sección de parámetros está visible
+    if (!showParameters) setShowParameters(true);
+    // Timeout pequeño para esperar render
+    requestAnimationFrame(() => {
+      try {
+        // Abrir diálogo del parámetro correspondiente si ref expone método
+        paramsCompRef.current?.openParameterByIndex?.(invalidHighlight.paramIndex);
+      } catch {}
+      // Intentar localizar el contenedor del rango dentro del diálogo de edición (usa data atributos que añadiremos más adelante)
+      setTimeout(() => {
+        const selector = `[data-param-index="${invalidHighlight.paramIndex}"][data-range-index="${invalidHighlight.rangeIndex}"]`;
+        const el = document.querySelector(selector);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          el.classList.add('ring-2', 'ring-red-500', 'animate-pulse');
+          highlightTimerRef.current && clearTimeout(highlightTimerRef.current);
+          highlightTimerRef.current = setTimeout(() => {
+            el.classList.remove('ring-2', 'ring-red-500', 'animate-pulse');
+          }, 4000);
+          // Intentar focos en primer input interno
+          const focusable = el.querySelector('input,select,textarea,button');
+          focusable?.focus?.();
+        }
+      }, 120); // margen para que se monte el diálogo
+    });
+  }, [invalidHighlight, showParameters]);
+
+  useEffect(()=>()=>{ if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current); },[]);
 
   const handleChange = (e) => {
     const { name, value, type } = e.target;
@@ -234,6 +270,7 @@ const StudyForm = ({ initialStudy, onSubmit, onCancel, isSubmitting, onAIAssist,
                       onImmediateSave={onImmediateParameterSave}
                       onImmediateDelete={onImmediateParameterDelete}
                       onPersistOrder={onPersistParameterOrder}
+                      enableRangeDataAttributes
                     />
                   </div>
                 </CollapsibleContent>

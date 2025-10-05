@@ -1,47 +1,42 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { motion } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
 import { useStudies, initialStudyFormState } from './studies/hooks/useStudies';
 import StudiesHeader from './studies/StudiesHeader';
 import StudiesTable from './studies/StudiesTable';
-import StudyForm from './studies/StudyForm';
-import DeleteStudyDialog from './studies/DeleteStudyDialog';
-import AIAssistDialog from './studies/AIAssistDialog';
-import AIAssistPreviewModal from './studies/AIAssistPreviewModal';
-import StudyPriceAssignmentModal from './studies/StudyPriceAssignmentModal';
+import StudiesCardView from './studies/StudiesCardView';
+import StudiesModalsHost from './studies/StudiesModalsHost';
 import StudyHelpDialog from './studies/StudyHelpDialog';
-import { toast } from 'sonner';
-import { useAuth } from '@/contexts/AuthContext';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
-import StudiesCardView from './studies/StudiesCardView';
+import { useAuth } from '@/contexts/AuthContext';
 import { useAppData } from '@/contexts/AppDataContext';
-import apiClient from '@/lib/apiClient';
 
-const Studies = () => {
+class StudiesErrorBoundary extends React.Component {
+  constructor(props){ super(props); this.state = { hasError:false, error:null }; }
+  static getDerivedStateFromError(error){ return { hasError:true, error }; }
+  componentDidCatch(error, info){ console.error('[StudiesErrorBoundary] error', error, info); }
+  render(){
+    if (this.state.hasError){
+      return <div className="p-6 space-y-4"><h2 className="text-xl font-semibold text-red-600">Se produjo un error en Estudios</h2><p className="text-sm text-muted-foreground break-all">{this.state.error?.message}</p><button className="px-3 py-1 rounded bg-sky-600 text-white text-sm" onClick={()=> this.setState({ hasError:false, error:null })}>Reintentar</button></div>;
+    }
+    return this.props.children;
+  }
+}
+
+const StudiesInner = () => {
   const { user } = useAuth();
-  const [searchTerm, setSearchTerm] = useState(''); // Move this declaration up
-
-  const {
-    studies,
-    studiesCount,
-    loadingStudies,
-    isSubmitting,
-    getParticularPrice,
-    handleSubmit,
-    handleImmediateParameterSave,
-  handleDeleteStudy,
-  handleImmediateParameterDelete,
-  persistParameterOrder,
-    updateStudyPrices,
-    studiesPage,
-    setStudiesPage,
-    PAGE_SIZE,
-    totalStudiesPages,
-  } = useStudies(searchTerm);
   const { referrers } = useAppData();
+  const [searchTerm, setSearchTerm] = useState('');
+  const {
+    studies, studiesCount, loadingStudies, isSubmitting,
+    getParticularPrice, handleSubmit, handleImmediateParameterSave,
+    handleDeleteStudy, handleImmediateParameterDelete, persistParameterOrder,
+    updateStudyPrices, studiesPage, setStudiesPage, PAGE_SIZE, totalStudiesPages,
+    loadStudies
+  } = useStudies(searchTerm);
+  const isMobile = useMediaQuery('(max-width: 768px)');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [currentStudy, setCurrentStudy] = useState(initialStudyFormState);
   const [studyToDelete, setStudyToDelete] = useState(null);
@@ -52,249 +47,156 @@ const Studies = () => {
   const [isHelpDialogOpen, setIsHelpDialogOpen] = useState(false);
   const [aiGeneratedData, setAiGeneratedData] = useState(null);
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
-  const isMobile = useMediaQuery("(max-width: 768px)");
-
-  // SWR handles loading, so this useEffect is no longer needed.
-  // useEffect(() => {
-  //     if(user) {
-  //         loadStudies(studiesPage, searchTerm);
-  //     }
-  // }, [user, loadStudies, studiesPage, searchTerm]);
+  // Estado para resaltar un rango inválido (paramIndex, rangeIndex)
+  const [invalidHighlight, setInvalidHighlight] = useState(null);
 
   const handleNewStudyClick = () => {
     setCurrentStudy({ ...initialStudyFormState, parameters: [] });
     setIsFormOpen(true);
   };
-
-  const handleEdit = useCallback((study) => {
+  const handleEdit = useCallback((study)=>{
     const priceForParticular = getParticularPrice(study.id);
-    setCurrentStudy(prevStudy => ({
-      ...prevStudy,
-      ...study,
-      particularPrice: priceForParticular === '0.00' ? '' : priceForParticular,
-    }));
+    setCurrentStudy(prev => ({ ...prev, ...study, particularPrice: priceForParticular === '0.00' ? '' : priceForParticular }));
     setIsFormOpen(true);
   }, [getParticularPrice]);
-
-  const openDeleteConfirmDialog = useCallback((study) => {
-    setStudyToDelete(study);
-    setIsDeleteConfirmOpen(true);
-  }, []);
-
-  const handleAssignPrices = useCallback((study) => {
-    setStudyForPricing(study);
-    setIsPriceModalOpen(true);
-  }, []);
-
+  const openDeleteConfirmDialog = useCallback((study)=>{ setStudyToDelete(study); setIsDeleteConfirmOpen(true); },[]);
+  const handleAssignPrices = useCallback((study)=>{ setStudyForPricing(study); setIsPriceModalOpen(true); },[]);
   const handleFormSubmit = async (studyData) => {
-    const success = await handleSubmit(studyData);
-    if (success) {
-      setIsFormOpen(false);
-      // Solo reiniciar currentStudy si se está creando un nuevo estudio
-      if (!studyData.id) setCurrentStudy(initialStudyFormState);
+    // Limpiar highlight previo
+    setInvalidHighlight(null);
+    try {
+      const success = await handleSubmit(studyData);
+      if (success){
+        setIsFormOpen(false);
+        if (!studyData.id) setCurrentStudy(initialStudyFormState);
+      }
+    } catch (e) {
+      // Captura de detalles de validación (cliente o servidor) con índices
+      const d = e?.details || e; // algunos errores guardan las props en details
+      if (d && (typeof d.paramIndex === 'number' || typeof d.rangeIndex === 'number')) {
+        setInvalidHighlight({
+          paramIndex: typeof d.paramIndex === 'number' ? d.paramIndex : 0,
+            rangeIndex: typeof d.rangeIndex === 'number' ? d.rangeIndex : 0,
+            code: e?.code || d.code || 'UNKNOWN',
+            ts: Date.now()
+        });
+        // Asegura que el formulario siga abierto para permitir corrección
+        setIsFormOpen(true);
+      }
+      // No relanzamos para evitar toast duplicado (toast ya manejado en hook)
     }
   };
+  const handleConfirmDelete = async () => { if (!studyToDelete) return; const success = await handleDeleteStudy(studyToDelete); if (success){ setStudyToDelete(null); setIsDeleteConfirmOpen(false); } };
+  const handleAcceptAIPreview = () => { setCurrentStudy(aiGeneratedData); setIsPreviewModalOpen(false); setIsFormOpen(true); setAiGeneratedData(null); };
+  const handleCancelAIPreview = () => { setIsPreviewModalOpen(false); setAiGeneratedData(null); };
 
-  const handleConfirmDelete = async () => {
-    if (!studyToDelete) return;
-    const success = await handleDeleteStudy(studyToDelete);
-    if (success) {
-      setStudyToDelete(null);
-      setIsDeleteConfirmOpen(false);
-    }
-  };
-
-  const handleAIGenerationSuccess = (data) => {
-    setAiGeneratedData(data);
-    setIsAIAssistOpen(false);
-    setIsPreviewModalOpen(true);
-  };
-
-  const handleAcceptAIPreview = () => {
-    setCurrentStudy(aiGeneratedData);
-    setIsPreviewModalOpen(false);
-    setIsFormOpen(true);
-    setAiGeneratedData(null);
-  };
-
-  const handleCancelAIPreview = () => {
-    setIsPreviewModalOpen(false);
-    setAiGeneratedData(null);
-  };
-
-  // TODO: Implement a proper way to handle reference value editing and deletion.
-  // The current implementation is not ideal and has been removed.
-  // A possible solution is to handle this logic inside the StudyForm component
-  // or a dedicated context/hook for managing study data.
-
-  // The filtering is now done server-side in useStudies hook
   const displayedStudies = studies;
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5 }}
-      className="flex flex-col h-full"
-    >
+    <motion.div initial={{ opacity:0, y:20 }} animate={{ opacity:1, y:0 }} transition={{ duration:0.5 }} className="flex flex-col h-full">
       <StudyHelpDialog open={isHelpDialogOpen} onOpenChange={setIsHelpDialogOpen} />
-      <Dialog open={isFormOpen} onOpenChange={(isOpen) => {
-  setIsFormOpen(isOpen);
-  // No reiniciar currentStudy al cerrar el formulario, solo cerrar el diálogo
-      }}>
-        <Card className="shadow-xl glass-card flex flex-col flex-grow">
-          <StudiesHeader
-            searchTerm={searchTerm}
-            setSearchTerm={setSearchTerm}
-            onNewStudyClick={handleNewStudyClick}
-            onAIAssist={() => setIsAIAssistOpen(true)}
-            onHelpClick={() => setIsHelpDialogOpen(true)}
-            currentPage={studiesPage}
-            totalCount={studiesCount}
-            pageSize={PAGE_SIZE}
-            onPageChange={setStudiesPage}
-            onSearch={(term) => loadStudies(0, term)} // Always go to first page on new search
-            totalStudiesPages={totalStudiesPages} // Pass the new prop
-          />
-          <CardContent className="flex-grow p-2 md:p-6 pt-0">
-            {loadingStudies ? (
-              <div className="flex justify-center items-center h-full flex-grow">
-                <Loader2 className="h-8 w-8 animate-spin text-sky-600" />
-              </div>
-            ) : (
-              <ScrollArea className="h-[calc(100vh-220px)]">
-                {isMobile ? (
-                  <StudiesCardView
+      <Card className="shadow-xl glass-card flex flex-col flex-grow mb-4">
+        <StudiesHeader
+          searchTerm={searchTerm}
+          setSearchTerm={setSearchTerm}
+          onNewStudyClick={handleNewStudyClick}
+          onAIAssist={()=> setIsAIAssistOpen(true)}
+          onHelpClick={()=> setIsHelpDialogOpen(true)}
+          currentPage={studiesPage}
+          totalCount={studiesCount}
+          pageSize={PAGE_SIZE}
+          onPageChange={setStudiesPage}
+          onSearch={(term)=> loadStudies(0, term)}
+          totalStudiesPages={totalStudiesPages}
+        />
+        <CardContent className="flex-grow p-2 md:p-6 pt-0">
+          {loadingStudies ? (
+            <div className="flex justify-center items-center h-full flex-grow"><Loader2 className="h-8 w-8 animate-spin text-sky-600" /></div>
+          ) : (
+            <ScrollArea className="h-[calc(100vh-220px)]">
+              {isMobile ? (
+                <StudiesCardView
+                  studies={displayedStudies}
+                  onEdit={handleEdit}
+                  onDeleteConfirm={openDeleteConfirmDialog}
+                  onAssignPrices={handleAssignPrices}
+                  getParticularPrice={getParticularPrice}
+                />
+              ) : (
+                <div className="overflow-x-auto">
+                  <StudiesTable
                     studies={displayedStudies}
                     onEdit={handleEdit}
                     onDeleteConfirm={openDeleteConfirmDialog}
                     onAssignPrices={handleAssignPrices}
                     getParticularPrice={getParticularPrice}
                   />
-                ) : (
-                  <div className="overflow-x-auto">
-                    <StudiesTable
-                      studies={displayedStudies}
-                      onEdit={handleEdit}
-                      onDeleteConfirm={openDeleteConfirmDialog}
-                      onAssignPrices={handleAssignPrices}
-                      getParticularPrice={getParticularPrice}
-                    />
-                  </div>
-                )}
-              </ScrollArea>
-            )}
-          </CardContent>
-          {!loadingStudies && studiesCount > 0 && (
-            <CardFooter className="text-sm text-muted-foreground p-6 pt-0">
-              Mostrando {studies.length} de {studiesCount} estudios.
-            </CardFooter>
+                </div>
+              )}
+            </ScrollArea>
           )}
-        </Card>
+        </CardContent>
+        {!loadingStudies && studiesCount > 0 && (
+          <CardFooter className="text-sm text-muted-foreground p-6 pt-0">Mostrando {studies.length} de {studiesCount} estudios.</CardFooter>
+        )}
+      </Card>
 
-        <DialogContent className="sm:max-w-3xl bg-slate-50 dark:bg-slate-900 max-h-[90vh]">
-          <DialogHeader>
-            <DialogTitle className="text-sky-700 dark:text-sky-400">
-              {currentStudy.id ? 'Editar Estudio' : 'Registrar Nuevo Estudio'}
-            </DialogTitle>
-            <DialogDescription>
-              Completa los detalles del estudio a continuación.
-            </DialogDescription>
-          </DialogHeader>
-          <ScrollArea className="h-[75vh] p-4">
-            <StudyForm
-              initialStudy={currentStudy}
-              onSubmit={handleFormSubmit}
-              onAIAssist={() => {
-                setIsFormOpen(false);
-                setIsAIAssistOpen(true);
-              }}
-              onAIAddParameter={async (ctx, done)=>{
-                try {
-                  const desiredName = prompt('Nombre del nuevo parámetro (o dejar vacío para que IA sugiera uno):') || undefined;
-                  const resp = await apiClient.post('/ai/generate-parameter', {
-                    studyName: ctx.studyName,
-                    category: ctx.category,
-                    existingParameters: ctx.existingParameters,
-                    desiredParameterName: desiredName
-                  }, { timeoutMs: 30000 });
-                  if (resp?.parameter) {
-                    done(resp.parameter);
-                    toast.success('Parámetro IA generado');
-                  } else {
-                    toast.error(resp?.error || 'No se generó parámetro');
-                  }
-                } catch(e){
-                  console.warn('[AI Add Parameter] error', e);
-                  const details = e.details || e.response?.data || {};
-                  const code = details.code || details.error;
-                  let uiMsg;
-                  switch(code){
-                    case 'OPENAI_MISSING_KEY':
-                      uiMsg = 'No hay clave OpenAI configurada. Ve a Configuración → Integraciones.'; break;
-                    case 'OPENAI_INVALID_KEY_FORMAT':
-                      uiMsg = 'Formato de clave OpenAI inválido. Revisa que empiece con sk- y no esté truncada.'; break;
-                    case 'OPENAI_INVALID_KEY':
-                      uiMsg = 'La clave OpenAI es inválida o fue revocada. Actualízala en Configuración.'; break;
-                    case 'PARAM_SCHEMA_INVALID':
-                      uiMsg = 'La IA devolvió un parámetro con esquema inválido.'; break;
-                    default:
-                      uiMsg = details.message || details.error || e.message || 'Error IA';
-                  }
-                  toast.error(uiMsg);
-                }
-              }}
-              onCancel={() => {
-                setIsFormOpen(false);
-                // No reiniciar currentStudy al cancelar edición, solo cerrar el formulario
-              }}
-              getParticularPriceForStudy={getParticularPrice}
-              isSubmitting={isSubmitting}
-              onImmediateParameterSave={handleImmediateParameterSave}
-              onImmediateParameterDelete={handleImmediateParameterDelete}
-              onPersistParameterOrder={persistParameterOrder}
-            />
-          </ScrollArea>
-        </DialogContent>
-      </Dialog>
-
-      <DeleteStudyDialog
-        isOpen={isDeleteConfirmOpen}
-        onOpenChange={setIsDeleteConfirmOpen}
-        studyToDelete={studyToDelete}
-        onConfirmDelete={handleConfirmDelete}
+      <StudiesModalsHost
+        isFormOpen={isFormOpen}
+        setIsFormOpen={setIsFormOpen}
+        currentStudy={currentStudy}
+        handleFormSubmit={handleFormSubmit}
+        invalidHighlight={invalidHighlight}
         isSubmitting={isSubmitting}
+        loadingStudies={loadingStudies}
+        studies={studies}
+        studiesCount={studiesCount}
+        PAGE_SIZE={PAGE_SIZE}
+        getParticularPrice={getParticularPrice}
+        studiesPage={studiesPage}
+        setStudiesPage={setStudiesPage}
+        totalStudiesPages={totalStudiesPages}
+        searchTerm={searchTerm}
+        setSearchTerm={setSearchTerm}
+        onNewStudyClick={handleNewStudyClick}
+        onEditStudy={handleEdit}
+        onDeleteRequest={openDeleteConfirmDialog}
+        onAssignPrices={handleAssignPrices}
+        onAIAssist={()=> setIsAIAssistOpen(true)}
+        onHelp={()=> setIsHelpDialogOpen(true)}
+        isMobile={isMobile}
+        studyToDelete={studyToDelete}
+        setStudyToDelete={setStudyToDelete}
+        isDeleteConfirmOpen={isDeleteConfirmOpen}
+        setIsDeleteConfirmOpen={setIsDeleteConfirmOpen}
+        handleConfirmDelete={handleConfirmDelete}
+        isAIAssistOpen={isAIAssistOpen}
+        setIsAIAssistOpen={setIsAIAssistOpen}
+        aiGeneratedData={aiGeneratedData}
+        setAiGeneratedData={setAiGeneratedData}
+        isPreviewModalOpen={isPreviewModalOpen}
+        setIsPreviewModalOpen={setIsPreviewModalOpen}
+        handleAcceptAIPreview={handleAcceptAIPreview}
+        handleCancelAIPreview={handleCancelAIPreview}
+        studyForPricing={studyForPricing}
+        setStudyForPricing={setStudyForPricing}
+        isPriceModalOpen={isPriceModalOpen}
+        setIsPriceModalOpen={setIsPriceModalOpen}
+        updateStudyPrices={updateStudyPrices}
+        referrers={referrers}
+        persistParameterOrder={persistParameterOrder}
+        handleImmediateParameterSave={handleImmediateParameterSave}
+        handleImmediateParameterDelete={handleImmediateParameterDelete}
+        getParticularPriceForStudy={getParticularPrice}
       />
-
-      <AIAssistDialog
-        isOpen={isAIAssistOpen}
-        onOpenChange={setIsAIAssistOpen}
-        onGenerationSuccess={handleAIGenerationSuccess}
-      />
-
-      <AIAssistPreviewModal
-        isOpen={isPreviewModalOpen}
-        onOpenChange={setIsPreviewModalOpen}
-        studyData={aiGeneratedData}
-        onAccept={handleAcceptAIPreview}
-        onCancel={handleCancelAIPreview}
-      />
-
-      {studyForPricing && (
-        <StudyPriceAssignmentModal
-          isOpen={isPriceModalOpen}
-          onOpenChange={(isOpen) => {
-            setIsPriceModalOpen(isOpen);
-            if (!isOpen) setStudyForPricing(null);
-          }}
-          study={studyForPricing}
-          referrers={referrers}
-          onUpdatePrices={updateStudyPrices}
-          isSubmitting={isSubmitting}
-        />
-      )}
     </motion.div>
   );
 };
+
+const Studies = (props) => (
+  <StudiesErrorBoundary>
+    <StudiesInner {...props} />
+  </StudiesErrorBoundary>
+);
 
 export default Studies;

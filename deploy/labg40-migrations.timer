@@ -1,0 +1,12 @@
+[Unit]
+Description=Timer migraciones tenants (cada 15 min)
+
+[Timer]
+OnBootSec=2m
+OnUnitActiveSec=15m
+RandomizedDelaySec=60
+Unit=labg40-migrations.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target

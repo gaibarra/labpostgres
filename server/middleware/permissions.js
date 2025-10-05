@@ -1,16 +1,17 @@
-const { pool } = require('../db');
+const { pool: basePool } = require('../db');
 const { AppError } = require('../utils/errors');
 
-// Cache roles permissions in-memory (simple) with TTL
-let cache = { data: null, ts: 0 };
+// Cache de permisos por tenantId (o 'default')
 const TTL_MS = 60_000; // 1 min
+const permsCache = new Map(); // key -> { ts, data(Map) }
 
-async function loadPermissions() {
+async function loadPermissions(key, activePool) {
   const now = Date.now();
-  if (cache.data && now - cache.ts < TTL_MS) return cache.data;
-  const { rows } = await pool.query('SELECT role_name, permissions FROM roles_permissions');
+  const entry = permsCache.get(key);
+  if (entry && now - entry.ts < TTL_MS) return entry.data;
+  const { rows } = await activePool.query('SELECT role_name, permissions FROM roles_permissions');
   const map = new Map(rows.map(r => [r.role_name, r.permissions || {}]));
-  cache = { data: map, ts: now };
+  permsCache.set(key, { ts: now, data: map });
   return map;
 }
 
@@ -19,25 +20,29 @@ function requirePermission(module, action) {
     try {
   if (!req.user) return next(new AppError(401,'No autenticado','UNAUTHENTICATED'));
       // Prefer role embedded in JWT (added at login/register)
-      let role = req.user.role || 'Invitado';
+      const activePool = req.tenantPool || basePool;
+      const tenantKey = req.auth?.tenant_id || 'default';
+      let role = (req.user.role ? String(req.user.role).trim() : '') || 'Invitado';
+      if (role.toLowerCase() === 'administrador') role = 'Administrador';
       if (!req.user.role) {
         // fetch role from profile (support both schemas: user_id or id)
-        const colCheck = await pool.query("SELECT 1 FROM information_schema.columns WHERE table_name='profiles' AND column_name='user_id'");
+        const colCheck = await activePool.query("SELECT 1 FROM information_schema.columns WHERE table_name='profiles' AND column_name='user_id'");
         if (colCheck.rowCount === 1) {
-          const { rows } = await pool.query('SELECT role FROM profiles WHERE user_id=$1', [req.user.id]);
+          const { rows } = await activePool.query('SELECT role FROM profiles WHERE user_id=$1', [req.user.id]);
           if (rows[0]?.role) role = rows[0].role; else {
             // Fallback for legacy rows inserted before user_id existed
-            const { rows: rows2 } = await pool.query('SELECT role FROM profiles WHERE id=$1', [req.user.id]);
+            const { rows: rows2 } = await activePool.query('SELECT role FROM profiles WHERE id=$1', [req.user.id]);
             role = rows2[0]?.role || role;
           }
         } else {
-          const { rows } = await pool.query('SELECT role FROM profiles WHERE id=$1', [req.user.id]);
+          const { rows } = await activePool.query('SELECT role FROM profiles WHERE id=$1', [req.user.id]);
           role = rows[0]?.role || role;
         }
+        if (role && role.toLowerCase() === 'administrador') role = 'Administrador';
       }
       req.user.role = role; // cache on request
   if (role === 'Administrador') return next();
-  const permsMap = await loadPermissions();
+  const permsMap = await loadPermissions(tenantKey, activePool);
   if (process.env.DEBUG_PERMS) {
     console.log('PERM_CHECK', { uid: req.user.id, role, module, action, hasRoleEntry: permsMap.has(role) });
   }

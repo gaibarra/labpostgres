@@ -4,6 +4,16 @@ const { AppError } = require('../utils/errors');
 function validate(schema) {
   return (req, res, next) => {
     try {
+      // Coerción ligera: convertir strings numéricas en body a números para campos esperados
+      if (req.body && typeof req.body === 'object') {
+        const numericFields = ['subtotal','descuento','anticipo','total_price','price','processing_time_hours'];
+        numericFields.forEach(f=>{
+          if (Object.prototype.hasOwnProperty.call(req.body,f) && typeof req.body[f] === 'string' && req.body[f].trim() !== '') {
+            const n = Number(req.body[f]);
+            if (!Number.isNaN(n)) req.body[f] = n; // deja valor original si NaN
+          }
+        });
+      }
       const data = { body: req.body, query: req.query, params: req.params };
       const parsed = schema.parse(data);
       // Overwrite only provided sections

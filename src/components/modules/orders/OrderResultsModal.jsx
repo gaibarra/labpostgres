@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
     import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose, DialogDescription } from "@/components/ui/dialog";
     import { Button } from '@/components/ui/button';
     import { Label } from '@/components/ui/label';
@@ -122,6 +123,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
       };
 
       return (
+        <ErrorBoundary dialogStates={{ modal: 'OrderResultsModal', open: isOpen }}>
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
           <DialogContent className="sm:max-w-4xl bg-slate-50 dark:bg-slate-900 max-h-[90vh] overflow-y-auto">
             <DialogHeader>
@@ -236,6 +238,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        </ErrorBoundary>
       );
     };
 

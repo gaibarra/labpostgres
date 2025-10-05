@@ -8,6 +8,7 @@ import React, { useState, useEffect, useCallback } from 'react';
     import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
     import { motion } from 'framer-motion';
     import { Activity, ListFilter, Search, Download, Trash2, Eye, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+    import { triggerBlobDownload } from '@/utils/safeDownload';
     import { useToast } from "@/components/ui/use-toast";
     import { ScrollArea } from "@/components/ui/scroll-area";
     import { getFormattedTimestamp } from '@/lib/auditUtils';
@@ -114,9 +115,7 @@ import React, { useState, useEffect, useCallback } from 'react';
             return `"${getFormattedTimestamp(log.created_at)}","${userName}","${log.action}","${detailsString}"`;
           }).join('\n');
           const blob = new Blob([csvHeader + csvRows], { type: 'text/csv;charset=utf-8;' });
-          const link = document.createElement('a');
-          const url = URL.createObjectURL(blob);
-          link.href = url; link.download = `audit_logs_${new Date().toISOString()}.csv`; document.body.appendChild(link); link.click(); document.body.removeChild(link);
+          triggerBlobDownload(blob, `audit_logs_${new Date().toISOString()}.csv`);
           toast({ title: 'Exportación Exitosa', description: 'Logs exportados a CSV.' });
         } catch(e) {
           toast({ title: 'Error de Exportación', description: e.message, variant: 'destructive' });

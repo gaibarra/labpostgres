@@ -1,5 +1,5 @@
 const express = require('express');
-const { pool } = require('../db');
+const { pool } = require('../db'); // global fallback
 const auth = require('../middleware/auth');
 const { requirePermission } = require('../middleware/permissions');
 const { AppError } = require('../utils/errors');
@@ -10,8 +10,9 @@ const router = express.Router();
 // List profiles (admin)
 router.get('/', auth, requirePermission('profiles', 'read'), async (req, res, next) => {
   try {
+  const activePool = req.tenantPool || pool;
     const { limit, offset } = parsePagination(req.query);
-    const colInfo = await pool.query("SELECT column_name FROM information_schema.columns WHERE table_name='profiles'");
+  const colInfo = await activePool.query("SELECT column_name FROM information_schema.columns WHERE table_name='profiles'");
     const cols = colInfo.rows.map((r) => r.column_name);
     const hasUserId = cols.includes('user_id');
     const hasFullName = cols.includes('full_name');
@@ -25,7 +26,7 @@ router.get('/', auth, requirePermission('profiles', 'read'), async (req, res, ne
     const userIdCol = hasUserId ? 'user_id' : 'NULL::uuid AS user_id';
     const baseColsSql = userIdCol.replace(' AS user_id', '');
     const sql = `SELECT id, ${baseColsSql}, email, ${selectName}, role, created_at FROM profiles ORDER BY created_at DESC LIMIT $1 OFFSET $2`;
-    const { rows } = await pool.query(sql, [limit, offset]);
+  const { rows } = await activePool.query(sql, [limit, offset]);
     const out = rows.map((r) => ({ id: r.id, user_id: hasUserId ? r.user_id : r.id, email: r.email, full_name: r.full_name, role: r.role, created_at: r.created_at }));
     res.json(out);
   } catch (e) {
@@ -36,7 +37,8 @@ router.get('/', auth, requirePermission('profiles', 'read'), async (req, res, ne
 
 router.get('/:id', auth, requirePermission('profiles', 'read'), async (req, res, next) => {
   try {
-    const colInfo = await pool.query("SELECT column_name FROM information_schema.columns WHERE table_name='profiles'");
+  const activePool = req.tenantPool || pool;
+  const colInfo = await activePool.query("SELECT column_name FROM information_schema.columns WHERE table_name='profiles'");
     const cols = colInfo.rows.map((r) => r.column_name);
     const hasUserId = cols.includes('user_id');
     const hasFullName = cols.includes('full_name');
@@ -50,7 +52,7 @@ router.get('/:id', auth, requirePermission('profiles', 'read'), async (req, res,
     const userIdCol = hasUserId ? 'user_id' : 'NULL::uuid AS user_id';
     const baseColsSql = userIdCol.replace(' AS user_id', '');
     const sql = `SELECT id, ${baseColsSql}, email, ${selectName}, role, created_at FROM profiles WHERE id=$1`;
-    const { rows } = await pool.query(sql, [req.params.id]);
+  const { rows } = await activePool.query(sql, [req.params.id]);
     if (!rows[0]) return next(new AppError(404, 'Perfil no encontrado', 'PROFILE_NOT_FOUND'));
     const r = rows[0];
     res.json({ id: r.id, user_id: hasUserId ? r.user_id : r.id, email: r.email, full_name: r.full_name, role: r.role, created_at: r.created_at });
@@ -113,7 +115,8 @@ async function ensureProfileRow(user, client) {
 
 // GET my theme
 router.get('/me/theme', auth, async (req, res, next) => {
-  const client = await pool.connect();
+  const p = req.tenantPool || pool;
+  const client = await p.connect();
   try {
     // Set claims for session (not LOCAL) so each statement sees it
     const claims = { sub: req.user.id, role: req.user.role || null, email: req.user.email || null };
@@ -144,7 +147,8 @@ router.get('/me/theme', auth, async (req, res, next) => {
 router.put('/me/theme', auth, async (req, res, next) => {
   const { theme } = req.body || {};
   if (theme && !['light', 'dark'].includes(theme)) return next(new AppError(400, 'Tema inválido', 'PROFILE_THEME_VALIDATION'));
-  const client = await pool.connect();
+  const p = req.tenantPool || pool;
+  const client = await p.connect();
   try {
     const claims = { sub: req.user.id, role: req.user.role || null, email: req.user.email || null };
   const claimsStr = JSON.stringify(claims).replace(/'/g, "''");

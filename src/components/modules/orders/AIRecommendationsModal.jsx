@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
     import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
     import { Button } from '@/components/ui/button';
     import { ScrollArea } from '@/components/ui/scroll-area';
@@ -221,6 +222,7 @@ import React, { useState, useEffect, useMemo } from 'react';
       };
 
       return (
+        <ErrorBoundary dialogStates={{ modal: 'AIRecommendationsModal', open: isOpen }}>
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
           <DialogContent className="sm:max-w-3xl bg-slate-50 dark:bg-slate-900 max-h-[95vh]">
             <DialogHeader>
@@ -253,6 +255,7 @@ import React, { useState, useEffect, useMemo } from 'react';
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        </ErrorBoundary>
       );
     };
 

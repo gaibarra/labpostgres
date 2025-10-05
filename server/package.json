@@ -10,7 +10,9 @@
     "test:watch": "TEST_MODE=1 vitest --config vitest.config.js",
     "migrate": "node tools/run-migrations.js",
     "db:bootstrap": "node tools/bootstrap-db.js",
-    "create:admin": "node tools/create-admin.js"
+    "create:admin": "node tools/create-admin.js",
+    "diagnose:sex": "node tools/sex-diagnostics.js",
+    "verify:sex": "npm run migrate && TEST_MODE=1 vitest --config vitest.config.js --run tests/referenceRanges.sexVariants.test.js && npm run diagnose:sex"
   },
   "keywords": [],
   "author": "",

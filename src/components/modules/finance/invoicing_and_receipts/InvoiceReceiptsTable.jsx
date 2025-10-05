@@ -19,13 +19,10 @@ import React, { useEffect } from 'react';
       onAction,
       loadOrders,
     }) => {
-      const isInvoice = type === 'invoice';
-      const relevantOrders = isInvoice ? orders : orders.filter(o => (o.total_price || 0) > 0);
-
-      useEffect(() => {
-        loadOrders();
-      }, [dateRange, debouncedSearchTerm, loadOrders]);
-
+  const isInvoice = type === 'invoice';
+  const relevantOrders = isInvoice ? orders : orders.filter(o => o.fully_paid);
+  // El padre recarga; aquí sólo se usa debouncedSearchTerm para filtrar en memoria
+  useEffect(() => { /* trigger re-filter */ }, [debouncedSearchTerm]);
       const filteredOrders = relevantOrders.filter(order => {
         const searchTermLower = debouncedSearchTerm.toLowerCase();
         return (
@@ -74,6 +71,8 @@ import React, { useEffect } from 'react';
                       <TableHead>Fecha</TableHead>
                       <TableHead>Paciente</TableHead>
                       <TableHead className="text-right">Total (MXN)</TableHead>
+                      {!isInvoice && <TableHead className="text-right">Pagado (MXN)</TableHead>}
+                      {!isInvoice && <TableHead className="text-right">Saldo Pend. (MXN)</TableHead>}
                       <TableHead className="text-center">Estado</TableHead>
                       <TableHead className="text-center">Acciones</TableHead>
                     </TableRow>
@@ -86,7 +85,9 @@ import React, { useEffect } from 'react';
                           <TableCell>{order.folio}</TableCell>
                           <TableCell>{isValid(order.fecha) ? format(order.fecha, 'dd/MM/yyyy') : 'Inválida'}</TableCell>
                           <TableCell>{order.patient?.full_name || 'N/A'}</TableCell>
-                          <TableCell className="text-right">{(order.total_price || 0).toFixed(2)}</TableCell>
+                          <TableCell className="text-right">{(() => { const n=parseFloat(order.total_price); return Number.isFinite(n)? n.toFixed(2):'0.00'; })()}</TableCell>
+                          {!isInvoice && <TableCell className="text-right">{(() => { const tp=parseFloat(order.total_paid); return Number.isFinite(tp)? tp.toFixed(2):'0.00'; })()}</TableCell>}
+                          {!isInvoice && <TableCell className="text-right">{(() => { const bal=parseFloat(order.balance); return Number.isFinite(bal)? (bal>0?bal:0).toFixed(2):'0.00'; })()}</TableCell>}
                           <TableCell className="text-center">
                             {isGenerated ? 
                               <span className="text-green-600 dark:text-green-400 font-medium flex items-center justify-center"><CheckCircle2 className="mr-1 h-4 w-4"/>Generado</span> : 

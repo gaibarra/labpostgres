@@ -8,10 +8,11 @@ function removeDuplicateParameters(params) {
     return true;
   });
 }
+// Secuencia estática para tipos de parámetro (estable fuera del componente)
+const TIPO_SEQUENCE = ['numerico','alfanumerico','textoLibre'];
 import ParameterEditDialog from "./ParameterEditDialog";
 import React, {
   useState,
-  useMemo,
   forwardRef,
   useImperativeHandle,
   useCallback,
@@ -58,7 +59,7 @@ import ReferenceValueSummary from "./ReferenceValueSummary";
 // ...existing code...
 
 const StudyParameters = forwardRef(
-  ({ parameters = [], onParametersChange, isSubmitting, studyId, onImmediateSave, onImmediateDelete, onPersistOrder }, ref) => {
+  ({ parameters = [], onParametersChange, isSubmitting, studyId, onImmediateSave, onImmediateDelete, onPersistOrder, _enableRangeDataAttributes }, ref) => {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingParameter, setEditingParameter] = useState(null);
     const [localParameters, setLocalParameters] = useState(parameters);
@@ -75,11 +76,10 @@ const StudyParameters = forwardRef(
   const [editingGroupId, setEditingGroupId] = useState(null);
   const [editingGroupValue, setEditingGroupValue] = useState("");
   // Inline ref type editing (applies to all valorReferencia entries of a parameter)
-  const TIPO_SEQUENCE = ['numerico','alfanumerico','textoLibre'];
-  const cycleTipo = (current) => {
+  const cycleTipo = useCallback((current) => {
     const idx = TIPO_SEQUENCE.indexOf(current);
     return TIPO_SEQUENCE[(idx + 1) % TIPO_SEQUENCE.length];
-  };
+  }, []);
   // Reordenamiento reactivado
 
     // Asegura que cada parámetro tenga un identificador (id o tempId) para evitar
@@ -107,6 +107,10 @@ const StudyParameters = forwardRef(
     useImperativeHandle(ref, () => ({
       openNew: () => handleAddNew(),
       getParameters: () => localParameters,
+      openParameterByIndex: (index) => {
+        if (index == null || index < 0 || index >= localParameters.length) return;
+        handleEdit(localParameters[index]);
+      }
     }));
 
     const handleAddNew = useCallback(() => {
@@ -160,7 +164,8 @@ const StudyParameters = forwardRef(
         const newParameters = prev
           .filter(p => (p.id || p.tempId) !== toDeleteId)
           .map((p, idx) => ({ ...p, position: idx })); // re-asigna posiciones
-        onParametersChange(newParameters);
+        // Diferimos notificación al padre para evitar nested setState durante render.
+        queueMicrotask(()=> onParametersChange(newParameters));
         return newParameters;
       });
     }, [onParametersChange]);
@@ -170,9 +175,9 @@ const StudyParameters = forwardRef(
       // Asignar posición secuencial
       const withPos = updated.map((p, idx) => ({ ...p, position: idx }));
       setLocalParameters(withPos);
-      onParametersChange(withPos);
+      queueMicrotask(()=> onParametersChange(withPos));
       if (studyId && typeof onPersistOrder === 'function') {
-        // Persistir sólo si hay estudio existente
+        // Persistir sólo si hay estudio existente (no difiere porque es efecto lado servidor)
         onPersistOrder(studyId, withPos);
       }
     }, [onParametersChange, onPersistOrder, studyId]);
@@ -222,8 +227,8 @@ const StudyParameters = forwardRef(
       const finalList = found ? list : [...list, { ...parameterToSave }];
       // Eliminar duplicados antes de guardar
       const filteredList = removeDuplicateParameters(finalList);
-      setLocalParameters([...filteredList]); // Actualiza el estado local para re-render inmediato
-      onParametersChange([...filteredList]);
+  setLocalParameters([...filteredList]); // Actualiza el estado local para re-render inmediato
+  queueMicrotask(()=> onParametersChange([...filteredList]));
       const isNew = !parameterToSave.id && !studyId;
       setIsDialogOpen(false);
       setEditingParameter(null);
@@ -245,7 +250,7 @@ const StudyParameters = forwardRef(
                 }
                 return p;
               });
-              onParametersChange(updated); // evita usar closure obsoleto
+              queueMicrotask(()=> onParametersChange(updated)); // evita nested updates
               return updated;
             });
             toast.success('Parámetro guardado', {
@@ -268,7 +273,7 @@ const StudyParameters = forwardRef(
       } else {
         toast.success(isNew ? 'Parámetro listo (guardado local). Guarda el estudio para persistir.' : 'Parámetro actualizado localmente.');
       }
-    }, [localParameters, onParametersChange, onImmediateSave, studyId]);
+  }, [localParameters, onParametersChange, onImmediateSave, onImmediateDelete, studyId]);
 
     // --- Inline name editing helpers ---
     const startInlineEdit = useCallback((param) => {
@@ -427,7 +432,7 @@ const StudyParameters = forwardRef(
           setSavingIds(prev => { const n = new Set(prev); n.delete(key); return n; });
         }
       }
-    }, [isSubmitting, isParamSaving, onParametersChange, studyId, onImmediateSave, localParameters]);
+  }, [isSubmitting, isParamSaving, onParametersChange, studyId, onImmediateSave, cycleTipo]);
 
   // Duplicar parámetro eliminado
 
@@ -481,6 +486,7 @@ const StudyParameters = forwardRef(
                 <TableRow
                   key={rowKey}
                   className='transition-colors'
+                  data-param-index={idx}
                 >
                   <TableCell className="font-medium py-2 flex items-center gap-2">
                     {/* Eliminado drag handle */}

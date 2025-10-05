@@ -22,9 +22,15 @@ const PatientForm = ({ patient, onSave, onCancel, isLoading }) => {
   useEffect(() => {
     if (patient) {
       const birthDate = patient.date_of_birth ? parseISO(patient.date_of_birth) : null;
+      // Mapear códigos back-end a etiquetas legibles
+      let sexLabel = patient.sex;
+      if (patient.sex === 'M') sexLabel = 'Masculino';
+      else if (patient.sex === 'F') sexLabel = 'Femenino';
+  // sin opción 'Otro'
       setCurrentPatient({
         ...initialPatientState,
         ...patient,
+        sex: sexLabel || '',
         date_of_birth: birthDate && isValid(birthDate) ? format(birthDate, 'yyyy-MM-dd') : '',
       });
     } else {
@@ -71,6 +77,12 @@ const PatientForm = ({ patient, onSave, onCancel, isLoading }) => {
 
   const getDataToSave = () => {
     const dataToSave = { ...currentPatient };
+    // Normalizar sex de etiqueta a código backend
+    if (dataToSave.sex) {
+      if (dataToSave.sex === 'Masculino') dataToSave.sex = 'M';
+      else if (dataToSave.sex === 'Femenino') dataToSave.sex = 'F';
+  // no se convierte 'Otro'
+    }
     Object.keys(dataToSave).forEach(key => {
       if (dataToSave[key] === '') {
         delete dataToSave[key];
@@ -106,6 +118,7 @@ const PatientForm = ({ patient, onSave, onCancel, isLoading }) => {
                   <option value="">Seleccione...</option>
                   <option value="Masculino">Masculino</option>
                   <option value="Femenino">Femenino</option>
+                  {/* Se elimina opción 'Otro' */}
                 </select>
               </div>
               <div>

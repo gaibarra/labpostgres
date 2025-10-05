@@ -190,29 +190,98 @@ export const useStudies = (searchTerm) => {
 
   const syncParameters = async (studyId, parameters) => {
     if (!studyId) throw new Error('studyId requerido para sincronizar parámetros');
-    const payload = {
-      parameters: (parameters || []).map(p => ({
+    // Prevalidación cliente antes de enviar
+    const allowedAgeUnits = new Set(['años','year','years','meses','months','dias','días','days']);
+    function canonicalAgeUnit(u){
+      if (!u) return 'años';
+      const v = u.toString().trim().toLowerCase();
+      if (['a','ano','años','year','years'].includes(v)) return 'años';
+      if (['m','mes','meses','month','months'].includes(v)) return 'meses';
+      if (['d','dia','día','dias','días','day','days'].includes(v)) return 'días';
+      return 'años';
+    }
+    function canonicalSex(s){
+      if (!s) return 'ambos';
+      const v = s.toString().trim().toLowerCase();
+      if (v.startsWith('m')) return 'masculino';
+      if (v.startsWith('f')) return 'femenino';
+      if (v.startsWith('a')) return 'ambos';
+      return 'ambos';
+    }
+    const clientErrors = [];
+    const cleanedParameters = (parameters || []).map((p,pIndex)=>{
+      const valorReferencia = combineReferenceValues(p.valorReferencia || []).map((vr,rIndex)=>{
+        const age_unit_raw = vr.age_unit || vr.unidadEdad || 'años';
+        const age_unit = canonicalAgeUnit(age_unit_raw);
+        const normal_min = vr.normal_min ?? vr.valorMin ?? null;
+        const normal_max = vr.normal_max ?? vr.valorMax ?? null;
+        if (normal_min != null && normal_max != null && Number(normal_min) > Number(normal_max)) {
+          clientErrors.push({ type:'INVALID_INTERVAL', paramIndex:pIndex, rangeIndex:rIndex, lower:normal_min, upper:normal_max });
+        }
+        if (!allowedAgeUnits.has(age_unit)) {
+          clientErrors.push({ type:'INVALID_AGE_UNIT', paramIndex:pIndex, rangeIndex:rIndex, unit:age_unit_raw });
+        }
+        return {
+          sex: canonicalSex(vr.sexo || vr.gender || vr.sex),
+          age_min: vr.age_min ?? vr.edadMin ?? null,
+          age_max: vr.age_max ?? vr.edadMax ?? null,
+          age_min_unit: age_unit,
+          tipoValor: vr.tipoValor || (vr.textoLibre ? 'textoLibre' : (vr.textoPermitido ? 'alfanumerico' : 'numerico')),
+          normal_min,
+          normal_max,
+          textoPermitido: vr.textoPermitido || '',
+          textoLibre: vr.textoLibre || '',
+          notas: vr.notas || ''
+        };
+      });
+      return {
         id: p.id || null,
         name: (p.name || '').trim(),
         unit: (p.unit || '').trim(),
         decimal_places: cleanIntegerForStorage(p.decimal_places),
         position: typeof p.position === 'number' ? p.position : null,
-        // Aplicar combinación M/F idénticos -> Ambos antes de enviar
-        valorReferencia: combineReferenceValues(p.valorReferencia || []).map(vr => ({
-          sexo: vr.sexo || vr.gender || 'Ambos',
-          age_min: vr.age_min ?? vr.edadMin ?? null,
-          age_max: vr.age_max ?? vr.edadMax ?? null,
-          age_unit: vr.age_unit || vr.unidadEdad || vr.age_unit || 'años',
-          tipoValor: vr.tipoValor || (vr.textoLibre ? 'textoLibre' : (vr.textoPermitido ? 'alfanumerico' : 'numerico')),
-          normal_min: vr.normal_min ?? vr.valorMin ?? null,
-          normal_max: vr.normal_max ?? vr.valorMax ?? null,
-          textoPermitido: vr.textoPermitido || '',
-          textoLibre: vr.textoLibre || '',
-          notas: vr.notas || ''
-        }))
-      }))
-    };
-    const res = await apiClient.post(`/analysis/${studyId}/parameters-sync`, payload);
+        valorReferencia
+      };
+    });
+    if (clientErrors.length){
+      const first = clientErrors[0];
+      let msg;
+      switch(first.type){
+        case 'INVALID_INTERVAL': msg = `Rango inválido (lower>upper) en parámetro ${first.paramIndex+1}, rango ${first.rangeIndex+1}`; break;
+        case 'INVALID_AGE_UNIT': msg = `Unidad de edad inválida en parámetro ${first.paramIndex+1}, rango ${first.rangeIndex+1}`; break;
+        default: msg = 'Error de validación en rangos';
+      }
+      toast.error(msg);
+      const error = new Error(msg);
+      error.code = 'CLIENT_RANGE_VALIDATION_FAIL';
+      error.details = first;
+      throw error;
+    }
+    const payload = { parameters: cleanedParameters };
+    if (process.env.NODE_ENV !== 'production') {
+      try {
+        const sample = cleanedParameters?.[0]?.valorReferencia?.[0];
+        // eslint-disable-next-line no-console
+        console.debug('[useStudies][parameters-sync] sample first range payload', sample);
+      } catch {}
+    }
+    let res;
+    try {
+      res = await apiClient.post(`/analysis/${studyId}/parameters-sync`, payload);
+    } catch(e){
+      const code = e?.details?.code || e?.code;
+      if (code === 'REFERENCE_RANGE_CONSTRAINT_FAIL') {
+        const det = e?.details || {};
+        const idxInfo = typeof det.rangeIndex === 'number' ? ` (parámetro ${ (det.paramIndex??0)+1 }, rango ${(det.rangeIndex??0)+1})` : '';
+        toast.error('Rango inválido (constraint)', { description: `${det.constraint || ''}${idxInfo}`.trim() });
+      }
+      if (code === 'DUPLICATE_REFERENCE_RANGE') {
+        const det = e?.details || {};
+        const idxInfo = typeof det.rangeIndex === 'number' ? `Parámetro ${ (det.paramIndex??0)+1 }, rango ${(det.rangeIndex??0)+1}` : '';
+        toast.error('Rango duplicado', { description: idxInfo });
+      }
+      throw e;
+    }
     return (res?.parameters || []).map(p => ({
       id: p.id,
       name: p.name,

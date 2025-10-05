@@ -24,10 +24,16 @@ const ARTable = ({
   }
 
   if (orders.length === 0) {
+    const msg = filterStatus === 'pending'
+      ? 'No hay cuentas por cobrar pendientes en el rango seleccionado.'
+      : filterStatus === 'paid'
+        ? 'No hay órdenes pagadas en el rango seleccionado.'
+        : 'No se encontraron órdenes que coincidan con los filtros.';
     return (
       <div className="text-center py-8 text-slate-500 dark:text-slate-400">
         <AlertCircle className="mx-auto h-12 w-12 mb-2 opacity-50" />
-        <p>No se encontraron órdenes que coincidan con los filtros.</p>
+        <p>{msg}</p>
+        <p className="text-xs mt-2">Ajusta fechas o filtros para ver otros resultados.</p>
       </div>
     );
   }
@@ -54,9 +60,9 @@ const ARTable = ({
               <TableCell>{format(new Date(order.order_date), 'dd/MM/yyyy')}</TableCell>
               <TableCell>{getPatientName(order.patient_id)}</TableCell>
               <TableCell>{getReferrerName(order.referring_entity_id)}</TableCell>
-              <TableCell className="text-right">{order.total_price.toFixed(2)}</TableCell>
-              <TableCell className="text-right text-green-600 dark:text-green-400">{order.paid_amount.toFixed(2)}</TableCell>
-              <TableCell className="text-right font-semibold text-red-600 dark:text-red-400">{order.balance.toFixed(2)}</TableCell>
+              <TableCell className="text-right">{(() => { const n = parseFloat(order.total_price); return Number.isFinite(n)? n.toFixed(2): '0.00'; })()}</TableCell>
+              <TableCell className="text-right text-green-600 dark:text-green-400">{(() => { const n = parseFloat(order.paid_amount); return Number.isFinite(n)? n.toFixed(2): '0.00'; })()}</TableCell>
+              <TableCell className="text-right font-semibold text-red-600 dark:text-red-400">{(() => { const n = parseFloat(order.balance); return Number.isFinite(n)? n.toFixed(2): '0.00'; })()}</TableCell>
               <TableCell className="text-center space-x-1">
                 <Button variant="outline" size="sm" onClick={() => onOpenPaymentModal(order)} disabled={order.balance <= 0}>
                   <CreditCard className="h-4 w-4 mr-1" /> Registrar Pago
@@ -73,13 +79,13 @@ const ARTable = ({
         {filterStatus !== 'paid' && (
           <div className="text-right">
             <p className="text-sm text-slate-500 dark:text-slate-400">Total Pendiente (filtrado):</p>
-            <p className="text-lg font-bold text-red-600 dark:text-red-400">{totalPendingAmount.toFixed(2)} MXN</p>
+            <p className="text-lg font-bold text-red-600 dark:text-red-400">{(() => { const n = parseFloat(totalPendingAmount); return Number.isFinite(n)? n.toFixed(2): '0.00'; })()} MXN</p>
           </div>
         )}
         {filterStatus !== 'pending' && (
           <div className="text-right">
             <p className="text-sm text-slate-500 dark:text-slate-400">Total Pagado (en periodo):</p>
-            <p className="text-lg font-bold text-green-600 dark:text-green-400">{totalPaidAmountInPeriod.toFixed(2)} MXN</p>
+            <p className="text-lg font-bold text-green-600 dark:text-green-400">{(() => { const n = parseFloat(totalPaidAmountInPeriod); return Number.isFinite(n)? n.toFixed(2): '0.00'; })()} MXN</p>
           </div>
         )}
       </div>

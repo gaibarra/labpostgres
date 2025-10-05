@@ -1,0 +1,24 @@
+[Unit]
+Description=LabG40 Migraciones por Tenant
+After=network.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/gaibarra/labg40
+EnvironmentFile=/home/gaibarra/labg40/.env
+ExecStart=/usr/bin/node server/scripts/runTenantMigrations.js
+User=www-data
+Group=www-data
+Nice=5
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=read-only
+PrivateTmp=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

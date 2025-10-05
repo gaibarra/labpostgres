@@ -46,28 +46,46 @@ import { useCallback } from 'react';
           text_value: vr.text_value,
         }));
 
-        return cleanedValoresReferencia.find(vr => {
-          const sexMatch = vr.sex === 'Ambos' || vr.sex === patientData.sex;
-          if (!sexMatch) return false;
-          
+        const norm = (v)=>{
+          if(!v) return '';
+          const s=String(v).toLowerCase();
+            if(s.startsWith('m')) return 'masculino';
+            if(s.startsWith('f')) return 'femenino';
+            if(s.startsWith('a')) return 'ambos';
+            if(['ambos','masculino','femenino'].includes(s)) return s;
+            return s; // fallback
+        };
+        const patientSexNorm = norm(patientData.sex);
+        // Filtrar candidatos que coincidan por sexo y edad
+        const candidates = cleanedValoresReferencia.filter(vr => {
+          const rangeSexNorm = norm(vr.sex);
+          if (!(rangeSexNorm === 'ambos' || rangeSexNorm === patientSexNorm)) return false;
           let ageComparisonValue;
-          const vrUnidadEdad = vr.age_min_unit;
-
-          switch (vrUnidadEdad) {
+          switch (vr.age_min_unit) {
             case 'horas': ageComparisonValue = patientAgeDataToUse.fullHours; break;
             case 'dias': ageComparisonValue = patientAgeDataToUse.fullDays; break;
             case 'semanas': ageComparisonValue = patientAgeDataToUse.fullWeeks; break;
             case 'meses': ageComparisonValue = patientAgeDataToUse.fullMonths; break;
             case 'años':
-            default: 
-              ageComparisonValue = patientAgeDataToUse.ageYears; 
+            default: ageComparisonValue = patientAgeDataToUse.ageYears; 
           }
-          
-          const edadMin = vr.age_min;
-          const edadMax = vr.age_max;
-
-          return ageComparisonValue >= edadMin && ageComparisonValue <= edadMax;
+          return ageComparisonValue >= vr.age_min && ageComparisonValue <= vr.age_max;
         });
+        if (!candidates.length) return null;
+        // Listar exactos
+        const exactCandidates = candidates.filter(vr => norm(vr.sex) === patientSexNorm);
+        if (exactCandidates.length > 1) {
+          try {
+            console.warn('[REF-RANGE][AMBIGUO] Múltiples rangos exactos aplican', {
+              parameterId: param?.id,
+              sex: patientSexNorm,
+              count: exactCandidates.length,
+              ranges: exactCandidates.map(r => ({ id: r.id, age_min: r.age_min, age_max: r.age_max, unit: r.age_min_unit }))
+            });
+          } catch(_) {}
+        }
+        if (exactCandidates.length) return exactCandidates[0];
+        return candidates[0];
       }, [calculateAgeInUnits]);
 
       const getReferenceRangeText = useCallback((param, patientData, patientAgeDataHook, returnObject = false) => {

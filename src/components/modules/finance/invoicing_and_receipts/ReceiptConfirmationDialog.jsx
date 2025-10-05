@@ -19,7 +19,7 @@ import React from 'react';
               <div className="py-4 space-y-2 text-sm text-slate-700 dark:text-slate-300">
                 <p><strong>Paciente:</strong> {selectedOrder.patient?.full_name || 'N/A'}</p>
                 <p><strong>Fecha Orden:</strong> {isValid(selectedOrder.fecha) ? format(selectedOrder.fecha, 'dd/MM/yyyy') : 'Fecha Inválida'}</p>
-                <p><strong>Total Orden:</strong> {(selectedOrder.total_price || 0).toFixed(2)} MXN</p>
+                <p><strong>Total Orden:</strong> {(() => { const n = parseFloat(selectedOrder.total_price); return Number.isFinite(n) ? n.toFixed(2) : '0.00'; })()} MXN</p>
               </div>
             )}
             <DialogFooter className="pt-4">

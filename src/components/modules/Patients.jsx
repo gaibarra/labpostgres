@@ -243,7 +243,18 @@ const Patients = () => {
                       <TableCell className="hidden md:table-cell">{p.phone_number}</TableCell>
                       <TableCell>{p.sex}</TableCell>
                       <TableCell className="hidden lg:table-cell">{
-                        p.date_of_birth ? (()=>{ const parts = p.date_of_birth.split('-'); if(parts.length===3) return `${parts[2]}/${parts[1]}/${parts[0]}`; return p.date_of_birth; })() : 'N/A'
+                        (() => {
+                          const dob = p.date_of_birth;
+                          if (!dob) return 'N/A';
+                          if (/^\d{4}-\d{2}-\d{2}$/.test(dob)) {
+                            const [y, m, d] = dob.split('-');
+                            const MONTH_ABBR = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+                            const idx = parseInt(m, 10) - 1;
+                            const month = MONTH_ABBR[idx] || m;
+                            return `${d} ${month} ${y}`;
+                          }
+                          return dob;
+                        })()
                       }</TableCell>
                       <TableCell className="text-right space-x-2">
                         <Button variant="outline" size="icon" onClick={() => handleViewHistory(p.id)}>

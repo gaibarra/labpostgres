@@ -5,7 +5,8 @@
  * - Each request carries a tenantId (from JWT after login against master).
  * - We lazy-create and cache a pg.Pool per tenant database.
  */
-import { Pool } from 'pg';
+// Converted to CommonJS to match rest of codebase.
+const { Pool } = require('pg');
 
 // Master DB config (DO NOT point these to a tenant DB)
 const masterPool = new Pool({
@@ -45,7 +46,7 @@ function buildTenantPool(dbName) {
   });
 }
 
-export async function getTenantPool(tenantId) {
+async function getTenantPool(tenantId) {
   const cached = tenantCache.get(tenantId);
   const now = Date.now();
   if (cached && (now - cached.cachedAt) < CACHE_TTL_MS) {
@@ -58,7 +59,7 @@ export async function getTenantPool(tenantId) {
 }
 
 // Helper to run a function with a client
-export async function withTenant(tenantId, fn) {
+async function withTenant(tenantId, fn) {
   const pool = await getTenantPool(tenantId);
   const client = await pool.connect();
   try {
@@ -69,7 +70,7 @@ export async function withTenant(tenantId, fn) {
 }
 
 // Simple provisioning action (DB creation is left to external script / superuser)
-export async function registerTenant({ slug, dbName, adminEmail, passwordHash, plan = 'standard' }) {
+async function registerTenant({ slug, dbName, adminEmail, passwordHash, plan = 'standard' }) {
   return await masterPool.query('BEGIN').then(async () => {
     try {
       const tRes = await masterPool.query(
@@ -95,10 +96,20 @@ export async function registerTenant({ slug, dbName, adminEmail, passwordHash, p
 }
 
 // Middleware example (expects req.auth.tenant_id from auth layer)
-export function tenantMiddleware() {
+function tenantMiddleware() {
   return async (req, res, next) => {
-    const tenantId = req.auth?.tenant_id;
-    if (!tenantId) return res.status(401).json({ error: 'NO_TENANT' });
+    // Accept several possible claim names for compatibility
+    const tenantId = req.auth?.tenant_id || req.auth?.tenantId || req.user?.tenant_id || req.user?.tenantId;
+    if (!tenantId) {
+      if (process.env.TENANT_DEBUG) {
+        console.warn('[tenantMiddleware][NO_TENANT]', {
+          hasAuth: !!req.auth,
+          authKeys: req.auth ? Object.keys(req.auth) : null,
+          hasUser: !!req.user
+        });
+      }
+      return res.status(401).json({ error: 'NO_TENANT' });
+    }
     try {
       req.tenantPool = await getTenantPool(tenantId);
       return next();
@@ -109,7 +120,7 @@ export function tenantMiddleware() {
 }
 
 // Graceful shutdown helper
-export async function closeAllTenantPools() {
+async function closeAllTenantPools() {
   const closes = [];
   for (const { pool } of tenantCache.values()) closes.push(pool.end());
   await Promise.allSettled(closes);
@@ -117,7 +128,7 @@ export async function closeAllTenantPools() {
 }
 
 // Health check (master + one optional tenant)
-export async function masterHealth(tenantId) {
+async function masterHealth(tenantId) {
   const { rows } = await masterPool.query('SELECT 1 as ok');
   const r = { master: rows[0].ok === 1 };
   if (tenantId) {
@@ -131,3 +142,13 @@ export async function masterHealth(tenantId) {
   }
   return r;
 }
+
+module.exports = {
+  getTenantPool,
+  withTenant,
+  registerTenant,
+  tenantMiddleware,
+  closeAllTenantPools,
+  masterHealth,
+  __getCache: () => tenantCache
+};

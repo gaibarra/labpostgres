@@ -1,5 +1,5 @@
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -62,7 +62,8 @@ export const generateBillingReportPDF = (reportData) => {
     ]);
   });
 
-  doc.autoTable({
+  if (typeof autoTable === 'function') {
+  autoTable(doc, {
     startY: y,
     head: [[
       { content: 'Paciente', styles: { fillColor: [200, 200, 200] } },
@@ -83,8 +84,13 @@ export const generateBillingReportPDF = (reportData) => {
       }
     },
   });
-
-  y = doc.autoTable.previous.finalY + 10;
+  y = doc.lastAutoTable ? doc.lastAutoTable.finalY + 10 : y + 10;
+  } else {
+    // Fallback if plugin failed to attach
+    doc.setFontSize(10);
+    doc.text('Tabla no disponible (plugin jspdf-autotable no cargado).', 14, y);
+    y += 10;
+  }
 
   if (y + 20 > pageHeight) {
     doc.addPage();

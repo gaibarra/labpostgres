@@ -3,7 +3,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { CardHeader, CardTitle } from '@/components/ui/card';
 import { Beaker, PlusCircle, Sparkles, Search, HelpCircle } from 'lucide-react';
-import { DialogTrigger } from "@/components/ui/dialog";
 
 const StudiesHeader = ({ searchTerm, setSearchTerm, onNewStudyClick, onAIAssist, onHelpClick }) => {
   return (
@@ -14,11 +13,9 @@ const StudiesHeader = ({ searchTerm, setSearchTerm, onNewStudyClick, onAIAssist,
           <CardTitle className="text-xl md:text-2xl font-bold text-sky-700 dark:text-sky-400">Catálogo de Estudios</CardTitle>
         </div>
         <div className="flex w-full md:w-auto flex-col sm:flex-row items-stretch sm:items-center gap-2">
-          <DialogTrigger asChild>
-            <Button className="bg-gradient-to-r from-sky-500 to-cyan-500 hover:from-sky-600 hover:to-cyan-600 text-white" onClick={onNewStudyClick}>
-              <PlusCircle className="mr-2 h-4 w-4" /> Nuevo Estudio
-            </Button>
-          </DialogTrigger>
+          <Button className="bg-gradient-to-r from-sky-500 to-cyan-500 hover:from-sky-600 hover:to-cyan-600 text-white" onClick={onNewStudyClick}>
+            <PlusCircle className="mr-2 h-4 w-4" /> Nuevo Estudio
+          </Button>
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={onAIAssist} className="flex-1 text-purple-500 border-purple-500 hover:bg-purple-100 dark:hover:bg-purple-800">
               <Sparkles className="mr-2 h-4 w-4" /> Asistencia IA

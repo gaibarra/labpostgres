@@ -7,8 +7,10 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-  "test": "npm --prefix server run test && vitest",
-  "dev:all": "concurrently \"npm --prefix server run dev\" \"vite\""
+    "test": "npm --prefix server run test && vitest",
+    "dev:all": "concurrently \"npm --prefix server run dev\" \"vite\"",
+    "lint": "eslint server src",
+  "verify:sex": "npm --prefix server run migrate && npm --prefix server run test -- tests/referenceRanges.sexVariants.test.js && npm --prefix server run test -- tests/analysis.sexAudit.test.js && npm --prefix server run diagnose:sex"
   },
   "dependencies": {
     "@emotion/is-prop-valid": "^1.2.1",
@@ -31,6 +33,7 @@
     "@radix-ui/react-toast": "^1.1.5",
     "@radix-ui/react-tooltip": "^1.0.7",
     "@types/uuid": "^10.0.0",
+    "bcryptjs": "^3.0.2",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.0.0",
     "cmdk": "^0.2.0",
@@ -60,7 +63,6 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
-  "concurrently": "^8.2.2",
     "@babel/generator": "^7.27.0",
     "@babel/parser": "^7.27.0",
     "@babel/traverse": "^7.27.0",
@@ -72,6 +74,7 @@
     "@types/react-dom": "^18.2.7",
     "@vitejs/plugin-react": "^4.0.3",
     "autoprefixer": "^10.4.21",
+    "concurrently": "^8.2.2",
     "eslint": "^8.57.1",
     "eslint-config-react-app": "^7.0.1",
     "jsdom": "^26.1.0",

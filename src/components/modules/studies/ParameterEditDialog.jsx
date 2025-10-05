@@ -107,7 +107,7 @@ const ParameterEditDialog = ({ isOpen, onOpenChange, onSave, parameter: initialP
               <h3 className="text-lg font-medium mb-2">Valores de Referencia</h3>
               <div className="space-y-4">
                 {parameter.valorReferencia?.map((field, index) => (
-                  <div key={field.id} className="flex items-center gap-2 p-2 border rounded-md">
+                  <div key={field.id} className="flex items-center gap-2 p-2 border rounded-md" data-range-index={index}>
                     <ReferenceValueInput index={index} value={field} onChange={handleReferenceChange} isSubmitting={isSubmitting} />
                     <Button type="button" variant="ghost" size="icon" onClick={() => removeReferenceValue(index)}>
                       <XCircle className="h-5 w-5 text-red-500" />

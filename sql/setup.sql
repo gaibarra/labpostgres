@@ -227,15 +227,19 @@ CREATE TABLE IF NOT EXISTS expenses (
   concept text,
   category text,
   amount numeric(12,2) NOT NULL DEFAULT 0,
+  provider text,
+  notes text,
   created_at timestamptz DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS payments (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  work_order_id uuid REFERENCES work_orders(id) ON DELETE CASCADE,
   patient_id uuid REFERENCES patients(id) ON DELETE SET NULL,
   amount numeric(12,2) NOT NULL,
   method text,
   payment_date timestamptz DEFAULT now(),
+  notes text,
   created_at timestamptz DEFAULT now()
 );
 

@@ -11,6 +11,7 @@ import React, { useState, useEffect, useCallback } from 'react';
     import { useToast } from "@/components/ui/use-toast";
     import { format, parseISO, isValid, startOfDay, endOfDay } from 'date-fns';
     import { apiClient } from '@/lib/apiClient';
+    import { triggerDownload } from '@/utils/safeDownload';
     import { useAuth } from '@/contexts/AuthContext';
     import { logAuditEvent } from '@/lib/auditUtils';
 
@@ -123,7 +124,16 @@ import React, { useState, useEffect, useCallback } from 'react';
       };
 
       const handleEditExpense = (expense) => {
-        setCurrentExpense({ ...expense, amount: expense.amount.toString(), expense_date: parseISO(expense.expense_date) });
+        setCurrentExpense({
+          ...expense,
+          description: expense.description || expense.concept || '',
+          category: expense.category || '',
+          provider: expense.provider || '',
+            // some legacy rows may store notes null
+          notes: expense.notes || '',
+          amount: (expense.amount != null && expense.amount !== '') ? expense.amount.toString() : '',
+          expense_date: parseISO(expense.expense_date)
+        });
         setIsFormOpen(true);
       };
 
@@ -138,7 +148,7 @@ import React, { useState, useEffect, useCallback } from 'react';
         }
       };
       
-      const handleDownloadReport = () => {
+  const handleDownloadReport = () => {
         if (!expenses || expenses.length === 0) {
           toast({
             title: "Sin datos para exportar",
@@ -149,27 +159,27 @@ import React, { useState, useEffect, useCallback } from 'react';
         }
 
         const headers = ["Fecha", "Descripción", "Categoría", "Proveedor", "Monto (MXN)", "Notas"];
-        const rows = expenses.map(exp => [
-          format(parseISO(exp.expense_date), 'dd/MM/yyyy'),
-          `"${exp.description.replace(/"/g, '""')}"`,
-          `"${exp.category}"`,
-          `"${(exp.provider || '').replace(/"/g, '""')}"`,
-          exp.amount.toFixed(2),
-          `"${(exp.notes || '').replace(/"/g, '""')}"`
-        ].join(','));
+        const rows = expenses.map(exp => {
+          const fecha = isValid(parseISO(exp.expense_date)) ? format(parseISO(exp.expense_date), 'dd/MM/yyyy') : exp.expense_date;
+          const rawDesc = exp.description || exp.concept || '';
+          const amt = parseFloat(exp.amount) || 0;
+          return [
+            fecha,
+            `"${rawDesc.replace(/"/g, '""')}"`,
+            `"${(exp.category||'').replace(/"/g, '""')}"`,
+            `"${(exp.provider || '').replace(/"/g, '""')}"`,
+            amt.toFixed(2),
+            `"${(exp.notes || '').replace(/"/g, '""')}"`
+          ].join(',');
+        });
 
         let csvContent = "data:text/csv;charset=utf-8,";
         csvContent += headers.join(',') + "\r\n";
         csvContent += rows.join("\r\n");
         csvContent += `\r\n\r\nTotal,,,,${totalFilteredAmount.toFixed(2)}`;
 
-        const encodedUri = encodeURI(csvContent);
-        const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
-        link.setAttribute("download", "reporte_gastos.csv");
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+  const encodedUri = encodeURI(csvContent);
+  triggerDownload(encodedUri, 'reporte_gastos.csv');
 
         toast({
           title: "Descarga Iniciada",
@@ -177,7 +187,7 @@ import React, { useState, useEffect, useCallback } from 'react';
         });
       };
 
-      const totalFilteredAmount = expenses.reduce((sum, exp) => sum + exp.amount, 0);
+  const totalFilteredAmount = expenses.reduce((sum, exp) => sum + (parseFloat(exp.amount) || 0), 0);
 
       return (
         <motion.div
@@ -311,10 +321,10 @@ import React, { useState, useEffect, useCallback } from 'react';
                           {expenses.map(expense => (
                             <TableRow key={expense.id}>
                               <TableCell>{isValid(parseISO(expense.expense_date)) ? format(parseISO(expense.expense_date), 'dd/MM/yyyy') : 'Fecha inválida'}</TableCell>
-                              <TableCell>{expense.description}</TableCell>
+                              <TableCell>{expense.description || expense.concept || ''}</TableCell>
                               <TableCell className="capitalize">{expense.category}</TableCell>
                               <TableCell>{expense.provider || '-'}</TableCell>
-                              <TableCell className="text-right">{parseFloat(expense.amount).toFixed(2)}</TableCell>
+                              <TableCell className="text-right">{(() => { const n = parseFloat(expense.amount); return Number.isFinite(n) ? n.toFixed(2) : '0.00'; })()}</TableCell>
                               <TableCell className="text-center space-x-1">
                                 <Button variant="ghost" size="icon" onClick={() => handleEditExpense(expense)} className="text-blue-500 hover:text-blue-700"><Edit3 className="h-4 w-4" /></Button>
                                 <Button variant="ghost" size="icon" onClick={() => handleDeleteExpense(expense.id, expense.description)} className="text-red-500 hover:text-red-700"><Trash2 className="h-4 w-4" /></Button>

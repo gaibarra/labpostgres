@@ -327,7 +327,7 @@ import React, { useState, useEffect, useCallback } from 'react';
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                 <div>
                     <Label htmlFor="subtotal" className="text-slate-700 dark:text-slate-300">Subtotal</Label>
-                    <Input id="subtotal" name="subtotal" type="number" value={order.subtotal.toFixed(2)} readOnly className="bg-slate-200/80 dark:bg-slate-700/80" />
+                    <Input id="subtotal" name="subtotal" type="number" value={(() => { const n=parseFloat(order.subtotal); return Number.isFinite(n)? n.toFixed(2):'0.00'; })()} readOnly className="bg-slate-200/80 dark:bg-slate-700/80" />
                 </div>
                 <div>
                     <Label htmlFor="descuento" className="text-slate-700 dark:text-slate-300">Descuento (MXN)</Label>
@@ -335,14 +335,16 @@ import React, { useState, useEffect, useCallback } from 'react';
                 </div>
                 <div>
                     <Label htmlFor="total_price" className="text-slate-700 dark:text-slate-300">Total</Label>
-                    <Input id="total_price" name="total_price" type="number" value={order.total_price.toFixed(2)} readOnly className="bg-slate-200/80 dark:bg-slate-700/80 font-bold" />
+                    <Input id="total_price" name="total_price" type="number" value={(() => { const n=parseFloat(order.total_price); return Number.isFinite(n)? n.toFixed(2):'0.00'; })()} readOnly className="bg-slate-200/80 dark:bg-slate-700/80 font-bold" />
                 </div>
                  <div>
                     <Label htmlFor="status" className="text-slate-700 dark:text-slate-300">Estado de Orden</Label>
                     <Select name="status" value={order.status} onValueChange={(value) => handleSelectChange('status', value)}>
                       <SelectTrigger className="bg-white/80 dark:bg-slate-800/80"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        {orderStatusOptions.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                        {orderStatusOptions.map(s => (
+                          <SelectItem key={s} value={s}><span>{s}</span></SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -354,7 +356,7 @@ import React, { useState, useEffect, useCallback } from 'react';
                 </div>
                 <div>
                     <Label htmlFor="saldoPendiente" className="text-slate-700 dark:text-slate-300">Saldo Pendiente</Label>
-                    <Input id="saldoPendiente" name="saldoPendiente" type="number" value={order.saldoPendiente.toFixed(2)} readOnly className="bg-slate-200/80 dark:bg-slate-700/80" />
+                    <Input id="saldoPendiente" name="saldoPendiente" type="number" value={(() => { const n=parseFloat(order.saldoPendiente); return Number.isFinite(n)? n.toFixed(2):'0.00'; })()} readOnly className="bg-slate-200/80 dark:bg-slate-700/80" />
                 </div>
              </div>
              <div>

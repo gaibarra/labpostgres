@@ -92,25 +92,23 @@ import React, { useState, useMemo, useCallback } from 'react';
       }, [openModal]);
 
 
-      const modalComponent = useMemo(() => {
-        if (!modalState.isOpen || (!modalState.orderData && modalState.type !== 'form')) return null;
-
+      // Montaje permanente de todos los modales; sólo alternamos open
+      const persistentModals = useMemo(() => {
         const { type, orderData, aiRecommendations } = modalState;
         const { patient, referrer } = getDetails(orderData);
+        const isType = (t) => modalState.isOpen && type === t;
 
-        const orderToUse = type === 'form' ? currentOrder : orderData;
-
-        switch (type) {
-          case 'form':
-            return (
-              <Dialog open={true} onOpenChange={closeModal}>
+        return (
+          <>
+            <Dialog open={isType('form')} onOpenChange={closeModal} data-modal="order-form">
+              {isType('form') && (
                 <DialogContent className="sm:max-w-4xl bg-slate-50 dark:bg-slate-900 max-h-[90vh] overflow-y-auto">
                   <DialogHeader>
-                    <DialogTitle className="text-sky-700 dark:text-sky-400">{orderToUse?.id ? 'Editar Orden' : 'Registrar Nueva Orden'}</DialogTitle>
+                    <DialogTitle className="text-sky-700 dark:text-sky-400">{(orderData?.id) ? 'Editar Orden' : 'Registrar Nueva Orden'}</DialogTitle>
                     <DialogDescription>Completa los detalles de la orden de trabajo.</DialogDescription>
                   </DialogHeader>
                   <OrderForm
-                    initialOrderData={orderToUse}
+                    initialOrderData={orderData}
                     onSubmit={handleFormSubmit}
                     patients={patients}
                     referrers={referrers}
@@ -120,97 +118,81 @@ import React, { useState, useMemo, useCallback } from 'react';
                     isSubmitting={isSubmitting}
                   />
                 </DialogContent>
-              </Dialog>
-            );
-          case 'preview':
-            return (
-              <OrderPreviewModal
-                isOpen={true}
-                onOpenChange={closeModal}
-                order={orderData}
-                patient={patient}
-                referrer={referrer}
-                studiesDetails={studiesDetails}
-                packagesData={packagesDetails}
-              />
-            );
-          case 'worksheet':
-             if (!patient) return null;
-            return (
-              <WorkSheetModal
-                isOpen={true}
-                onClose={closeModal}
-                order={orderData}
-                studiesDetails={studiesDetails}
-                packagesDetails={packagesDetails}
-                patientDetails={patient}
-              />
-            );
-          case 'results':
-            return (
-              <OrderResultsModal
-                isOpen={true}
-                onOpenChange={closeModal}
-                order={orderData}
-                studiesDetails={studiesDetails}
-                packagesData={packagesDetails}
-                patient={patient}
-                onSaveResults={onSaveResults}
-                onValidateAndPreview={handleValidateAndPreview}
-              />
-            );
-          case 'labels':
-            return (
-              <OrderQRLabelsModal
-                isOpen={true}
-                onOpenChange={closeModal}
-                order={orderData}
-                patient={patient}
-              />
-            );
-          case 'report':
-            return (
-              <FinalReportPreviewModal
-                isOpen={true}
-                onOpenChange={closeModal}
-                order={orderData}
-                patient={patient}
-                referrer={referrer}
-                studiesDetails={studiesDetails}
-                packagesData={packagesDetails}
-                onSend={() => {}}
-              />
-            );
-          case 'ai-recommendations':
-            return (
-              <AIRecommendationsModal
-                isOpen={true}
-                onOpenChange={closeModal}
-                order={orderData}
-                patient={patient}
-                studiesDetails={studiesDetails}
-                packagesDetails={packagesDetails}
-                onOpenPreview={openAIPreviewModal}
-              />
-            );
-           case 'ai-preview':
-            return (
-                <AIRecommendationsPreviewModal
-                    isOpen={true}
-                    onOpenChange={closeModal}
-                    order={orderData}
-                    patient={patient}
-                    recommendations={aiRecommendations}
-                />
-            );
-          default:
-            return null;
-        }
-      }, [modalState, closeModal, studiesDetails, packagesDetails, patients, referrers, onSaveResults, handleValidateAndPreview, handleFormSubmit, isSubmitting, openAIPreviewModal, currentOrder]);
+              )}
+            </Dialog>
+
+            <OrderPreviewModal
+              isOpen={isType('preview')}
+              onOpenChange={closeModal}
+              order={orderData}
+              patient={patient}
+              referrer={referrer}
+              studiesDetails={studiesDetails}
+              packagesData={packagesDetails}
+            />
+
+            <WorkSheetModal
+              isOpen={isType('worksheet') && !!patient}
+              onClose={closeModal}
+              order={orderData}
+              studiesDetails={studiesDetails}
+              packagesDetails={packagesDetails}
+              patientDetails={patient}
+            />
+
+            <OrderResultsModal
+              isOpen={isType('results')}
+              onOpenChange={closeModal}
+              order={orderData}
+              studiesDetails={studiesDetails}
+              packagesData={packagesDetails}
+              patient={patient}
+              onSaveResults={onSaveResults}
+              onValidateAndPreview={handleValidateAndPreview}
+            />
+
+            <OrderQRLabelsModal
+              isOpen={isType('labels')}
+              onOpenChange={closeModal}
+              order={orderData}
+              patient={patient}
+            />
+
+            <FinalReportPreviewModal
+              isOpen={isType('report')}
+              onOpenChange={closeModal}
+              order={orderData}
+              patient={patient}
+              referrer={referrer}
+              studiesDetails={studiesDetails}
+              packagesData={packagesDetails}
+              onSend={() => {}}
+            />
+
+            <AIRecommendationsModal
+              isOpen={isType('ai-recommendations')}
+              onOpenChange={closeModal}
+              order={orderData}
+              patient={patient}
+              studiesDetails={studiesDetails}
+              packagesDetails={packagesDetails}
+              onOpenPreview={(order, recommendations) => openModal('ai-preview', order, { recommendations })}
+            />
+
+            <AIRecommendationsPreviewModal
+              isOpen={isType('ai-preview')}
+              onOpenChange={closeModal}
+              order={orderData}
+              patient={patient}
+              recommendations={aiRecommendations}
+            />
+          </>
+        );
+      }, [modalState, closeModal, getDetails, patients, referrers, studiesDetails, packagesDetails, onSaveResults, handleValidateAndPreview, handleFormSubmit, isSubmitting, openModal]);
 
       return {
         openModal,
         closeModal,
-        modalComponent: <AnimatePresence>{modalComponent}</AnimatePresence>,
+        modalComponent: persistentModals,
       };
     };

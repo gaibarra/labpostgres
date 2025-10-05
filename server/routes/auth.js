@@ -2,6 +2,25 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { pool } = require('../db');
+function activePool(req){ return req.tenantPool || pool; }
+// Master DB (multi-tenant) optional: if MULTI_TENANT=1 use master for auth lookups
+let masterPool = null;
+if (process.env.MULTI_TENANT === '1') {
+  try {
+    const { Pool } = require('pg');
+    masterPool = new Pool({
+      host: process.env.MASTER_PGHOST || process.env.PGHOST,
+      port: process.env.MASTER_PGPORT || process.env.PGPORT || 5432,
+      user: process.env.MASTER_PGUSER || process.env.PGUSER,
+      password: process.env.MASTER_PGPASSWORD || process.env.PGPASSWORD,
+      database: process.env.MASTER_PGDATABASE || process.env.MASTER_DB || 'lab_master',
+      max: 5,
+      idleTimeoutMillis: 30000
+    });
+  } catch(e) {
+    console.error('[AUTH] No se pudo inicializar masterPool:', e.message);
+  }
+}
 const authMiddleware = require('../middleware/auth');
 const { AppError } = require('../utils/errors');
 const { add: blacklistAdd, registerActiveToken, blacklistJti, revokeActive } = require('../services/tokenStore');
@@ -19,8 +38,9 @@ let PROFILE_HAS_FIRST_LAST = false;
 async function ensureAuthStructures() {
   try {
     // Garantizar extensiones para UUID si no existen (evita 500 si falta gen_random_uuid)
-    await pool.query('CREATE EXTENSION IF NOT EXISTS "pgcrypto";');
-    await pool.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";'); // fallback
+  const ap = pool; // extensiones sólo en plantilla/base principal
+  await ap.query('CREATE EXTENSION IF NOT EXISTS "pgcrypto";');
+  await ap.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";'); // fallback
   } catch (extErr) {
     if (process.env.DEBUG_AUTH_INIT) console.warn('[AUTH INIT] No se pudieron crear extensiones UUID (puede no ser superuser):', extErr.code || extErr.message);
   }
@@ -68,7 +88,7 @@ async function ensureAuthStructures() {
       );
       CREATE INDEX IF NOT EXISTS idx_roles_permissions_role ON roles_permissions(role_name);
     `;
-    await pool.query(sqlCreate);
+  await pool.query(sqlCreate); // estructuras base en pool principal (no por-tenant aquí)
   } catch (tblErr) {
     // Si falla por ausencia de gen_random_uuid intentar recrear usando uuid_generate_v4
     const needsFallback = /gen_random_uuid/i.test(tblErr.message || '');
@@ -178,7 +198,7 @@ router.post('/register', validate(registerSchema), audit('register','auth_user',
   if (!email || !password) return next(new AppError(400,'Email y password requeridos','MISSING_FIELDS'));
   try {
     const hash = await bcrypt.hash(password, 10);
-    const { rows } = await pool.query(
+  const { rows } = await activePool(req).query(
       'INSERT INTO users(email, password_hash, full_name) VALUES($1,$2,$3) RETURNING id, email, full_name, created_at',
       [email, hash, full_name || null]
     );
@@ -190,20 +210,20 @@ router.post('/register', validate(registerSchema), audit('register','auth_user',
     const nameValue = user.full_name || full_name || null;
     if (PROFILE_HAS_USER_ID && PROFILE_HAS_FULL_NAME) {
       // Determine if profiles.id is independent (has default) or equals users.id (no user_id schema). We just insert with user_id and let default id generate.
-      await pool.query('INSERT INTO profiles(id, user_id, email, full_name, role) VALUES(gen_random_uuid(),$1,$2,$3,$4)', [user.id, user.email, nameValue, effectiveRole]);
+  await activePool(req).query('INSERT INTO profiles(id, user_id, email, full_name, role) VALUES(gen_random_uuid(),$1,$2,$3,$4)', [user.id, user.email, nameValue, effectiveRole]);
     } else if (PROFILE_HAS_USER_ID && PROFILE_HAS_FIRST_LAST) {
       const first = nameValue ? nameValue.split(' ')[0] : null;
       const last = nameValue ? nameValue.split(' ').slice(1).join(' ') || null : null;
-      await pool.query('INSERT INTO profiles(id, user_id, email, first_name, last_name, role) VALUES(gen_random_uuid(),$1,$2,$3,$4,$5)', [user.id, user.email, first, last, effectiveRole]);
+  await activePool(req).query('INSERT INTO profiles(id, user_id, email, first_name, last_name, role) VALUES(gen_random_uuid(),$1,$2,$3,$4,$5)', [user.id, user.email, first, last, effectiveRole]);
     } else if (!PROFILE_HAS_USER_ID && PROFILE_HAS_FULL_NAME) {
-      await pool.query('INSERT INTO profiles(id, email, full_name, role) VALUES($1,$2,$3,$4) ON CONFLICT (id) DO UPDATE SET email=EXCLUDED.email, full_name=EXCLUDED.full_name', [user.id, user.email, nameValue, effectiveRole]);
+  await activePool(req).query('INSERT INTO profiles(id, email, full_name, role) VALUES($1,$2,$3,$4) ON CONFLICT (id) DO UPDATE SET email=EXCLUDED.email, full_name=EXCLUDED.full_name', [user.id, user.email, nameValue, effectiveRole]);
     } else if (!PROFILE_HAS_USER_ID && PROFILE_HAS_FIRST_LAST) {
       const first = nameValue ? nameValue.split(' ')[0] : null;
       const last = nameValue ? nameValue.split(' ').slice(1).join(' ') || null : null;
-      await pool.query('INSERT INTO profiles(id, email, first_name, last_name, role) VALUES($1,$2,$3,$4,$5) ON CONFLICT (id) DO UPDATE SET email=EXCLUDED.email, first_name=EXCLUDED.first_name, last_name=EXCLUDED.last_name', [user.id, user.email, first, last, effectiveRole]);
+  await activePool(req).query('INSERT INTO profiles(id, email, first_name, last_name, role) VALUES($1,$2,$3,$4,$5) ON CONFLICT (id) DO UPDATE SET email=EXCLUDED.email, first_name=EXCLUDED.first_name, last_name=EXCLUDED.last_name', [user.id, user.email, first, last, effectiveRole]);
     } else {
       // Fallback: attempt minimal insert with columns that exist (email only)
-      try { await pool.query('INSERT INTO profiles(id, email, role) VALUES($1,$2,$3) ON CONFLICT DO NOTHING', [user.id, user.email, effectiveRole]); } catch(_) {}
+  try { await activePool(req).query('INSERT INTO profiles(id, email, role) VALUES($1,$2,$3) ON CONFLICT DO NOTHING', [user.id, user.email, effectiveRole]); } catch(_) {}
     }
     res.locals.newUserId = user.id;
   const jti = (Date.now().toString(36) + Math.random().toString(36).slice(2,10));
@@ -221,24 +241,85 @@ router.post('/login', validate(loginSchema), audit('login','auth_user', req=>req
   const { email, password } = req.body || {};
   if (!email || !password) return next(new AppError(400,'Email y password requeridos','MISSING_FIELDS'));
   try {
-  const { rows } = await pool.query('SELECT id, email, password_hash, full_name, token_version, created_at FROM users WHERE LOWER(email)=LOWER($1)', [email]);
+  // Multi-tenant: buscar credenciales en master si habilitado
+  let rows;
+  let tenantId = null;
+  if (masterPool) {
+    // master users table expected: tenant_admins or a view; fallback to users in tenant DB if not found
+    try {
+      const r = await masterPool.query('SELECT ta.id, ta.email, ta.password_hash, ta.tenant_id, 1 as token_version, now() as created_at FROM tenant_admins ta WHERE LOWER(ta.email)=LOWER($1) LIMIT 1', [email]);
+      rows = r.rows;
+      if (rows[0]) tenantId = rows[0].tenant_id;
+      if (process.env.DEBUG_AUTH) console.log('[LOGIN][MASTER_MATCH]', { email, tenantId, found: !!rows[0] });
+    } catch (e) {
+      console.warn('[AUTH][MT] fallo consulta tenant_admins, usando tabla users tenant:', e.message);
+    }
+  }
+  if (!rows || rows.length === 0) {
+  const r2 = await activePool(req).query('SELECT id, email, password_hash, full_name, token_version, created_at FROM users WHERE LOWER(email)=LOWER($1)', [email]);
+    rows = r2.rows;
+    if (process.env.DEBUG_AUTH) console.log('[LOGIN][TENANT_FALLBACK]', { email, found: !!rows[0] });
+  }
     const user = rows[0];
   if (!user) return next(new AppError(401,'Credenciales inválidas','BAD_CREDENTIALS'));
     const ok = await bcrypt.compare(password, user.password_hash);
+  if (process.env.DEBUG_AUTH) console.log('[LOGIN][PWD_CHECK]', { email, ok });
   if (!ok) return next(new AppError(401,'Credenciales inválidas','BAD_CREDENTIALS'));
+    // Si es login vía master (tenant admin), sincronizar usuario dentro del tenant antes de emitir token.
+    let effectiveUserId = user.id; // se reemplazará por el id en el tenant si aplica
     let role = 'Invitado';
-    if (PROFILE_HAS_USER_ID) {
-      const { rows: profileRows } = await pool.query('SELECT role FROM profiles WHERE user_id=$1', [user.id]);
-      if (profileRows[0]?.role) role = profileRows[0].role; else {
-        const { rows: alt } = await pool.query('SELECT role FROM profiles WHERE id=$1', [user.id]);
-        if (alt[0]?.role) role = alt[0].role;
+    if (tenantId) {
+      try {
+        const { getTenantPool } = require('../services/tenantResolver');
+        const tPool = await getTenantPool(tenantId);
+        // Buscar usuario en tenant
+        const tUserRes = await tPool.query('SELECT id, email, full_name, token_version, created_at FROM users WHERE LOWER(email)=LOWER($1) LIMIT 1', [email]);
+        if (tUserRes.rows.length === 0) {
+          // Crear usuario en tenant (full_name opcional desde master si existiera)
+          const inserted = await tPool.query(
+            'INSERT INTO users(email, password_hash, full_name) VALUES($1,$2,$3) RETURNING id, email, full_name, token_version, created_at',
+            [email, user.password_hash, user.full_name || null]
+          );
+          effectiveUserId = inserted.rows[0].id;
+          // Crear perfil con rol Administrador por defecto (owner)
+          if (PROFILE_HAS_USER_ID) {
+            await tPool.query('INSERT INTO profiles(id, user_id, email, full_name, role) VALUES(gen_random_uuid(),$1,$2,$3,$4)', [effectiveUserId, email, user.full_name || email, 'Administrador']);
+          } else {
+            await tPool.query('INSERT INTO profiles(id, email, full_name, role) VALUES($1,$2,$3,$4) ON CONFLICT (id) DO NOTHING', [effectiveUserId, email, user.full_name || email, 'Administrador']);
+          }
+          role = 'Administrador';
+        } else {
+          const tUser = tUserRes.rows[0];
+            effectiveUserId = tUser.id;
+            // Obtener rol de perfil
+            if (PROFILE_HAS_USER_ID) {
+              const pr = await tPool.query('SELECT role FROM profiles WHERE user_id=$1', [effectiveUserId]);
+              role = pr.rows[0]?.role || 'Administrador';
+            } else {
+              const pr = await tPool.query('SELECT role FROM profiles WHERE id=$1', [effectiveUserId]);
+              role = pr.rows[0]?.role || 'Administrador';
+            }
+        }
+      } catch (syncErr) {
+        console.warn('[AUTH][MT] No se pudo sincronizar usuario en tenant', syncErr.message);
+        role = 'Administrador'; // fallback generoso para no bloquear
       }
     } else {
-      const { rows: profileRows } = await pool.query('SELECT role FROM profiles WHERE id=$1', [user.id]);
-      role = profileRows[0]?.role || role;
+      // Camino single-tenant existente
+      if (PROFILE_HAS_USER_ID) {
+        const { rows: profileRows } = await activePool(req).query('SELECT role FROM profiles WHERE user_id=$1', [user.id]);
+        if (profileRows[0]?.role) role = profileRows[0].role; else {
+          const { rows: alt } = await activePool(req).query('SELECT role FROM profiles WHERE id=$1', [user.id]);
+          if (alt[0]?.role) role = alt[0].role;
+        }
+      } else {
+        const { rows: profileRows } = await activePool(req).query('SELECT role FROM profiles WHERE id=$1', [user.id]);
+        role = profileRows[0]?.role || role;
+      }
     }
   const jti = (Date.now().toString(36) + Math.random().toString(36).slice(2,10));
-  const payload = { id: user.id, email: user.email, role, jti, tv: user.token_version };
+  const payload = { id: effectiveUserId, email: user.email, role, jti, tv: user.token_version };
+  if (tenantId) payload.tenant_id = tenantId;
   const token = jwt.sign(payload, process.env.JWT_SECRET || 'devsecret', { expiresIn: '12h' });
     // Emitir cookie httpOnly adicional (fase de transición: mantenemos respuesta JSON con token por compatibilidad)
     try {
@@ -254,7 +335,7 @@ router.post('/login', validate(loginSchema), audit('login','auth_user', req=>req
       if (process.env.DEBUG_AUTH) console.warn('[LOGIN] no se pudo establecer cookie', cookieErr.message);
     }
   try { const decoded = jwt.decode(token); if (decoded?.exp) registerActiveToken({ jti, userId: user.id, exp: decoded.exp, tokenVersion: user.token_version }); } catch(_) {}
-  res.json({ user: { id: user.id, email: user.email, full_name: user.full_name, created_at: user.created_at, role, token_version: user.token_version }, token });
+  res.json({ user: { id: payload.id, email: user.email, full_name: user.full_name, created_at: user.created_at, role, token_version: user.token_version, tenant_id: tenantId }, token });
   } catch (e) {
   // Logging detallado si DEBUG_AUTH
   if (process.env.DEBUG_AUTH) console.error('[LOGIN_ERROR]', { message: e.message, code: e.code, stack: e.stack });
@@ -290,7 +371,7 @@ router.get('/me', authMiddleware, async (req, res, next) => {
     const profileColsSql = profileCols.length ? ', ' + profileCols.join(', ') : '';
     const joinCondition = PROFILE_HAS_USER_ID ? 'p.user_id=u.id' : 'p.id=u.id';
     const sql = `SELECT u.id, u.email, u.full_name, u.created_at, p.role${profileColsSql} FROM users u LEFT JOIN profiles p ON ${joinCondition} WHERE u.id=$1`;
-    const { rows } = await pool.query(sql, [req.user.id]);
+  const { rows } = await activePool(req).query(sql, [req.user.id]);
     if (!rows[0]) return next(new AppError(404,'Usuario no encontrado','USER_NOT_FOUND'));
     const row = rows[0];
     let fullNameOut = row.full_name;

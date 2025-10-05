@@ -1,5 +1,9 @@
 import jsPDF from 'jspdf';
-    import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
+// Debug: verify plugin import mode
+// (Will be removed once stable)
+// eslint-disable-next-line no-console
+console.debug('[receiptGenerator] Loaded module. typeof autoTable =', typeof autoTable);
     import { format, isValid } from 'date-fns';
     import { apiClient } from '@/lib/apiClient';
     import { amountToWords } from '@/lib/amountToWords';
@@ -46,7 +50,9 @@ import jsPDF from 'jspdf';
         // fallback to defaults silently
       }
 
-      const doc = new jsPDF();
+  const doc = new jsPDF();
+  // eslint-disable-next-line no-console
+  console.debug('[receiptGenerator] New jsPDF instance created. Has doc.autoTable?', typeof doc.autoTable);
       doc.setFontSize(18);
       doc.text(labInfo.razonSocial || labInfo.name || "Laboratorio Clínico", 14, 22);
       doc.setFontSize(10);
@@ -80,14 +86,21 @@ import jsPDF from 'jspdf';
       });
 
       if (tableRows.length > 0) {
-        doc.autoTable({
+  if (typeof autoTable !== 'function') {
+          // Fallback: plugin failed to load; avoid crashing and still return a minimal PDF
+          console.error('jspdf-autotable plugin not loaded; skipping items table');
+        } else {
+          autoTable(doc, {
           startY: 85,
           head: [tableColumn],
           body: tableRows,
           theme: 'striped',
           headStyles: { fillColor: [22, 160, 133] },
-        });
-        finalY = doc.lastAutoTable.finalY + 10;
+          });
+          // eslint-disable-next-line no-console
+          console.debug('[receiptGenerator] Table generated. lastAutoTable?', !!doc.lastAutoTable);
+          finalY = doc.lastAutoTable.finalY + 10;
+        }
       } else {
          doc.setFontSize(10);
          doc.text("No se detallaron estudios en esta orden.", 14, 90);

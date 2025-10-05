@@ -2,6 +2,7 @@ import React from 'react';
     import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
     import { Button } from '@/components/ui/button';
     import { Printer, Download } from 'lucide-react';
+    import { triggerDownload } from '@/utils/safeDownload';
 
     const ReceiptPreviewDialog = ({ isOpen, onOpenChange, selectedOrder, pdfUrl, iframeRef }) => {
       
@@ -12,12 +13,8 @@ import React from 'react';
       };
 
       const handleDownloadReceipt = () => {
-        const link = document.createElement('a');
-        link.href = pdfUrl;
-        link.download = `Recibo_Orden_${selectedOrder?.folio}.pdf`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        if(!pdfUrl) return;
+        triggerDownload(pdfUrl, `Recibo_Orden_${selectedOrder?.folio}.pdf`);
       };
 
       return (

@@ -72,10 +72,11 @@ export const useAccountsReceivable = () => {
   const getReferrerName = useCallback((referrerId) => referrers.find(r => r.id === referrerId)?.nombre || 'N/A', [referrers]);
 
   const handleOpenPaymentModal = (order) => {
+    const balNum = parseFloat(order.balance);
     setCurrentPayment({
       orderId: order.id,
-      orderFolio: order.folio,
-      paymentAmount: order.balance.toFixed(2),
+      orderFolio: order.folio || '',
+      paymentAmount: Number.isFinite(balNum) ? balNum.toFixed(2) : '0.00',
       paymentDate: new Date(),
       paymentNotes: '',
     });
@@ -105,8 +106,10 @@ export const useAccountsReceivable = () => {
       return;
     }
 
-    if (amount > orderToUpdate.balance + 0.001) {
-      toast({ title: "Monto Excedido", description: `El pago no puede exceder el saldo pendiente de ${orderToUpdate.balance.toFixed(2)} MXN.`, variant: "destructive" });
+    const existingBal = parseFloat(orderToUpdate.balance);
+    const balFixed = Number.isFinite(existingBal) ? existingBal.toFixed(2) : '0.00';
+    if (amount > existingBal + 0.001) {
+      toast({ title: "Monto Excedido", description: `El pago no puede exceder el saldo pendiente de ${balFixed} MXN.`, variant: "destructive" });
       return;
     }
 
@@ -121,7 +124,7 @@ export const useAccountsReceivable = () => {
 
     try {
       await apiClient.post('/finance/payments', paymentData);
-      toast({ title: 'Pago Registrado', description: `Se registró un pago de ${amount.toFixed(2)} MXN para la orden ${currentPayment.orderFolio}.` });
+  toast({ title: 'Pago Registrado', description: `Se registró un pago de ${(Number.isFinite(amount)?amount:0).toFixed(2)} MXN para la orden ${currentPayment.orderFolio}.` });
       logAuditEvent('Finanzas:PagoRegistrado', { orderId: currentPayment.orderId, amount });
       await loadOrdersWithBalance();
       setIsPaymentModalOpen(false);
@@ -144,7 +147,7 @@ export const useAccountsReceivable = () => {
     const patientEmail = patient?.email;
     const patientName = patient?.nombre || "Estimado/a Paciente";
     const orderFolio = order.folio;
-    const balance = order.balance.toFixed(2);
+  const balance = (()=>{ const n = parseFloat(order.balance); return Number.isFinite(n)? n.toFixed(2): '0.00'; })();
     const laboratoryName = "Laboratorio Clínico LACLIS"; 
 
     if (patientEmail) {
@@ -157,8 +160,8 @@ Le recordamos amablemente que tiene un saldo pendiente de ${balance} MXN corresp
 Detalles de la orden:
 Folio: ${orderFolio}
 Fecha: ${format(parseISO(order.order_date), 'dd/MM/yyyy HH:mm')}
-Total: ${order.total_price.toFixed(2)} MXN
-Pagado: ${order.paid_amount.toFixed(2)} MXN
+Total: ${(Number.isFinite(parseFloat(order.total_price))? parseFloat(order.total_price):0).toFixed(2)} MXN
+Pagado: ${(Number.isFinite(parseFloat(order.paid_amount))? parseFloat(order.paid_amount):0).toFixed(2)} MXN
 Saldo Pendiente: ${balance} MXN
 
 Agradeceríamos si pudiera realizar el pago a la brevedad posible. Si ya realizó el pago, por favor ignore este mensaje.

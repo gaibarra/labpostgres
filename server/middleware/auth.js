@@ -32,7 +32,16 @@ async function authMiddleware(req, _res, next) {
         }
       } catch(_) { /* ignorar silenciosamente para no bloquear si no existe columna */ }
     }
-    req.user = payload;
+  req.user = payload;
+  // Normalizar rol (trim y capitalización estándar para Administrador)
+  if (req.user.role) {
+    req.user.role = String(req.user.role).trim();
+    if (req.user.role.toLowerCase() === 'administrador') req.user.role = 'Administrador';
+  } else {
+    req.user.role = '';
+  }
+  // Exponer también en req.auth para middleware multi-tenant (consistencia con tenantResolver expectation)
+  req.auth = payload;
     req.authToken = token; // almacenar el token crudo para revocación posterior en logout
     next();
   } catch (e) {

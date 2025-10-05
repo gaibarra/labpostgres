@@ -19,7 +19,7 @@ const PatientsCardView = ({ patients, onEdit, onDelete, onViewHistory }) => {
               <div className="flex-1">
                 <CardTitle className="text-lg font-bold text-indigo-800 dark:text-indigo-300">{p.full_name}</CardTitle>
                 <div className="flex items-center text-xs text-muted-foreground mt-1">
-                  <Badge variant={p.sex === 'Masculino' ? 'default' : 'secondary'} className="mr-2">{p.sex}</Badge>
+                  {(() => { const label = p.sex === 'M' ? 'Masculino' : p.sex === 'F' ? 'Femenino' : (p.sex || ''); return <Badge variant={label === 'Masculino' ? 'default' : 'secondary'} className="mr-2">{label}</Badge>; })()}
                   <span>Nac: {p.date_of_birth ? format(parseISO(p.date_of_birth), 'dd/MM/yyyy') : 'N/A'}</span>
                 </div>
               </div>

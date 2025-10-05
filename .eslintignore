@@ -1,0 +1,5 @@
+dist/
+coverage/
+node_modules/
+sql/
+plugins/visual-editor/**/dist/

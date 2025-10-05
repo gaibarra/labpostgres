@@ -32,24 +32,49 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
       const iframeRef = useRef(null);
 
       const loadOrders = useCallback(async () => {
+        if(!dateRange?.from || !dateRange?.to) return;
         setIsLoading(true);
         try {
-            // Fetch all recent work orders then filter client side for statuses needed
-            const data = await apiClient.get('/work-orders');
-            const filtered = (data||[]).filter(o => ['Reportada','Concluida','Entregada'].includes(o.status));
-            // Enrich patient/referrer names if necessary (would need extra fetches; kept minimal for now)
-            setOrders(filtered.map(o => ({...o, fecha: parseISO(o.order_date)})));
+          // 1. Obtener work orders base
+          const workOrders = await apiClient.get('/work-orders');
+          const fromISO = new Date(dateRange.from).toISOString();
+            const toISO = new Date(dateRange.to).toISOString();
+          // 2. Filtrar por rango y estados relevantes (reportadas / concluidas / entregadas / pendiente si ya está pagada)
+          const baseFiltered = (workOrders||[]).filter(o => {
+            const od = parseISO(o.order_date);
+            if (isNaN(od)) return false;
+            if (od < new Date(dateRange.from.setHours(0,0,0,0))) return false;
+            if (od > new Date(dateRange.to.setHours(23,59,59,999))) return false;
+            return ['Reportada','Concluida','Entregada','Pendiente','Pending','pending'].includes(o.status || '');
+          });
+          // 3. Obtener receivables pagadas en rango para sumar pagos (include fully paid orders)
+          const qp = new URLSearchParams();
+          qp.set('from', fromISO); qp.set('to', toISO); qp.set('status','paid');
+          let paidReceivables = [];
+          try { paidReceivables = await apiClient.get(`/finance/receivables?${qp.toString()}`); } catch(e){ paidReceivables = []; }
+          const paidMap = new Map(paidReceivables.map(r=>[r.id, r]));
+          // 4. Merge paid info; compute totals
+          const merged = baseFiltered.map(o => {
+            const recv = paidMap.get(o.id);
+            const anticipo = parseFloat(o.anticipo)||0;
+            const backendPaid = recv ? parseFloat(recv.paid_amount)||0 : 0; // NOTE: backend paid_amount already incluye anticipo
+            const total = parseFloat(o.total_price)||0;
+            // Evitar doble conteo: si backendPaid >= anticipo asumimos que incluye anticipo y quizá otros pagos
+            let totalPaid = backendPaid > 0 ? backendPaid : anticipo; // fallback a solo anticipo si no hay recibo pagado
+            // Guardar paid_amount_original para depuración si se requiere
+            const balance = +(total - totalPaid).toFixed(2);
+            return { ...o, paid_amount: backendPaid, anticipo, total_paid: totalPaid, balance, fully_paid: balance <= 0.009, fecha: parseISO(o.order_date) };
+          });
+          setOrders(merged);
         } catch (error) {
-            toast({ title: "Error", description: "No se pudieron cargar las órdenes.", variant: "destructive" });
-            console.error(error);
+          toast({ title: "Error", description: "No se pudieron cargar las órdenes.", variant: "destructive" });
+          console.error(error);
         } finally {
-            setIsLoading(false);
+          setIsLoading(false);
         }
-      }, [toast]);
+      }, [toast, dateRange]);
 
-      useEffect(() => {
-        loadOrders();
-      }, [loadOrders]);
+  useEffect(() => { loadOrders(); }, [loadOrders]);
 
       const handleGenerateInvoice = async (order) => {
         toast({

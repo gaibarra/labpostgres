@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import autoTable from 'jspdf-autotable';
 // ...existing code...
 import React, { useMemo, useState } from 'react';
+import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
     import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
     import { ScrollArea } from '@/components/ui/scroll-area';
     import { CheckSquare } from 'lucide-react';
@@ -138,6 +139,7 @@ import React, { useMemo, useState } from 'react';
       };
 
       return (
+        <ErrorBoundary dialogStates={{ modal: 'FinalReportPreviewModal', open: isOpen, aiModal: isAIModalOpen, aiPreview: isAIPreviewOpen }}>
         <>
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
           <DialogContent
@@ -220,104 +222,106 @@ import React, { useMemo, useState } from 'react';
             </DialogFooter>
           </DialogContent>
         </Dialog>
-        {isAIModalOpen && (
-          <>
-            <AIRecommendationsModal
-              isOpen={isAIModalOpen}
-              onOpenChange={setIsAIModalOpen}
-              order={order}
-              patient={patient}
-              studiesToDisplay={studiesToDisplayInReport}
-              onOpenPreview={(order, recommendations) => {
-                setAIPreview({ order, recommendations });
-                const doc = new jsPDF();
-                let y = 20;
-                doc.setFontSize(18);
-                doc.text('Informe de Recomendaciones de Laboratorio', 15, y);
-                y += 12;
-                doc.setFontSize(12);
-                if (recommendations?.summary) {
-                  doc.setTextColor(33, 150, 243); // Azul
-                  doc.text('Resumen del Asistente IA', 15, y);
-                  y += 7;
-                  doc.setTextColor(0,0,0);
-                  doc.text(doc.splitTextToSize(recommendations.summary, 180), 15, y);
-                  y += 12;
-                }
-                if (recommendations?.outOfRangeRecommendations?.length) {
-                  autoTable(doc, {
-                    startY: y,
-                    head: [['Resultados a Revisar', '', '', '']],
-                    body: recommendations.outOfRangeRecommendations.map(item => [
-                      `${item.parameterName}: ${item.result}`,
-                      item.explanation,
-                      (item.recommendations || []).map(r => `• ${r}`).join('\n'),
-                      `Estado: ${item.status}`
-                    ]),
-                    styles: { fillColor: [255, 236, 179], textColor: [0,0,0], halign: 'left', fontSize: 11 },
-                    headStyles: { fillColor: [255, 193, 7], textColor: [0,0,0], fontSize: 13 },
-                    columnStyles: { 0: { cellWidth: 35 }, 1: { cellWidth: 50 }, 2: { cellWidth: 50 }, 3: { cellWidth: 20 } }
-                  });
-                  y = doc.lastAutoTable.finalY + 8;
-                }
-                if (recommendations?.inRangeComments?.length) {
-                  autoTable(doc, {
-                    startY: y,
-                    head: [['Resultados en Rango Saludable', '', '']],
-                    body: recommendations.inRangeComments.map(item => [
-                      item.parameterName,
-                      item.comment,
-                      ''
-                    ]),
-                    styles: { fillColor: [200, 230, 201], textColor: [0,0,0], halign: 'left', fontSize: 11 },
-                    headStyles: { fillColor: [56, 142, 60], textColor: [255,255,255], fontSize: 13 },
-                    columnStyles: { 0: { cellWidth: 40 }, 1: { cellWidth: 70 }, 2: { cellWidth: 15 } }
-                  });
-                  y = doc.lastAutoTable.finalY + 8;
-                }
-                if (recommendations?.finalDisclaimer) {
-                  doc.setFontSize(10);
-                  doc.setTextColor(100,100,100);
-                  doc.text('Nota:', 15, y);
-                  y += 6;
-                  doc.text(doc.splitTextToSize(recommendations.finalDisclaimer, 180), 15, y);
-                  doc.setTextColor(0,0,0);
-                }
-                const pdfData = doc.output('blob');
-                const url = URL.createObjectURL(pdfData);
-                setPdfUrl(url);
-                setIsAIPreviewOpen(true);
-              }}
-            />
-            {isAIPreviewOpen && (
-              <Dialog open={isAIPreviewOpen} onOpenChange={setIsAIPreviewOpen}>
-                <DialogContent aria-describedby="ai-pdf-preview-description">
-                  <DialogHeader>
-                    <DialogTitle>Previsualización de Recomendaciones IA (PDF)</DialogTitle>
-                  </DialogHeader>
-                  <DialogDescription id="ai-pdf-preview-description">
-                    Visualiza el PDF generado por el asistente IA antes de descargarlo.
-                  </DialogDescription>
-                  <div style={{height: '70vh'}}>
-                    {pdfUrl ? (
-                      <iframe src={pdfUrl} title="Recomendaciones IA PDF" style={{width: '100%', height: '100%', border: 'none'}} />
-                    ) : (
-                      <p>No se pudo generar el PDF.</p>
-                    )}
-                  </div>
-                  <DialogFooter>
-                    <Button onClick={() => {
-                      setIsAIPreviewOpen(false);
-                      if (pdfUrl) URL.revokeObjectURL(pdfUrl);
-                      setPdfUrl(null);
-                    }}>Cerrar</Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            )}
-          </>
-        )}
+        {/* Montaje persistente de modales IA para evitar race de desmontaje de portales */}
+        <AIRecommendationsModal
+          isOpen={isAIModalOpen}
+          onOpenChange={setIsAIModalOpen}
+          order={order}
+          patient={patient}
+          studiesToDisplay={studiesToDisplayInReport}
+          onOpenPreview={(order, recommendations) => {
+            setAIPreview({ order, recommendations });
+            const doc = new jsPDF();
+            let y = 20;
+            doc.setFontSize(18);
+            doc.text('Informe de Recomendaciones de Laboratorio', 15, y);
+            y += 12;
+            doc.setFontSize(12);
+            if (recommendations?.summary) {
+              doc.setTextColor(33, 150, 243);
+              doc.text('Resumen del Asistente IA', 15, y);
+              y += 7;
+              doc.setTextColor(0,0,0);
+              doc.text(doc.splitTextToSize(recommendations.summary, 180), 15, y);
+              y += 12;
+            }
+            if (recommendations?.outOfRangeRecommendations?.length) {
+              autoTable(doc, {
+                startY: y,
+                head: [['Resultados a Revisar', '', '', '']],
+                body: recommendations.outOfRangeRecommendations.map(item => [
+                  `${item.parameterName}: ${item.result}`,
+                  item.explanation,
+                  (item.recommendations || []).map(r => `• ${r}`).join('\n'),
+                  `Estado: ${item.status}`
+                ]),
+                styles: { fillColor: [255, 236, 179], textColor: [0,0,0], halign: 'left', fontSize: 11 },
+                headStyles: { fillColor: [255, 193, 7], textColor: [0,0,0], fontSize: 13 },
+                columnStyles: { 0: { cellWidth: 35 }, 1: { cellWidth: 50 }, 2: { cellWidth: 50 }, 3: { cellWidth: 20 } }
+              });
+              y = doc.lastAutoTable.finalY + 8;
+            }
+            if (recommendations?.inRangeComments?.length) {
+              autoTable(doc, {
+                startY: y,
+                head: [['Resultados en Rango Saludable', '', '']],
+                body: recommendations.inRangeComments.map(item => [
+                  item.parameterName,
+                  item.comment,
+                  ''
+                ]),
+                styles: { fillColor: [200, 230, 201], textColor: [0,0,0], halign: 'left', fontSize: 11 },
+                headStyles: { fillColor: [56, 142, 60], textColor: [255,255,255], fontSize: 13 },
+                columnStyles: { 0: { cellWidth: 40 }, 1: { cellWidth: 70 }, 2: { cellWidth: 15 } }
+              });
+              y = doc.lastAutoTable.finalY + 8;
+            }
+            if (recommendations?.finalDisclaimer) {
+              doc.setFontSize(10);
+              doc.setTextColor(100,100,100);
+              doc.text('Nota:', 15, y);
+              y += 6;
+              doc.text(doc.splitTextToSize(recommendations.finalDisclaimer, 180), 15, y);
+              doc.setTextColor(0,0,0);
+            }
+            const pdfData = doc.output('blob');
+            const url = URL.createObjectURL(pdfData);
+            setPdfUrl(url);
+            setIsAIPreviewOpen(true);
+          }}
+        />
+        <Dialog open={isAIPreviewOpen} onOpenChange={(open) => {
+          if (!open && pdfUrl) {
+            URL.revokeObjectURL(pdfUrl);
+            setPdfUrl(null);
+          }
+          setIsAIPreviewOpen(open);
+        }}>
+          <DialogContent aria-describedby="ai-pdf-preview-description">
+            <DialogHeader>
+              <DialogTitle>Previsualización de Recomendaciones IA (PDF)</DialogTitle>
+            </DialogHeader>
+            <DialogDescription id="ai-pdf-preview-description">
+              Visualiza el PDF generado por el asistente IA antes de descargarlo.
+            </DialogDescription>
+            <div style={{height: '70vh'}}>
+              {pdfUrl ? (
+                <iframe src={pdfUrl} title="Recomendaciones IA PDF" style={{width: '100%', height: '100%', border: 'none'}} />
+              ) : (
+                <p>No se pudo generar el PDF.</p>
+              )}
+            </div>
+            <DialogFooter>
+              <Button onClick={() => {
+                setIsAIPreviewOpen(false);
+                if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+                setPdfUrl(null);
+              }}>Cerrar</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
         </>
+        </ErrorBoundary>
       );
     };
 
