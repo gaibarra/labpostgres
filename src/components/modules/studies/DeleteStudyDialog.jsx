@@ -15,8 +15,20 @@ const DeleteStudyDialog = ({ isOpen, onOpenChange, studyToDelete, onConfirmDelet
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel onClick={() => onOpenChange(false)}>Cancelar</AlertDialogCancel>
-          <AlertDialogAction onClick={onConfirmDelete} disabled={isSubmitting} className="bg-red-500 hover:bg-red-600 text-white">
+          <AlertDialogCancel
+            type="button"
+            data-testid="delete-study-cancel"
+            tabIndex={0}
+            onClick={(e)=>{ e.stopPropagation(); try { onOpenChange(false); } catch(err){ /* noop */ } console.debug('[DeleteStudyDialog] cancel click'); }}
+          >Cancelar</AlertDialogCancel>
+          <AlertDialogAction
+            type="button"
+            data-testid="delete-study-confirm"
+            tabIndex={0}
+            onClick={async (e)=>{ e.stopPropagation(); if (isSubmitting) { console.debug('[DeleteStudyDialog] blocked isSubmitting'); return; } console.debug('[DeleteStudyDialog] delete click', { id: studyToDelete?.id }); try { await onConfirmDelete?.(); } catch(err){ console.error('[DeleteStudyDialog] onConfirmDelete error', err); } }}
+            disabled={isSubmitting}
+            className="bg-red-500 hover:bg-red-600 text-white"
+          >
             {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Eliminar
           </AlertDialogAction>

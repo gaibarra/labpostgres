@@ -1,5 +1,10 @@
 # labpostgres
 
+## Asistencia IA (Parámetro Individual)
+Endpoint asíncrono para generar un único parámetro de estudio (nombre, unidad y rangos) usando OpenAI (si hay clave) o stub determinista (fallback / entorno test). Contrato, estados del job, banderas de entorno y reglas descritas en `docs/ai_parameter_assist.md`.
+
+Ver documentación completa: `docs/ai_parameter_assist.md`
+
 ## Política de Fechas (Civil Dates)
 Para fechas civiles (actualmente `patients.date_of_birth`) se aplica una política estricta: siempre `YYYY-MM-DD` sin zona horaria ni hora. Ver detalles completos en `docs/date_handling.md`.
 

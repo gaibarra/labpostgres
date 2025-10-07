@@ -37,6 +37,18 @@ import React from 'react';
                     <h4 className="font-semibold text-slate-700 dark:text-slate-300">Categoría</h4>
                     <div><Badge variant="secondary">{studyData.category}</Badge></div>
                   </div>
+                  <div>
+                    <h4 className="font-semibold text-slate-700 dark:text-slate-300">Tipo de Muestra</h4>
+                    <p className="text-sm">{studyData.sample_type || <span className="italic opacity-60">(No provisto)</span>}</p>
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-slate-700 dark:text-slate-300">Contenedor</h4>
+                    <p className="text-sm">{studyData.sample_container || <span className="italic opacity-60">(No provisto)</span>}</p>
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-slate-700 dark:text-slate-300">Tiempo de Proceso (h)</h4>
+                    <p className="text-sm">{studyData.processing_time_hours != null ? studyData.processing_time_hours : <span className="italic opacity-60">(No provisto)</span>}</p>
+                  </div>
                 </div>
                 <div>
                   <h4 className="font-semibold text-slate-700 dark:text-slate-300">Descripción</h4>
@@ -65,11 +77,14 @@ import React from 'react';
                             <TableCell>{param.unit}</TableCell>
                             <TableCell>
                               <ul className="list-disc list-inside space-y-1 text-xs">
-                                {param.valorReferencia && param.valorReferencia.map((vr, vrIndex) => (
+                                {param.valorReferencia && param.valorReferencia.filter(vr => !(vr.valorMin == null && vr.valorMax == null)).map((vr, vrIndex) => (
                                   <li key={vrIndex}>
-                                    <strong>{vr.sexo} ({vr.edadMin}-{vr.edadMax} {vr.unidadEdad}):</strong> {vr.valorMin} - {vr.valorMax}
+                                    <strong>{vr.sexo} ({vr.edadMin}-{vr.edadMax} {vr.unidadEdad}):</strong> {vr.valorMin != null ? vr.valorMin : ''}{(vr.valorMin != null && vr.valorMax != null)?' - ': (vr.valorMax != null && vr.valorMin == null ? '≤':'')}{vr.valorMax != null ? vr.valorMax : ''}
                                   </li>
                                 ))}
+                                {param.valorReferencia && !param.valorReferencia.some(vr => vr.valorMin != null || vr.valorMax != null) && (
+                                  <li className="italic opacity-70 list-none">(Sin valores cuantitativos definidos; revise antes de guardar)</li>
+                                )}
                               </ul>
                             </TableCell>
                           </TableRow>

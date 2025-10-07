@@ -33,6 +33,8 @@ async function authMiddleware(req, _res, next) {
       } catch(_) { /* ignorar silenciosamente para no bloquear si no existe columna */ }
     }
   req.user = payload;
+  // Ensure id populated (some tokens may use sub instead of id)
+  if (!req.user.id && req.user.sub) req.user.id = req.user.sub;
   // Normalizar rol (trim y capitalización estándar para Administrador)
   if (req.user.role) {
     req.user.role = String(req.user.role).trim();

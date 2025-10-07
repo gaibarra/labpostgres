@@ -1,588 +1,598 @@
+// ai.js - Endpoints AI (study + single parameter) con enriquecimiento de rangos
+/* eslint-disable */
 const express = require('express');
 const router = express.Router();
-const { pool } = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { requirePermission } = require('../middleware/permissions');
-const Ajv = require('ajv');
-const addFormats = require('ajv-formats');
+// (Schemas externalizados)
+const { validateStudy, validateParameter } = require('../validation/ai-schemas');
 const JSON5 = require('json5');
-const { studySchema } = require('../utils/studySchema');
-const { parameterSchema } = require('../utils/parameterSchema');
 
-// AJV instancia (singleton simple)
-const ajv = new Ajv({ allErrors: true, strict: false, allowUnionTypes: true });
-addFormats(ajv);
-const validateStudy = ajv.compile(studySchema);
-const validateParameter = ajv.compile(parameterSchema);
-
-// === Helpers & Async Job Infra ===
+// --- Infraestructura de jobs en memoria ---
 const aiJobs = new Map();
 function newJobId(){ return 'job_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8); }
 
+// --- API Key helper: primero DB (lab_configuration.integrations_settings), luego variable de entorno ---
 async function getApiKey(){
-  // Intenta leer tanto la clave nueva (openaiApiKey) como el alias legacy (openAIKey) y finalmente env OPENAI_API_KEY
-  try {
-    const { rows } = await pool.query("SELECT COALESCE(integrations_settings->>'openaiApiKey', integrations_settings->>'openAIKey') AS key FROM lab_configuration ORDER BY created_at ASC LIMIT 1");
-    const dbKey = rows[0]?.key?.trim();
-    if (dbKey) return dbKey;
-  } catch(e){
-    if (process.env.AI_DEBUG) console.warn('[AI] Error leyendo configuración para API key', e.message);
-  }
-  const envKey = (process.env.OPENAI_API_KEY || '').trim();
-  if (envKey) {
-    if (process.env.AI_DEBUG) console.log('[AI] usando OPENAI_API_KEY de entorno');
-    return envKey;
-  }
-  return null;
-}
-
-// Validación ligera de formato (coincide con /api/config/integrations/validate)
-function isPlausibleOpenAIKey(key){
-  return /^(sk|ds)-[A-Za-z0-9-_]{20,}$/.test(key||'');
-}
-
-// Conjuntos canónicos de parámetros para estudios comunes (mejoran completitud)
-const CANONICAL_STUDY_PARAMETER_SETS = [
-  {
-    match: /(biometr(i|í)a|hemograma|bh|biometria) hem(á|a)tica|hemograma completo/i,
-    name: 'Biometría Hemática',
-    parameters: [
-      'Hemoglobina','Hematocrito','Eritrocitos','VCM','HCM','CHCM','RDW','Plaquetas','VMP',
-      'Leucocitos Totales','Neutrófilos Segmentados','Neutrófilos Banda','Linfocitos','Monocitos','Eosinófilos','Basófilos',
-      'Blastos','Metamielocitos','Mielocitos','Promielocitos','Otros','Notas'
-    ]
-  },
-  {
-    match: /(perfil|panel) lip(í|i)dico|lipid(o|ó)grama|perfil de lip(í|i)dos/i,
-    name: 'Perfil Lipídico',
-    parameters: ['Colesterol Total','HDL','LDL Calculado','Triglicéridos','VLDL','Colesterol No-HDL','Índice Col/HDL']
-  },
-  {
-    match: /(perfil|panel) tiro(í|i)deo|tiroidea|función tiroidea/i,
-    name: 'Perfil Tiroideo',
-    parameters: ['TSH','T4 Libre','T4 Total','T3 Libre','T3 Total','Anticuerpos Anti-TPO','Anticuerpos Anti-Tiroglobulina']
-  },
-  {
-    match: /(química|quimica) (sangu(í|i)nea|cl(í|i)nica|de ?(12|14|20)|completa)/i,
-    name: 'Química Sanguínea',
-    parameters: ['Glucosa','Urea','BUN','Creatinina','Ácido Úrico','Colesterol Total','Triglicéridos','AST (TGO)','ALT (TGP)','Fosfatasa Alcalina','Bilirrubina Total','Bilirrubina Directa','Bilirrubina Indirecta','Albúmina','Proteínas Totales','Calcio','Sodio','Potasio','Cloro','Magnesio']
-  }
-];
-  // ================== NUEVO ENDPOINT PARAMETRO IA ==================
-  // Genera un único parámetro adicional para un estudio existente
-  // Body esperado: { studyName, category, existingParameters: string[], desiredParameterName? }
-  router.post('/generate-parameter', requireAuth, requirePermission('studies','create'), async (req,res)=>{
-    const { studyName, category, existingParameters, desiredParameterName } = req.body || {};
-    if (!studyName || typeof studyName !== 'string') return res.status(400).json({ error:'studyName requerido' });
-    const apiKey = await getApiKey();
-    if (!apiKey) return res.status(400).json({ error:'OpenAI API key no configurada.', code:'OPENAI_MISSING_KEY' });
-    if (!isPlausibleOpenAIKey(apiKey)) {
-      return res.status(400).json({ error: 'OPENAI_INVALID_KEY_FORMAT', message: 'Formato de API key inválido o incompleto. Debe iniciar con sk- y no estar truncada.' });
-    }
-    const safeExisting = Array.isArray(existingParameters) ? existingParameters.filter(p=> typeof p === 'string' && p.trim()) : [];
-    // Construir prompt enfocado a UN solo parámetro
-    const paramInstruction = desiredParameterName && desiredParameterName.trim() ? `Genera exclusivamente el parámetro adicional denominado "${desiredParameterName.trim()}"` : 'Elige UN parámetro adicional clínicamente relevante y no redundante';
-    const prompt = `Eres un profesional de laboratorio clínico. El estudio base es: "${studyName}" (categoría: ${category||'N/D'}). Parámetros ya existentes: ${safeExisting.join(', ')||'NINGUNO'}. ${paramInstruction}. Debes devolver SOLO JSON válido con esta estructura exacta: { name: string, unit: string, decimal_places: number, valorReferencia: [ { sexo: 'Masculino'|'Femenino'|'Ambos', edadMin: number|null, edadMax: number|null, unidadEdad:'años', valorMin: number|null, valorMax: number|null, textoPermitido?: string, textoLibre?: string, notas?: string } ] }.
-    Requisitos:
-    1. No repetir ni sinónimos de parámetros ya existentes.
-    2. Cobertura de edades 0-120 AÑOS completa por sexo aplicable (puede usar segmentos 0-1,2-12,13-17,18-45,46-65,66-120) sin huecos; usar valorMin=null y valorMax=null si no hay datos y notas="Sin referencia establecida".
-    3. decimal_places coherente con el tipo de medida.
-    4. No añadir texto fuera del JSON.
-    5. Si el parámetro solo aplica a un sexo, omite totalmente el otro.
-    6. El nombre en español clínico estándar, corto.
-    Responde ahora:`;
+  // Intentar cache simple en memoria para evitar query por cada poll
+  if (!getApiKey._cache || (Date.now() - getApiKey._cache.ts > 5*60*1000)) { // refresh cada 5 min
+    let key = null; let source = 'none';
     try {
-      const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-        method:'POST',
-        headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${apiKey}` },
-        body: JSON.stringify({
-          model:'gpt-4o-mini',
-          messages:[ { role:'system', content:'Asistente de laboratorio clínico. Devuelve SOLO JSON.' }, { role:'user', content: prompt } ],
-          temperature:0.3,
-          max_tokens: 1000,
-          response_format:{ type:'json_object' }
-        })
-      });
-      if (!resp.ok){
-        let bodyText = await resp.text();
-        let parsedErr = null;
-        try { parsedErr = JSON.parse(bodyText); } catch(_) {}
-        const openaiCode = parsedErr?.error?.code;
-        const status = resp.status;
-        if (process.env.AI_DEBUG) {
-          console.warn('[AI] OpenAI fallo', { status, openaiCode, keyLast4: apiKey.slice(-4), snippet: bodyText.slice(0,120) });
-        }
-        if (openaiCode === 'invalid_api_key' || status === 401) {
-          return res.status(400).json({ error:'OPENAI_INVALID_KEY', message:'La clave OpenAI es inválida o fue revocada. Actualiza la clave en Configuración > Integraciones.', openaiCode, status });
-        }
-        return res.status(502).json({ error:'Fallo OpenAI', details: bodyText.slice(0,500), status });
-      }
-      const data = await resp.json();
-      let raw = (data?.choices?.[0]?.message?.content||'').trim();
-      const clean = raw.replace(/```[a-zA-Z]*\n?/g,'').replace(/```/g,'').trim();
-      let parsed;
-      const attempts = [];
-      attempts.push(clean);
-      const first = clean.indexOf('{'); const last = clean.lastIndexOf('}');
-      if (first>-1 && last>first) attempts.push(clean.slice(first,last+1));
-      for (const att of [...attempts]){
-        // quitar comas colgantes
-        const noTrailing = att.replace(/,(\s*[}\]])/g,'$1');
-        if (noTrailing!==att) attempts.push(noTrailing);
-      }
-      let salvaged=false, strategy='';
-      for (const att of attempts){
-        try { parsed = JSON.parse(att); strategy = strategy||'json'; break; } catch(_) {}
-      }
-      if (!parsed){
-        // Fallback JSON5
-        try { parsed = JSON5.parse(attempts[0]); salvaged=true; strategy='json5'; } catch(_) {}
-      }
-      if (!parsed || typeof parsed !== 'object') return res.status(500).json({ error:'JSON inválido', raw: clean.slice(0,800) });
-      // Reparaciones mínimas
-      if (typeof parsed.decimal_places !== 'number' || parsed.decimal_places<0) parsed.decimal_places=0;
-      if (parsed.decimal_places>6) parsed.decimal_places=6;
-      if (!Array.isArray(parsed.valorReferencia)) parsed.valorReferencia=[];
-      parsed.valorReferencia.forEach(v=>{
-        if (!v.unidadEdad) v.unidadEdad='años';
-        if (!v.sexo) v.sexo='Ambos';
-      });
-      const valid = validateParameter(parsed);
-      if (!valid){
-        return res.status(422).json({ error:'PARAM_SCHEMA_INVALID', schemaErrors: validateParameter.errors.map(e=> (e.instancePath||'/')+' '+e.message).slice(0,20) });
-      }
-      const fakeStudy = { name: studyName, parameters: [ parsed ] };
-      const enriched = ensureCoveragePost(fakeStudy, studyName).parameters[0];
-      if (salvaged) enriched.ai_meta = { ...(enriched.ai_meta||{}), salvaged: strategy };
-      return res.json({ parameter: enriched });
-    } catch(err){
-      return res.status(500).json({ error: err.message });
+      // Carga perezosa de pool para evitar dependencias circulares en tests
+      const { pool } = require('../db');
+      const { rows } = await pool.query("SELECT COALESCE(integrations_settings->>'openaiApiKey', integrations_settings->>'openAIKey') AS key FROM lab_configuration ORDER BY created_at ASC LIMIT 1");
+      key = rows[0]?.key?.trim() || null;
+      if (key) source = 'db';
+    } catch(e){ /* ignore db errors */ }
+    if (!key && process.env.OPENAI_API_KEY) { key = process.env.OPENAI_API_KEY.trim(); if (key) source = 'env'; }
+    getApiKey._cache = { value: key || null, source, ts: Date.now() };
+    if (process.env.AI_DEBUG) {
+      const masked = key ? (key.length>10 ? key.slice(0,4)+'***'+key.slice(-4) : '***') : 'null';
+      console.log('[AI][getApiKey] fuente=', source, 'keyPresent=', !!key, 'preview=', masked);
     }
-  });
-
-function findCanonicalSet(studyName){
-  if (!studyName) return null;
-  return CANONICAL_STUDY_PARAMETER_SETS.find(s=> s.match.test(studyName));
+  }
+  return getApiKey._cache.value;
 }
 
+// --- Prompt para generación de estudio ---
 function buildPrompt(studyName){
-  const canonical = findCanonicalSet(studyName);
-  const baseIntro = `Eres un asistente experto en laboratorio clínico. Genera un JSON REALISTA, EXHAUSTIVO y CLÍNICAMENTE ÚTIL para el estudio: "${studyName}".`;
-  const canonicalBlock = canonical ? `\nEste estudio está reconocido y DEBE incluir exactamente estos parámetros (en este orden) usando estos nombres tal cual, sin omitir ninguno; si no hay datos de referencia válidos para alguno, incluye rangos con valorMin=null, valorMax=null y notas=\"Sin referencia establecida\":\nPARAMETROS_OBLIGATORIOS: ${canonical.parameters.join(', ')}\nNo agregues parámetros extra que no sean clínicamente estándar para este panel.` : '';
-  return `${baseIntro}${canonicalBlock}\nRequisitos IMPORTANTES para cada parámetro:\n1. Incluir valores de referencia (valorReferencia) cubriendo toda la vida humana 0-120 años (unidadEdad='años') sin huecos y ordenados. Puedes usar etapas (0-1,2-12,13-17,18-45,46-65,66-120).\n2. Incluir ambos sexos salvo que NO aplique (ej: embarazo solo Femenino, PSA solo Masculino); omite completamente el sexo no aplicable.\n3. decimal_places coherente (enteros: hemogramas celulares; bioquímica según magnitud).\n4. Si un tramo carece de valores consolidados: valorMin=null, valorMax=null, notas=\"Sin referencia establecida\".\n5. Usa nombres de parámetros en español clínico estándar (no traducciones literales raras).\n6. NO incluyas explicaciones fuera del JSON.\n7. Estructura EXACTA: { name, description, indications, sample_type, sample_container, processing_time_hours, category, parameters:[ { name, unit, decimal_places, valorReferencia:[ { sexo, edadMin, edadMax, unidadEdad:'años', valorMin, valorMax, textoPermitido?, textoLibre?, notas? } ] } ] }\n8. Asegúrate que TODOS los parámetros obligatorios estén presentes y con al menos un arreglo valorReferencia (aunque sea con un tramo null).\nResponde SOLO con JSON válido.`;
+  return [
+    'Actúa como bioquímico clínico senior. Genera ÚNICAMENTE JSON válido.',
+  'Esquema: { "name": string (igual o refinado del estudio), "category": string, "description": string, "indications": string, "sample_type": string, "sample_container": string, "processing_time_hours": number|null, "parameters": [ { "name": string, "unit": string, "decimal_places": number, "valorReferencia": [ { "sexo": "Ambos|Masculino|Femenino", "edadMin": number, "edadMax": number, "unidadEdad": "años", "valorMin": number|null, "valorMax": number|null, "notas": string } ] } ] }',
+    'Reglas:',
+    '- Cubrir 0-120 años (segmentos libres).',
+  '- Para cada parámetro debes cubrir EXACTAMENTE estos segmentos de edad: [0-1],[1-2],[2-12],[12-18],[18-65],[65-120].',
+  '- Si el parámetro es dependiente de sexo (hemoglobina, hematocrito, eritrocitos, hormonas sexuales, etc.) usa sexo diferenciado a partir de 12 años; pediátrico (0-12) puede ser Ambros/Ambos según corresponda.',
+  '- Evita crear segmentos solapados o huecos; cada edad 0<=x<120 cae en un único segmento.',
+  '- Si se desconoce un valor usar null y nota "Sin referencia establecida" (pero para parámetros hematológicos clave NO dejes null: hemoglobina, hematocrito, eritrocitos, plaquetas deben tener valores numéricos).',
+    '- Evita diagnósticos definitivos o texto fuera del JSON.',
+    '- Mantén description concisa (<= 300 chars) sin HTML. indications: preparación paciente/resumen preanalítico (<= 250 chars).',
+  '- category: área o familia (ej: HORMONAS, HEMATOLOGIA, BIOQUIMICA, INMUNOLOGIA). Usa mayúsculas y no más de 25 caracteres.',
+  '- sample_type: tipo de muestra (ej: Suero, Plasma, Sangre total, Orina). sample_container: tubo o contenedor recomendado. processing_time_hours: número aproximado (ej 24) o null si no aplica.',
+    `Estudio: "${studyName}"`,
+    'Salida: SOLO JSON.'
+  ].join('\n');
 }
 
-// Utilidad para normalizar acentos básicos
-function normalizeKey(s){
-  return (s||'').toLowerCase()
-    .normalize('NFD').replace(/\p{Diacritic}/gu,'')
-    .replace(/\s+/g,' ').trim();
-}
+// (Schemas validados vía módulo importado)
 
-function ensureCoveragePost(parsed, studyName){
-  parsed.name = parsed.name || studyName;
-  parsed.description = parsed.description || '';
-  parsed.indications = parsed.indications || parsed.patient_instructions || '';
-  parsed.sample_type = parsed.sample_type || '';
-  parsed.parameters = Array.isArray(parsed.parameters) ? parsed.parameters : [];
-  if (!parsed.category) {
-    const lower = studyName.toLowerCase();
-    if (/tiroid|tiroideo/.test(lower)) parsed.category = 'Endocrinología';
-    else if (/lipid|lipidico|colesterol|triglicerid/.test(lower)) parsed.category = 'Química Clínica';
-    else if (/hemato|hemogram|hemograma/.test(lower)) parsed.category = 'Hematología';
-    else parsed.category = 'Otros';
-  }
-  const femaleOnlyPatterns = /embarazo|hcg|\bbeta.?hcg\b|prenatal/i;
-  const maleOnlyPatterns = /psa|antígeno prost/i;
-  const AGE_SEGMENTS = [ [0,1], [2,12], [13,17], [18,45], [46,65], [66,120] ];
-  const PARAM_SYNONYMS = {
-    'recuento de globulos rojos':'Eritrocitos',
-    'recuento de globulos blancos':'Leucocitos Totales',
-    'hematies':'Eritrocitos',
-    'eritrocitos':'Eritrocitos',
-    'leucocitos':'Leucocitos Totales',
-    'plaquetas':'Plaquetas'
-  };
-  const clamp = (v)=> (v == null ? v : (v < 0 ? 0 : (v > 120 ? 120 : v)));
-  function ensureCoverage(param){
-    if (!Array.isArray(param.valorReferencia)) { param.valorReferencia = []; }
-    const name = param.name || '';
-    const femaleOnly = femaleOnlyPatterns.test(name);
-    const maleOnly = maleOnlyPatterns.test(name);
-    const needMale = !femaleOnly;
-    const needFemale = !maleOnly;
-    const bySex = { Masculino: [], Femenino: [] };
-    // Si no hay datos existentes, generar segmentos nulos estándar para los sexos aplicables
-    if (param.valorReferencia.length === 0) {
-      if (needMale) {
-        for (const [a,b] of AGE_SEGMENTS) bySex.Masculino.push({ sexo:'Masculino', edadMin:a, edadMax:b, unidadEdad:'años', valorMin:null, valorMax:null, notas:'Sin referencia establecida' });
+// --- Enriquecimiento y cobertura de rangos ---
+function ensureCoverage(parsed, studyName){
+  const SEG = [ [0,1],[1,2],[2,12],[12,18],[18,65],[65,120] ];
+  if (!parsed || typeof parsed !== 'object') return { parameters:[], ai_meta:{ source:'invalid', ts:new Date().toISOString() } };
+  if (!Array.isArray(parsed.parameters)) parsed.parameters=[];
+  parsed.parameters = parsed.parameters.filter(p=> p && p.name);
+
+  const { buildParameterTemplate } = require('../utils/referenceTemplates');
+  const appliedTemplates = [];
+
+  parsed.parameters.forEach(p=>{
+    if (!Array.isArray(p.valorReferencia)) p.valorReferencia=[];
+    const original = p.valorReferencia.slice();
+    const cleaned=[]; const seen=new Set();
+    original.forEach(r=>{
+      if (!r||typeof r!=='object') return;
+      const sexo = ['Masculino','Femenino'].includes(r.sexo)? r.sexo : 'Ambos';
+      const a = r.edadMin ?? 0; const b = r.edadMax ?? 120;
+      const k=`${sexo}|${a}|${b}`;
+      if (!seen.has(k)){
+        seen.add(k);
+        cleaned.push({ sexo, edadMin:a, edadMax:b, unidadEdad:'años', valorMin: r.valorMin??null, valorMax: r.valorMax??null, notas: r.notas || (r.valorMin==null && r.valorMax==null ? 'Sin referencia establecida':'') });
       }
-      if (needFemale) {
-        for (const [a,b] of AGE_SEGMENTS) bySex.Femenino.push({ sexo:'Femenino', edadMin:a, edadMax:b, unidadEdad:'años', valorMin:null, valorMax:null, notas:'Sin referencia establecida' });
-      }
-    } else {
-      for (const vr of param.valorReferencia) {
-        const sexo = vr.sexo === 'Masculino' || vr.sexo === 'Femenino' ? vr.sexo : (vr.sexo === 'Ambos' ? 'Ambos' : 'Ambos');
-        if (sexo === 'Ambos') { bySex.Masculino.push(vr); bySex.Femenino.push(vr); } else { bySex[sexo].push(vr); }
-      }
-    }
-    ['Masculino','Femenino'].forEach(sex=>{
-      if ((sex==='Masculino' && !needMale) || (sex==='Femenino' && !needFemale)) return;
-      let list = bySex[sex].map(v=>({
-        ...v,
-        edadMin: clamp(v.edadMin != null ? v.edadMin : v.age_min),
-        edadMax: clamp(v.edadMax != null ? v.edadMax : v.age_max)
-      })).filter(v=> v.edadMin==null || v.edadMax==null || v.edadMin <= v.edadMax);
-      list.sort((a,b)=> (a.edadMin??0) - (b.edadMin??0));
-      const normalized = [];
-      let cursor = 0;
-      for (const seg of list){
-        let sMin = seg.edadMin==null? cursor : seg.edadMin;
-        let sMax = seg.edadMax==null? seg.edadMax : seg.edadMax;
-        if (sMin > cursor) normalized.push({ sexo: sex, edadMin: cursor, edadMax: sMin-1, unidadEdad: 'años', valorMin: null, valorMax: null, notas: 'Sin referencia establecida' });
-        normalized.push({ sexo: sex, edadMin: sMin, edadMax: sMax!=null? sMax: sMin, unidadEdad: 'años', valorMin: seg.valorMin??seg.normal_min??seg.lower??null, valorMax: seg.valorMax??seg.normal_max??seg.upper??null, textoPermitido: seg.textoPermitido||'', textoLibre: seg.textoLibre||'', notas: seg.notas||seg.notes||'' });
-        cursor = (sMax!=null? sMax : sMin) + 1;
-        if (cursor>120) break;
-      }
-      if (cursor <= 120) normalized.push({ sexo: sex, edadMin: cursor, edadMax: 120, unidadEdad: 'años', valorMin: null, valorMax: null, notas: 'Sin referencia establecida' });
-      bySex[sex] = normalized;
     });
-    let finalList = [];
-    if (needMale) finalList = finalList.concat(bySex.Masculino);
-    if (needFemale) finalList = finalList.concat(bySex.Femenino);
-    param.valorReferencia = finalList;
-  }
-  // Normalizar sinónimos antes de agregar canónicos
-  const seenNormalized = new Set();
-  parsed.parameters.forEach(p => {
-    const nk = normalizeKey(p.name);
-    if (PARAM_SYNONYMS[nk]) {
-      p.name = PARAM_SYNONYMS[nk];
+    const rawName = (p.name||'').trim();
+    const norm = rawName.toLowerCase();
+    const originalGeneric = cleaned.length<=2 || cleaned.every(r=> r.valorMin==null && r.valorMax==null);
+    const RR = (sexo, aMin, aMax, vMin, vMax, notas='')=>({ sexo, edadMin:aMin, edadMax:aMax, unidadEdad:'años', valorMin:vMin, valorMax:vMax, notas: notas || (vMin==null&&vMax==null?'Sin referencia establecida':'') });
+
+    let overridden = false;
+
+    // 1) Intento de plantilla canónica SI el nombre coincide (aplica incluso si no es generic, para garantizar segmentación)
+    const template = buildParameterTemplate(norm);
+    if (template) {
+      overridden = true;
+      if (!p.unit) p.unit = template.unit;
+      if (typeof p.decimal_places !== 'number') p.decimal_places = template.decimal_places;
+      p.valorReferencia = template.valorReferencia.map(r=>({ ...r }));
+      appliedTemplates.push(rawName);
     }
-    seenNormalized.add(normalizeKey(p.name));
+    // Simplificamos estructura para evitar falsos positivos de parsers TS (usamos switch(true))
+    if (originalGeneric) {
+      switch (true) {
+        case /(\b|^)prolactina\b/.test(norm):
+          overridden = true;
+          p.unit = p.unit || 'ng/mL'; p.decimal_places = 0;
+          p.valorReferencia = [
+            RR('Femenino',0,1,0,15),
+            RR('Femenino',1,2,0,15),
+            RR('Femenino',2,12,0,10),
+            RR('Femenino',12,13,5,25),
+            RR('Femenino',13,17,5,25),
+            RR('Femenino',17,18,5,30),
+            RR('Femenino',18,45,5,30),
+            RR('Femenino',45,55,5,25),
+            RR('Femenino',55,120,5,20)
+          ];
+          break;
+        case /progesterona/.test(norm):
+          overridden = true;
+          p.unit = p.unit || 'ng/mL'; p.decimal_places = 1;
+          p.valorReferencia = [
+            RR('Femenino',0,1,0,0.5),
+            RR('Femenino',1,2,0,0.5),
+            RR('Femenino',2,12,0,0.5),
+            RR('Femenino',12,13,0.1,5),
+            RR('Femenino',13,17,0.1,5),
+            RR('Femenino',17,18,0.2,20),
+            RR('Femenino',18,45,0.2,20),
+            RR('Femenino',45,55,0.1,10),
+            RR('Femenino',55,120,0,5)
+          ];
+          break;
+        case /\btsh\b/.test(norm):
+          overridden = true;
+          p.unit = p.unit || 'µUI/mL'; p.decimal_places = 1;
+          p.valorReferencia = [
+            RR('Ambos',0,1,0.7,11),
+            RR('Ambos',1,2,0.7,8),
+            RR('Ambos',2,12,0.7,6),
+            RR('Ambos',12,18,0.5,4.5),
+            RR('Ambos',18,65,0.4,4),
+            RR('Ambos',65,120,0.4,6)
+          ];
+          break;
+        case /t4\s*libre|tiroxina\s*libre/.test(norm):
+          overridden = true;
+          p.unit = p.unit || 'ng/dL'; p.decimal_places = 1;
+          p.valorReferencia = [
+            RR('Ambos',0,1,1,2.5),
+            RR('Ambos',1,2,0.9,2.4),
+            RR('Ambos',2,12,0.9,2.3),
+            RR('Ambos',12,18,0.8,2.1),
+            RR('Ambos',18,65,0.8,1.8),
+            RR('Ambos',65,120,0.7,1.9)
+          ];
+          break;
+        case /t3\s*libre|triyodotironina\s*libre/.test(norm):
+          overridden = true;
+          p.unit = p.unit || 'pg/mL'; p.decimal_places = 2;
+          p.valorReferencia = [
+            RR('Ambos',0,1,2.5,6),
+            RR('Ambos',1,2,2.4,5.8),
+            RR('Ambos',2,12,2.3,5.5),
+            RR('Ambos',12,18,2.3,5),
+            RR('Ambos',18,65,2.2,4.4),
+            RR('Ambos',65,120,2.0,4.6)
+          ];
+          break;
+        case /anti.*peroxidasa|antiperoxidasa|tpo/.test(norm):
+          overridden = true;
+          p.unit = p.unit || 'UI/mL'; p.decimal_places = 0;
+          p.valorReferencia = SEG.map(([a,b])=> RR('Ambos',a,b,0,35));
+          break;
+        case /anti.*tiroglobulina|antitiroglobulina|anti.*tg\b/.test(norm):
+          overridden = true;
+          p.unit = p.unit || 'UI/mL'; p.decimal_places = 0;
+          p.valorReferencia = SEG.map(([a,b])=> RR('Ambos',a,b,0,4));
+          break;
+        default:
+          // no override
+          break;
+      }
+    }
+
+    if (!overridden) {
+      // Rellenar segmentos faltantes manteniendo existentes
+      const acc = cleaned.slice();
+      const existing = new Set(acc.map(x=>`${x.edadMin}|${x.edadMax}`));
+      for (const [a,b] of SEG){
+        if (!existing.has(`${a}|${b}`)) acc.push(RR('Ambos',a,b,null,null));
+      }
+      acc.sort((x,y)=> x.edadMin - y.edadMin || x.sexo.localeCompare(y.sexo));
+      p.valorReferencia = acc;
+    }
+
+    if (typeof p.decimal_places !== 'number' || p.decimal_places<0) p.decimal_places=0;
+    if (p.decimal_places>6) p.decimal_places=6;
+    if (typeof p.unit !== 'string') p.unit='';
   });
 
-  // Asegurar inclusión de parámetros canónicos si aplica
-  const canonical = findCanonicalSet(studyName);
-  if (canonical) {
-    for (const pname of canonical.parameters) {
-      if (!seenNormalized.has(normalizeKey(pname))) {
-        parsed.parameters.push({ name: pname, unit:'', decimal_places: 0, valorReferencia: [] });
-      }
-    }
-  }
-  for (const p of parsed.parameters) ensureCoverage(p);
-  return { ...parsed, ai_meta: { source: 'openai', model: 'gpt-4o-mini', ts: new Date().toISOString(), coverage: '0-120 ensured' } };
+  const meta = { source:'openai', model:'gpt-4o-mini', study:studyName, ts:new Date().toISOString() };
+  if (appliedTemplates.length) meta.overrides = { templates: appliedTemplates };
+  return { ...parsed, ai_meta: meta };
 }
 
-async function generateStudyDetails(studyName, progressCb){
-  progressCb && progressCb(5,'validando');
-  const apiKey = await getApiKey();
-  if (!apiKey) throw Object.assign(new Error('OpenAI API key no configurada.'), { code: 'OPENAI_MISSING_KEY' });
-  progressCb && progressCb(10,'preparando prompt');
+async function generateStudyDetails(studyName){
+  const key = await getApiKey();
+  if (!key) throw Object.assign(new Error('OpenAI API key no configurada.'), { code:'OPENAI_MISSING_KEY' });
   const prompt = buildPrompt(studyName);
-  progressCb && progressCb(25,'llamando a OpenAI');
-  if (process.env.AI_DEBUG) console.log('[AI] solicitando a OpenAI modelo gpt-4o-mini para', studyName);
-  
-  async function callOpenAI(body){
-    const resp = await fetch('https://api.openai.com/v1/chat/completions',{
+  async function call(body){
+    const r = await fetch('https://api.openai.com/v1/chat/completions', {
       method:'POST',
-      headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${apiKey}` },
+      headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${key}` },
       body: JSON.stringify(body)
     });
-    if (!resp.ok){
-      const text = await resp.text();
-      throw Object.assign(new Error('Fallo al llamar OpenAI'), { code:'OPENAI_CALL_FAILED', details: text.slice(0,500) });
-    }
-    return resp.json();
+    if (!r.ok){ const txt = await r.text(); throw Object.assign(new Error('Fallo OpenAI'), { code:'OPENAI_CALL_FAILED', details: txt.slice(0,400) }); }
+    return r.json();
   }
-
-  function cleanContent(raw){
-    return (raw||'').trim().replace(/^```(?:json)?/i,'').replace(/```$/,'').trim();
+  let raw=''; let parsed=null;
+  for (let attempt=0; attempt<3 && !parsed; attempt++){
+    const userContent = attempt===0? prompt : 'Repite SOLO JSON válido. Intento previo inválido';
+    const data = await call({ model:'gpt-4o-mini', messages:[ { role:'system', content:'Asistente de laboratorio clínico. Solo JSON.' }, { role:'user', content:userContent } ], temperature:0.25, max_tokens:2500, response_format:{ type:'json_object' } });
+  const firstChoice = data && data.choices && Array.isArray(data.choices) && data.choices.length>0 ? data.choices[0] : null;
+  const msgContent = firstChoice && firstChoice.message ? firstChoice.message.content : '';
+  raw = (msgContent||'').replace(/```[a-zA-Z]*\n?/g,'').replace(/```/g,'').trim();
+  try { parsed = JSON.parse(raw); } catch(e){ try { parsed = JSON5.parse(raw); } catch(_e){ /* intento json5 falló */ } }
   }
-  // Heurísticas de reparación JSON
-  function tryParse(original){
-    let content = original;
-    const attempts = [];
-    const pushAttempt = (label, text) => attempts.push({ label, text });
-    pushAttempt('raw', content);
-    // Eliminar fences múltiples y texto fuera de llaves
-    content = content
-      .replace(/```[a-zA-Z]*\n?/g,'')
-      .replace(/```/g,'')
-      .trim();
-    pushAttempt('noFences', content);
-    // Recortar a primer '{' y último '}'
-    const firstBrace = content.indexOf('{');
-    const lastBrace = content.lastIndexOf('}');
-    if (firstBrace > 0 || lastBrace < content.length-1){
-      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace>firstBrace){
-        const sliced = content.slice(firstBrace, lastBrace+1).trim();
-        pushAttempt('slicedBraces', sliced);
-      }
-    }
-    // Quitar comas colgantes
-    const noTrailing = content.replace(/,(\s*[}\]])/g,'$1');
-    if (noTrailing !== content) pushAttempt('noTrailingCommas', noTrailing);
-    // Balance simple de llaves: si # { > # } añadir '}' al final
-    const openCount = (str)=> (str.match(/{/g)||[]).length;
-    const closeCount = (str)=> (str.match(/}/g)||[]).length;
-    attempts.slice().forEach(a => {
-      const o = openCount(a.text); const c = closeCount(a.text);
-      if (o>c){ pushAttempt(a.label+'+balanced', a.text + '}'.repeat(o-c)); }
-    });
-    // Intentos de parseo
-    for (const att of attempts){
-      try { return { ok:true, value: JSON.parse(att.text), salvaged: att.label !== 'raw', strategy: att.label }; } catch(e) { /* continue */ }
-    }
-    return { ok:false };
-  }
-  function validateAndRepair(obj){
-    if (!obj || typeof obj !== 'object') return { ok:false, errors:['No es objeto'] };
-    // Reparaciones mínimas antes de validar
-    // Asegurar campos raíz requeridos si faltan (muchos modelos omiten category)
-    if (!obj.category || typeof obj.category !== 'string') obj.category = 'Otros';
-    if (!Array.isArray(obj.parameters)) {
-      // Si viene como objeto { Param: {...}, Param2: {...} }
-      if (obj.parameters && typeof obj.parameters === 'object') {
-        obj.parameters = Object.entries(obj.parameters).map(([k,v])=> ({ name:k, ...(typeof v==='object'&&v? v:{} ) }));
-      } else {
-        obj.parameters = [];
-      }
-    }
-    // Synonyms root level
-    if (obj.parametros && !obj.parameters) obj.parameters = obj.parametros;
-    if (obj.categoria && !obj.category) obj.category = obj.categoria;
-    if (Array.isArray(obj.parameters)) {
-      obj.parameters.forEach(p => {
-        if (p && typeof p === 'object') {
-          // Parameter-level synonyms before enforcing
-          if (p.nombre && !p.name) p.name = p.nombre;
-          if (p.parametro && !p.name) p.name = p.parametro;
-          if (p.unidad && !p.unit) p.unit = p.unidad;
-          if (p.decimales != null && p.decimal_places == null) p.decimal_places = p.decimales;
-          if (p.decimals != null && p.decimal_places == null) p.decimal_places = p.decimals;
-          if (p.decimalPlaces != null && p.decimal_places == null) p.decimal_places = p.decimalPlaces;
-          // Reference array synonyms
-          if (!p.valorReferencia){
-            if (Array.isArray(p.valoresReferencia)) p.valorReferencia = p.valoresReferencia;
-            else if (Array.isArray(p.referenceRanges)) p.valorReferencia = p.referenceRanges;
-            else if (Array.isArray(p.reference_ranges)) p.valorReferencia = p.reference_ranges;
-            else if (Array.isArray(p.rangos)) p.valorReferencia = p.rangos;
-          }
-          // Normalizar nombre de propiedad alternativa decimalPlaces
-            if (p.decimal_places == null && typeof p.decimalPlaces === 'number') p.decimal_places = p.decimalPlaces;
-          if (typeof p.decimal_places !== 'number' || p.decimal_places < 0) p.decimal_places = 0;
-          if (p.decimal_places > 6) p.decimal_places = 6;
-          if (typeof p.unit !== 'string') p.unit = '';
-          if (!Array.isArray(p.valorReferencia)) p.valorReferencia = [];
-          // Si no hay ningún valorReferencia, crear uno por defecto para Ambos 0-120 (será completado después por ensureCoveragePost)
-          if (p.valorReferencia.length === 0) {
-            p.valorReferencia.push({ sexo:'Ambos', edadMin:0, edadMax:120, unidadEdad:'años', valorMin:null, valorMax:null, notas:'Sin referencia establecida' });
-          }
-          p.valorReferencia.forEach(vr => {
-            if (!vr || typeof vr !== 'object') {
-              // Sustituir entradas no objeto por rango vacío completo
-              const idx = p.valorReferencia.indexOf(vr);
-              p.valorReferencia[idx] = { sexo:'Ambos', edadMin:0, edadMax:120, unidadEdad:'años', valorMin:null, valorMax:null, notas:'Sin referencia establecida' };
-              vr = p.valorReferencia[idx];
-            }
-            if (vr && typeof vr === 'object') {
-              // Sinónimos de campos categóricos
-              if (!vr.textoPermitido) {
-                if (Array.isArray(vr.valoresPermitidos)) vr.textoPermitido = vr.valoresPermitidos.join(',');
-                else if (Array.isArray(vr.allowedValues)) vr.textoPermitido = vr.allowedValues.join(',');
-                else if (typeof vr.valoresPermitidos === 'string') vr.textoPermitido = vr.valoresPermitidos;
-                else if (typeof vr.allowedValues === 'string') vr.textoPermitido = vr.allowedValues;
-              }
-              // Field synonyms for ranges
-              if (vr.genero && !vr.sexo) vr.sexo = vr.genero === 'M' ? 'Masculino' : vr.genero === 'F' ? 'Femenino' : 'Ambos';
-              if (vr.gender && !vr.sexo) vr.sexo = vr.gender === 'male' ? 'Masculino' : vr.gender === 'female' ? 'Femenino' : 'Ambos';
-              if (vr.edad_min != null && vr.edadMin == null) vr.edadMin = vr.edad_min;
-              if (vr.edad_max != null && vr.edadMax == null) vr.edadMax = vr.edad_max;
-              if (vr.age_min != null && vr.edadMin == null) vr.edadMin = vr.age_min;
-              if (vr.age_max != null && vr.edadMax == null) vr.edadMax = vr.age_max;
-              if (vr.unidad_edad && !vr.unidadEdad) vr.unidadEdad = vr.unidad_edad;
-              if (vr.age_unit && !vr.unidadEdad) vr.unidadEdad = vr.age_unit;
-              if (vr.minimo != null && vr.valorMin == null) vr.valorMin = vr.minimo;
-              if (vr.maximo != null && vr.valorMax == null) vr.valorMax = vr.maximo;
-              if (vr.min != null && vr.valorMin == null) vr.valorMin = vr.min;
-              if (vr.max != null && vr.valorMax == null) vr.valorMax = vr.max;
-              if (vr.lower != null && vr.valorMin == null) vr.valorMin = vr.lower;
-              if (vr.upper != null && vr.valorMax == null) vr.valorMax = vr.upper;
-              if (vr.notes && !vr.notas) vr.notas = vr.notes;
-              if (vr.edadMin != null && vr.edadMin > vr.edadMax && vr.edadMax != null) {
-                // swap si vienen invertidos
-                const tmp = vr.edadMin; vr.edadMin = vr.edadMax; vr.edadMax = tmp;
-              }
-              if (!vr.unidadEdad) vr.unidadEdad = 'años';
-              if (!vr.sexo) vr.sexo = 'Ambos';
-              // Si faltan edades en parámetros categóricos simples (ej ABO / RH) poner rango completo
-              if (vr.edadMin == null) vr.edadMin = 0;
-              if (vr.edadMax == null) vr.edadMax = 120;
-              // Parseo numérico si vienen como string
-              if (typeof vr.edadMin === 'string') { const n=parseInt(vr.edadMin,10); if(!isNaN(n)) vr.edadMin=n; }
-              if (typeof vr.edadMax === 'string') { const n=parseInt(vr.edadMax,10); if(!isNaN(n)) vr.edadMax=n; }
-              if (typeof vr.valorMin === 'string') { const n=parseFloat(vr.valorMin); if(!isNaN(n)) vr.valorMin=n; }
-              if (typeof vr.valorMax === 'string') { const n=parseFloat(vr.valorMax); if(!isNaN(n)) vr.valorMax=n; }
-            }
-          });
-          // Si el parámetro es categórico (todos los valorReferencia tienen textoPermitido / textoLibre y sin valores numéricos) mantener decimal_places=0
-          const allCategorical = p.valorReferencia.length>0 && p.valorReferencia.every(v=> (v && (v.textoPermitido || v.textoLibre) && (v.valorMin==null && v.valorMax==null)));
-          if (allCategorical) p.decimal_places = 0;
-        }
-      });
-    }
-    const valid = validateStudy(obj);
-    if (valid) return { ok:true, value: obj };
-    return { ok:false, errors: validateStudy.errors?.map(e=> `${e.instancePath||'/'} ${e.message}`) || ['Error desconocido'] };
-  }
-
-  let attempt = 0; let parsed;
-  const maxAttempts = 3; // incrementa a 3 reintentos
-  let lastRaw=''; let salvaged = false; let lastStrategy = '';
-  while (attempt < maxAttempts){
-    attempt++;
-    progressCb && progressCb(25 + attempt*5, attempt===1? 'llamando a OpenAI' : 'reintento IA');
-    let userContent;
-    if (attempt===1) userContent = prompt;
-    else if (attempt===2) userContent = prompt + '\nLa respuesta anterior no fue JSON válido. Re-emite SOLO JSON válido. No incluyas comentarios ni explicaciones.';
-    else userContent = `CORRIGE y devuelve SOLO JSON válido estrictamente. Si faltaba cerrar llaves o se agregaron descripciones, arréglalo. Mantén estructura solicitada.\nRespuesta previa (recorta si hace falta, pero conserva semántica):\n${lastRaw.slice(0,4000)}`;
-    const data = await callOpenAI({
-      model:'gpt-4o-mini',
-      messages:[
-        { role:'system', content: 'Asistente de laboratorio clínico. Devuelve SOLO JSON válido sin texto extra.' },
-        { role:'user', content: userContent }
-      ],
-      temperature:0.25,
-      max_tokens: 3200,
-      response_format:{ type:'json_object' }
-    });
-    progressCb && progressCb(50 + attempt*5,'procesando respuesta');
-    let content = cleanContent(data?.choices?.[0]?.message?.content);
-    lastRaw = content;
-    const attemptParse = tryParse(content);
-    if (attemptParse.ok){
-      parsed = attemptParse.value; salvaged = !!attemptParse.salvaged; lastStrategy = attemptParse.strategy; break;
-    }
-    // Fallback JSON5 si parsing estricto falla y estamos en último intento
-    if (attempt === maxAttempts){
-      try {
-        const j5 = JSON5.parse(content);
-        parsed = j5; salvaged = true; lastStrategy = 'json5'; break;
-      } catch(_) {}
-    }
-  }
-  if (!parsed){
-    throw Object.assign(new Error('Respuesta IA no es JSON válido tras reintentos'), {
-      code:'OPENAI_BAD_JSON',
-      raw: lastRaw.slice(0,1200),
-      hint: 'Se agotaron heurísticas de reparación. Reintenta o ajusta el nombre del estudio.',
-      attempts: maxAttempts
-    });
-  }
-  // Validación de esquema + reparaciones
-  const validation = validateAndRepair(parsed);
-  if (!validation.ok){
-    // Intento de salvamento agresivo: si hay parámetros sin estructura completa, normalizarlos
-    const salvageWarnings = [...validation.errors];
-    if (parsed && Array.isArray(parsed.parameters)){
-      parsed.parameters = parsed.parameters.map(p => {
-        if (!p || typeof p !== 'object') return { name: String(p||'Parametro'), unit:'', decimal_places:0, valorReferencia:[{ sexo:'Ambos', edadMin:0, edadMax:120, unidadEdad:'años', valorMin:null, valorMax:null, notas:'Sin referencia establecida' }] };
-        const name = p.name || p.nombre || p.parametro || 'Parametro';
-        let vr = Array.isArray(p.valorReferencia) ? p.valorReferencia : [];
-        if (vr.length===0) vr = [{ sexo:'Ambos', edadMin:0, edadMax:120, unidadEdad:'años', valorMin:null, valorMax:null, notas:'Sin referencia establecida' }];
-        return {
-          name,
-          unit: typeof p.unit === 'string' ? p.unit : (p.unidad || ''),
-          decimal_places: typeof p.decimal_places === 'number' ? p.decimal_places : (typeof p.decimales === 'number'? p.decimales:0),
-          valorReferencia: vr
-        };
-      });
-    }
-    const second = validateAndRepair(parsed);
-    if (!second.ok){
-      // Fallback mínimo antes de rendirse: crear estudio con parámetros válidos filtrando los que arreglamos
-      const minimalParams = Array.isArray(parsed.parameters) ? parsed.parameters.filter(p=> p && p.name).map(p=>({
-        name: p.name || 'Parametro',
-        unit: typeof p.unit==='string'? p.unit:'',
-        decimal_places: typeof p.decimal_places==='number'? Math.max(0, Math.min(6, p.decimal_places)) : 0,
-        valorReferencia: Array.isArray(p.valorReferencia) && p.valorReferencia.length>0 ? p.valorReferencia.map(v=>({
-          sexo: (v&&v.sexo)||'Ambos',
-          edadMin: (v&&typeof v.edadMin==='number')? v.edadMin:0,
-          edadMax: (v&&typeof v.edadMax==='number')? v.edadMax:120,
-          unidadEdad: 'años',
-          valorMin: (v&&typeof v.valorMin==='number')? v.valorMin:null,
-          valorMax: (v&&typeof v.valorMax==='number')? v.valorMax:null,
-          notas: (v&&v.notas)||'Sin referencia establecida'
-        })) : [{ sexo:'Ambos', edadMin:0, edadMax:120, unidadEdad:'años', valorMin:null, valorMax:null, notas:'Sin referencia establecida' }]
-      })) : [];
-      if (minimalParams.length===0){
-        minimalParams.push({ name:'Parametro', unit:'', decimal_places:0, valorReferencia:[{ sexo:'Ambos', edadMin:0, edadMax:120, unidadEdad:'años', valorMin:null, valorMax:null, notas:'Sin referencia establecida' }] });
-      }
-      parsed = { name: parsed.name || studyName, category: parsed.category || 'Otros', parameters: minimalParams, ai_warnings: salvageWarnings.concat(second.errors).slice(0,50) };
-      parsed.ai_meta = { ...(parsed.ai_meta||{}), salvaged: 'minimal-fallback' };
-    } else {
-      parsed = second.value;
-      parsed.ai_warnings = salvageWarnings.slice(0,30);
-      parsed.ai_meta = { ...(parsed.ai_meta||{}), salvaged: 'auto-repair-schema' };
-    }
-  } else {
-    parsed = validation.value;
-  }
-  progressCb && progressCb(75,'normalizando');
-  const payload = ensureCoveragePost(parsed, studyName);
-  if (salvaged) payload.ai_meta.salvaged = lastStrategy || true;
-  progressCb && progressCb(95,'finalizando');
-  return payload;
+  if (!parsed) throw Object.assign(new Error('OPENAI_BAD_JSON'), { code:'OPENAI_BAD_JSON', raw: raw.slice(0,400) });
+  if (!Array.isArray(parsed.parameters)) parsed.parameters=[];
+  const valid = validateStudy(parsed);
+  if (!valid) parsed.parameters = parsed.parameters.filter(p=> p && p.name);
+  return ensureCoverage(parsed, studyName);
 }
 
-// Synchronous endpoint
 router.post('/generate-study-details', requireAuth, requirePermission('studies','create'), async (req,res,next)=>{
   try {
     const { studyName } = req.body || {};
-    if (!studyName || typeof studyName !== 'string') return res.status(400).json({ error: 'studyName requerido' });
+    if (!studyName || typeof studyName !== 'string') return res.status(400).json({ error:'studyName requerido' });
     const result = await generateStudyDetails(studyName);
     res.json(result);
   } catch(err){
     if (err.code === 'OPENAI_MISSING_KEY') return res.status(400).json({ error: err.message, code: err.code });
     if (err.code === 'OPENAI_CALL_FAILED') return res.status(502).json({ error: err.message, code: err.code, details: err.details });
-  if (err.code === 'OPENAI_BAD_JSON') return res.status(500).json({ error: err.message, code: err.code, raw: err.raw });
-  if (err.code === 'OPENAI_BAD_SCHEMA') return res.status(422).json({ error: err.message, code: err.code, schemaErrors: err.schemaErrors });
+    if (err.code === 'OPENAI_BAD_JSON') return res.status(500).json({ error: err.message, code: err.code, raw: err.raw });
     next(err);
   }
 });
 
-// Async job creation
 router.post('/generate-study-details/async', requireAuth, requirePermission('studies','create'), async (req,res)=>{
   const { studyName } = req.body || {};
   if (!studyName || typeof studyName !== 'string') return res.status(400).json({ error:'studyName requerido' });
   const jobId = newJobId();
-  const job = { id: jobId, studyName, status:'queued', progress:0, message:'En cola', createdAt: Date.now() };
+  const job = { id:jobId, type:'study-details', status:'queued', progress:0, message:'En cola', createdAt:Date.now() };
   aiJobs.set(jobId, job);
   setImmediate(async ()=>{
-    function update(p,msg){ job.progress = p; job.message = msg; job.updatedAt = Date.now(); if (p>=100) job.status='done'; }
+    function update(p,m){ job.progress=p; job.message=m; job.updatedAt=Date.now(); if (p>=100) job.status='done'; }
+    try { job.status='working'; update(10,'generando'); const resu = await generateStudyDetails(studyName); job.result=resu; update(100,'Completado'); }
+    catch(e){ job.status='error'; job.error={ message:e.message, code:e.code, details:e.details }; }
+  });
+  res.json({ jobId });
+});
+
+// === Endpoint de parámetro individual (usa OpenAI si hay API key válida; fallback stub) ===
+router.post('/generate-parameter/async', requireAuth, requirePermission('studies','create'), async (req,res)=>{
+  const { studyName, desiredParameterName, prompt } = req.body || {};
+  if (!studyName || typeof studyName !== 'string') return res.status(400).json({ error:'studyName requerido' });
+  if (!desiredParameterName || typeof desiredParameterName !== 'string') return res.status(400).json({ error:'desiredParameterName requerido' });
+  const jobId = newJobId();
+  const job = { id:jobId, type:'single-parameter', status:'queued', progress:0, message:'En cola', createdAt:Date.now() };
+  aiJobs.set(jobId, job);
+
+  setImmediate(async ()=>{
+    function update(p,m){ job.progress=p; job.message=m; job.updatedAt=Date.now(); if (p>=100) job.status='done'; }
+    function buildSingleParameterPrompt(){
+      // Prompt enriquecido basado en reglas históricas del diálogo frontend
+      const reglas = [
+        'Actúa como bioquímico clínico senior especializado en diseño de parámetros de laboratorio.',
+        `Contexto estudio: "${studyName}". Parámetro a generar (referencia usuario): "${desiredParameterName}".`,
+        'Objetivo: Proponer UN único parámetro nuevo que complemente el estudio SIN duplicar existentes.',
+        'Salida: SOLO JSON válido, sin explicación, siguiendo estrictamente el esquema indicado.',
+        'Esquema JSON: { "parameter": { "name": string, "unit": string, "decimal_places": number (0-3), "reference_ranges": [ { "sex": "Ambos|Masculino|Femenino", "age_min": number|null, "age_max": number|null, "age_min_unit": "años", "lower": number|null, "upper": number|null, "text_value": string|null, "notes": string } ] } }',
+        'Reglas de rangos: cubrir 0-120 años mediante uno o varios segmentos. Si un intervalo carece de valores establecidos deja lower y upper en null y notes="Sin referencia establecida".',
+        'Evita: afirmaciones diagnósticas definitivas, claims regulatorios, texto fuera del JSON, parámetros redundantes.',
+        'Si no estás seguro de valores numéricos, utiliza null y la nota estándar.',
+        'No inventes unidades exóticas; usa unidades clínicas comunes (mg/dL, g/dL, UI/L, %, etc.) o cadena vacía si no aplica.',
+        'Mantén el nombre conciso (< 80 caracteres) y no copies literalmente la descripción del estudio salvo que sea apropiado.',
+        'NO incluyas campos adicionales, comentarios, ni markdown.'
+      ];
+      return reglas.join('\n');
+    }
+    function buildStub(){
+      // Stub enriquecido: genera rangos diferenciados por edad y, en ciertos parámetros, por sexo, con valores aproximados plausibles.
+      const nameLc = desiredParameterName.toLowerCase();
+      // Detección de tipo
+      const lipid = /(colesterol|hdl|ldl|triglic|lipid)/.test(nameLc);
+      const glucose = /(gluco|glucosa|azucar)/.test(nameLc);
+      const hemo = /(hemoglob|hematocrito|hb)/.test(nameLc);
+      const ph = /\bph\b/.test(nameLc);
+      const pediIndic = /neo|pedi|infant|lact|niñ|child/.test(nameLc);
+
+      let unit='';
+      if (lipid) unit='mg/dL';
+      else if (glucose) unit='mg/dL';
+      else if (hemo) unit='g/dL';
+      else if (ph) unit='';
+      const decimal_places = ph?2:0;
+
+      // Helper para crear rango
+      const R = (sex, aMin, aMax, low, high, note='')=>({ sex, age_min:aMin, age_max:aMax, age_min_unit:'años', lower:low, upper:high, text_value:null, notes: note || (low==null&&high==null?'Sin referencia establecida':'') });
+
+      let reference_ranges = [];
+      if (lipid) {
+        // Ejemplo: Colesterol Total u otro; estimaciones sencillas.
+        // Diferenciamos adulto y pediátrico, y opcionalmente sexos adultos.
+        reference_ranges = [
+          R('Ambos',0,1,90,170),
+          R('Ambos',1,9,120,190),
+          R('Ambos',9,18,130,200),
+          R('Masculino',18,120,140,210),
+          R('Femenino',18,120,140,200)
+        ];
+        // HDL heurístico
+        if (/hdl/.test(nameLc)) {
+          reference_ranges = [
+            R('Ambos',0,18,40,80),
+            R('Masculino',18,120,40,70),
+            R('Femenino',18,120,50,80)
+          ];
+        }
+        if (/ldl/.test(nameLc)) {
+          reference_ranges = [
+            R('Ambos',0,18,60,120),
+            R('Masculino',18,120,70,130),
+            R('Femenino',18,120,70,120)
+          ];
+        }
+        if (/triglic/.test(nameLc)) {
+          reference_ranges = [
+            R('Ambos',0,9,40,100),
+            R('Ambos',9,18,50,130),
+            R('Ambos',18,120,50,150)
+          ];
+        }
+      } else if (glucose) {
+        reference_ranges = [
+          R('Ambos',0,1,60,105),
+          R('Ambos',1,12,70,110),
+          R('Ambos',12,18,70,105),
+          R('Ambos',18,120,70,100)
+        ];
+      } else if (hemo) {
+        reference_ranges = [
+          R('Ambos',0,1,11,15),
+          R('Ambos',1,5,11.5,15.5),
+          R('Ambos',5,12,12,16),
+          R('Masculino',12,18,13,17),
+          R('Femenino',12,18,12,16),
+          R('Masculino',18,120,13.5,17.5),
+          R('Femenino',18,120,12,16)
+        ];
+      } else if (ph) {
+        reference_ranges = [R('Ambos',0,120,7.35,7.45)];
+      } else {
+        // Genérico: segmentación pediátrica opcional
+        if (pediIndic) {
+          reference_ranges = [
+            R('Ambos',0,1,null,null),
+            R('Ambos',1,2,null,null),
+            R('Ambos',2,12,null,null),
+            R('Ambos',12,18,null,null),
+            R('Ambos',18,65,null,null),
+            R('Ambos',65,120,null,null)
+          ];
+        } else {
+            reference_ranges = [R('Ambos',0,120,null,null)];
+        }
+      }
+      return { parameter: { name: desiredParameterName, unit, decimal_places, reference_ranges, notes: 'Stub IA (fallback, enriquecido). Prompt recibido: '+(prompt? 'sí':'no') } };
+    }
     try {
-      job.status='working'; job.message='Iniciando';
-      const result = await generateStudyDetails(studyName,(p,m)=>{ job.status='working'; update(p,m); });
+      job.status='working'; update(5,'Inicializando');
+      const apiKey = await getApiKey();
+      const testEnv = process.env.NODE_ENV === 'test';
+      const forceStub = !apiKey || process.env.AI_PARAM_FORCE_STUB === '1' || (testEnv && process.env.AI_PARAM_ALLOW_OPENAI !== '1');
+      if (forceStub){
+        // Reutiliza lógica stub
+        update(15,'Modo stub');
+        update(60,'Generando parámetro (stub)');
+        job.result = buildStub();
+        update(100,'Completado');
+        return;
+      }
+
+      update(12,'Preparando prompt');
+      const systemMsg = 'Asistente de laboratorio clínico. Responde únicamente con JSON válido conforme al esquema indicado.';
+      const userPrompt = prompt || buildSingleParameterPrompt();
+      update(20,'Llamando OpenAI');
+      const r = await fetch('https://api.openai.com/v1/chat/completions', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model:'gpt-4o-mini',
+            messages:[ { role:'system', content: systemMsg }, { role:'user', content: userPrompt } ],
+            temperature:0.3,
+            max_tokens: 1200,
+            response_format:{ type:'json_object' }
+        })
+      });
+      if (!r.ok){
+        const txt = await r.text();
+        throw Object.assign(new Error('Fallo OpenAI'), { code:'OPENAI_CALL_FAILED', details: txt.slice(0,400) });
+      }
+      update(40,'Procesando respuesta');
+      const data = await r.json();
+  const firstChoice2 = data && data.choices && Array.isArray(data.choices) && data.choices.length>0 ? data.choices[0] : null;
+  let raw = (firstChoice2 && firstChoice2.message ? firstChoice2.message.content : '').replace(/```[a-zA-Z]*\n?/g,'').replace(/```/g,'').trim();
+      // Heurísticos simples de extracción
+      const attempts = [raw];
+      const first = raw.indexOf('{'); const last = raw.lastIndexOf('}');
+      if (first>-1 && last>first) attempts.push(raw.slice(first,last+1));
+      let parsed=null; let salvaged=false; let strategy='raw';
+      for (const att of attempts){
+        try { parsed = JSON.parse(att); strategy = att===raw?'raw':'slice'; break; }
+        catch(_){ /* intento fallido parse json */ }
+      }
+      if (!parsed){
+        try { parsed = require('json5').parse(raw); salvaged=true; strategy='json5'; }
+        catch(_){ /* intento json5 fallido */ }
+      }
+      if (!parsed || typeof parsed !== 'object') throw Object.assign(new Error('OPENAI_BAD_JSON'), { code:'OPENAI_BAD_JSON', raw: raw.slice(0,400) });
+      // El modelo puede devolver envuelto { parameter: {...} } o directamente el objeto
+      let param = parsed.parameter || parsed;
+      // Normalizaciones mínimas para pasar schema backend (valorReferencia esperado)
+      if (!Array.isArray(param.valorReferencia)) {
+        const rr = param.reference_ranges || param.referenceRanges || param.rangos || param.valor_referencia;
+        if (Array.isArray(rr)) {
+          param.valorReferencia = rr.map(rg=>({
+            sexo: rg.sexo || rg.sex || 'Ambos',
+            edadMin: rg.edadMin ?? rg.age_min ?? rg.edad_min ?? 0,
+            edadMax: rg.edadMax ?? rg.age_max ?? rg.edad_max ?? 120,
+            unidadEdad: rg.unidadEdad || rg.age_unit || 'años',
+            valorMin: rg.valorMin ?? rg.lower ?? null,
+            valorMax: rg.valorMax ?? rg.upper ?? null,
+            notas: rg.notas || rg.notes || (rg.lower==null && rg.upper==null ? 'Sin referencia establecida':''),
+            textoPermitido: rg.textoPermitido || null,
+            textoLibre: rg.textoLibre || rg.text_value || null
+          }));
+        } else {
+          // fallback a un rango completo
+          param.valorReferencia = [{ sexo:'Ambos', edadMin:0, edadMax:120, unidadEdad:'años', valorMin:null, valorMax:null, notas:'Sin referencia establecida' }];
+        }
+      }
+      if (typeof param.decimal_places !== 'number' || param.decimal_places<0) param.decimal_places=0;
+      if (param.decimal_places>6) param.decimal_places=6;
+      if (typeof param.unit !== 'string') param.unit = '';
+      // Validación liviana: requiere name
+      if (!param.name) param.name = desiredParameterName;
+      update(65,'Normalizando rangos');
+      // Asegurar cobertura simple 0-120 (no creamos huecos aquí para evitar sobre-construcción)
+      const spanExists = new Set(param.valorReferencia.map(r=> `${r.edadMin}|${r.edadMax}|${r.sexo}`));
+      if (!Array.from(spanExists).some(k=> k.startsWith('0|120'))){
+        param.valorReferencia.push({ sexo:'Ambos', edadMin:0, edadMax:120, unidadEdad:'años', valorMin:null, valorMax:null, notas:'Sin referencia establecida' });
+      }
+      // Aplicar overrides/homogeneización usando ensureCoverage (reutilizando la lógica de estudio)
+      const enriched = ensureCoverage({ parameters:[param] }, studyName || 'single');
+      param = enriched.parameters[0];
+
+      // Validación final de schema parámetro
+      if (!validateParameter(param)){
+        if (process.env.AI_DEBUG) console.warn('[AI][single-parameter] schema inválido, fallback stub', validateParameter.errors);
+        throw Object.assign(new Error('PARAM_SCHEMA_INVALID'), { code:'PARAM_SCHEMA_INVALID', details: JSON.stringify(validateParameter.errors?.slice(0,3)) });
+      }
+      update(75,'Formateando salida');
+      // Convertimos a shape frontend (reference_ranges)
+      const reference_ranges = param.valorReferencia.map(v=>({
+        sex: v.sexo,
+        age_min: v.edadMin,
+        age_max: v.edadMax,
+        age_min_unit: v.unidadEdad,
+        lower: v.valorMin,
+        upper: v.valorMax,
+        text_value: v.textoLibre || v.textoPermitido || null,
+        notes: v.notas || ''
+      }));
+      job.result = { parameter: { name: param.name, unit: param.unit, decimal_places: param.decimal_places, reference_ranges, notes: 'Generado con OpenAI'+(salvaged?` (salvaged:${strategy})`:'') } };
       update(100,'Completado');
-      job.result = result;
     } catch(e){
-      job.status='error';
-  job.error = { message: e.message, code: e.code, details: e.details, raw: e.raw, schemaErrors: e.schemaErrors };
-      job.message = 'Error';
-      job.progress = job.progress || 0;
+      // Fallback automático a stub salvo que exista flag que fuerce error estricto
+      const strict = process.env.AI_PARAM_STRICT_ERROR === '1';
+      if (!strict){
+        update(80,'Fallback stub tras error');
+        job.result = buildStub();
+        update(100,'Completado (fallback)');
+      } else {
+        job.status='error';
+        job.error = { message:e.message, code:e.code, details:e.details };
+      }
+      if (process.env.AI_DEBUG) console.warn('[AI][single-parameter] error', e.code||e.message, e.details||'', 'strict=', strict);
     }
   });
   res.json({ jobId });
 });
 
-// Poll job
-router.get('/generate-study-details/job/:id', requireAuth, requirePermission('studies','create'), (req,res)=>{
-  const { id } = req.params;
-  const job = aiJobs.get(id);
+router.get('/generate-parameter/job/:id', requireAuth, requirePermission('studies','create'), (req,res)=>{
+  const job = aiJobs.get(req.params.id);
   if (!job) return res.status(404).json({ error:'job no encontrado' });
-  res.json({ id: job.id, status: job.status, progress: job.progress, message: job.message, result: job.status==='done'? job.result: undefined, error: job.status==='error'? job.error: undefined });
+  const payload = { id:job.id, status:job.status, progress:job.progress, message:job.message };
+  if (job.status==='done') payload.parameter = job.result.parameter;
+  if (job.status==='error') payload.error = job.error;
+  res.json(payload);
 });
+
+router.get('/generate-study-details/job/:id', requireAuth, requirePermission('studies','create'), (req,res)=>{
+  const job = aiJobs.get(req.params.id);
+  if (!job) return res.status(404).json({ error:'job no encontrado' });
+  res.json({ id:job.id, status:job.status, progress:job.progress, message:job.message, result: job.status==='done'? job.result: undefined, error: job.status==='error'? job.error: undefined });
+});
+
+router.post('/generate-panel/async', requireAuth, requirePermission('studies','create'), async (req,res)=>{
+  const { studyName } = req.body || {};
+  if (!studyName || typeof studyName !== 'string') return res.status(400).json({ error:'studyName requerido' });
+  const jobId = newJobId();
+  const job = { id:jobId, type:'panel', status:'queued', progress:0, message:'En cola', createdAt:Date.now() };
+  aiJobs.set(jobId, job);
+
+  const raw = studyName.trim();
+  const detectors = [
+    { key:'hematology', regex:/biometr[ií]a hem(á|a)tica|hemograma( completo)?/i, params:[ 'Hemoglobina','Hematocrito','Eritrocitos','VCM','HCM','CHCM','RDW','Plaquetas','VMP','Leucocitos Totales','Neutrófilos Segmentados','Neutrófilos Banda','Linfocitos','Monocitos','Eosinófilos','Basófilos','Blastos','Metamielocitos','Mielocitos','Promielocitos' ] },
+    { key:'thyroid', regex:/perfil\s+tiroid(eo|eo)|tiroideo/i, params:[ 'TSH','T4 Libre','T4 Total','T3 Total','T3 Libre','Anti-TPO','Anti-TG' ] },
+    { key:'hepatic', regex:/perfil\s+hep(á|a)tic|hepático|hepatico/i, params:[ 'ALT (TGP)','AST (TGO)','Fosfatasa Alcalina','Bilirrubina Total','Bilirrubina Directa','Bilirrubina Indirecta','GGT','Albúmina','Proteínas Totales' ] },
+    { key:'hormonal', regex:/perfil\s+hormonal/i, params:[ 'FSH','LH','Prolactina','Estradiol','Progesterona','Testosterona Total','Testosterona Libre','DHEA-S','Cortisol Matutino','Cortisol Vespertino' ] },
+    { key:'gynecologic', regex:/perfil\s+ginecol(ó|o)gic|ginecologic/i, params:[ 'FSH','LH','Prolactina','Estradiol','Progesterona','Androstenediona','AMH','CA-125' ] },
+    { key:'urinalysis', regex:/ex[aá]men general de orina|ego\b|examen general de orina/i, params:[ 'Color Orina','Aspecto Orina','Densidad','pH Orina','Glucosa Orina','Proteínas Orina','Cuerpos Cetónicos','Bilirrubina Orina','Urobilinógeno','Sangre Orina','Nitritos','Esterasa Leucocitaria','Leucocitos (Sedimento)','Eritrocitos (Sedimento)','Células Epiteliales','Bacterias' ] },
+    { key:'geriatric', regex:/perfil\s+geri(á|a)tric|geriátrico|geriatrico/i, params:[ 'Glucosa','Creatinina','TSH','Vitamina D 25-OH','Albúmina','Hemoglobina','Colesterol Total','Triglicéridos','HDL','LDL Calculado','Calcio','Fósforo' ] },
+    { key:'chem6', regex:/qu(í|i)mica sangu(í|i)nea.*6|quimica sanguinea.*6|qu(í|i)mica.*6 elementos/i, params:[ 'Glucosa','Urea','Creatinina','Ácido Úrico','Colesterol Total','Triglicéridos' ] }
+  ,{ key:'electrolytes', regex:/electrolitos/i, params:[ 'Sodio','Potasio','Cloro','Calcio Ionizado','Magnesio','Bicarbonato','Fósforo' ] }
+  ,{ key:'preop', regex:/perfil\s+pre( ?|-)operatorio|preoperatorio/i, params:[ 'Hemoglobina','Hematocrito','Glucosa','Creatinina','Plaquetas','TP','INR','TTPa','Grupo Sanguíneo','Factor Rh' ] }
+  ,{ key:'bloodtype', regex:/tipo de sangre|grupo sangu(í|i)neo|\babo\b/i, params:[ 'Grupo Sanguíneo','Factor Rh','Coombs Directo' ] }
+  ,{ key:'lipid', regex:/perfil\s+lip(í|i)dico|lipidico/i, params:[ 'Colesterol Total','Triglicéridos','HDL','LDL Calculado','VLDL','Colesterol No-HDL' ] }
+  ,{ key:'renal', regex:/perfil\s+renal/i, params:[ 'Urea','BUN','Creatinina','Ácido Úrico','Depuración Creatinina','Calcio','Fósforo' ] }
+  ,{ key:'cardiac', regex:/perfil\s+card(í|i)ac|card[ií]aco/i, params:[ 'Troponina I','CK Total','CK-MB','DHL','Mioglobina','BNP','Dímero D' ] }
+  ];
+
+  const match = detectors.find(d=> d.regex.test(raw));
+
+  setImmediate(()=>{
+    const panelKey = match?.key;
+    job.status='working'; job.progress=10; job.message = panelKey? `Detectado panel ${panelKey}` : 'Generando panel base';
+    if (!panelKey){
+      job.result = { parameters:[], ai_meta:{ source:'templates', note:'no-canonical-match', ts:new Date().toISOString() } };
+      job.progress=100; job.status='done'; job.message='Completado';
+      return;
+    }
+    try {
+      const { buildParameterTemplate } = require('../utils/referenceTemplates');
+      const parameters = [];
+      match.params.forEach(name => {
+        const tpl = buildParameterTemplate(name);
+        if (tpl) {
+          parameters.push({ name, unit:tpl.unit, decimal_places:tpl.decimal_places, valorReferencia: tpl.valorReferencia.map(r=>({...r})) });
+        } else {
+          // placeholder structured
+          const SEGMENTS = [ [0,1],[1,2],[2,12],[12,18],[18,65],[65,120] ];
+          parameters.push({ name, unit:'', decimal_places:2, valorReferencia: SEGMENTS.map(([a,b])=>({ sexo:'Ambos', edadMin:a, edadMax:b, unidadEdad:'años', valorMin:null, valorMax:null, notas:'(Pendiente definir)' })) });
+        }
+      });
+      job.progress=55; job.message='Rangos aplicados / placeholders';
+      const SEGMENTS_LIST = [ [0,1],[1,2],[2,12],[12,18],[18,65],[65,120] ];
+      const coverageIssues = [];
+      parameters.forEach(p=>{
+        const spans = new Set(p.valorReferencia.map(r=>`${r.edadMin}|${r.edadMax}`));
+        SEGMENTS_LIST.forEach(([a,b])=>{ if (![...spans].some(s=>s===`${a}|${b}`)) coverageIssues.push(`${p.name}:${a}-${b}`); });
+      });
+      if (coverageIssues.length){ job.ai_warnings = { coverage: coverageIssues.slice(0,10) }; }
+      job.progress=85; job.message='Panel completando';
+      job.result = { parameters, ai_meta:{ source:'templates', panel:panelKey, ts:new Date().toISOString() } };
+      job.progress=100; job.status='done'; job.message='Completado';
+    } catch(e) {
+      job.status='error'; job.message='Error generando panel'; job.error={ message:e.message };
+    }
+  });
+  res.json({ jobId });
+});
+
+router.get('/generate-panel/job/:id', requireAuth, requirePermission('studies','create'), (req,res)=>{
+  const job = aiJobs.get(req.params.id);
+  if (!job) return res.status(404).json({ error:'job no encontrado' });
+  const payload = { id:job.id, status:job.status, type:job.type, progress:job.progress, message:job.message };
+  if (job.status==='done') payload.result = job.result;
+  if (job.status==='error') payload.error = job.error;
+  res.json(payload);
+});
+
+// Exposición controlada para tests (no documentar como API pública)
+if (process.env.NODE_ENV === 'test') {
+  router.__ensureCoverageForTest = (payload, studyName) => ensureCoverage(payload, studyName||'test');
+}
 
 module.exports = router;

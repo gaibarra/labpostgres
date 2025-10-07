@@ -32,12 +32,13 @@ describe('AIAssistParameterDialog', () => {
     render(<AIAssistParameterDialog {...baseProps} />);
     const acceptBtn = screen.getByRole('button', { name: /aceptar/i });
     expect(acceptBtn).toBeDisabled();
-    const nameInput = screen.getByPlaceholderText(/índice inflamatorio tiroideo/i);
-    fireEvent.change(nameInput, { target: { value: 'Indice X' } });
+  const nameInputs = screen.getAllByPlaceholderText(/índice inflamatorio tiroideo/i);
+  const nameInput = nameInputs[nameInputs.length - 1];
+  fireEvent.change(nameInput, { target: { value: 'Indice X' } });
     expect(acceptBtn).not.toBeDisabled();
   });
 
-  it('sugiere nombre y luego acepta', async () => {
+  it('genera rangos (antes sugerir nombre) y luego acepta', async () => {
     const onAccept = vi.fn();
     const mockParam = {
       name: 'Indice Inflamatorio Tiroideo',
@@ -49,20 +50,37 @@ describe('AIAssistParameterDialog', () => {
     };
     global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ parameter: mockParam }) });
     render(<AIAssistParameterDialog {...baseProps} onAccept={onAccept} />);
-    const suggestBtn = screen.getByRole('button', { name: /sugerir nombre/i });
+  // Ingresar nombre válido requerido por nueva UX antes de generar rangos
+  const nameInputList = screen.getAllByPlaceholderText(/índice inflamatorio tiroideo/i);
+  const nameInput = nameInputList[nameInputList.length -1];
+  fireEvent.change(nameInput, { target: { value: 'Indice X' } });
+  const suggestBtns = screen.getAllByTestId('ai-generate-ranges-btn');
+  const suggestBtn = suggestBtns[suggestBtns.length - 1];
     fireEvent.click(suggestBtn);
     await waitFor(()=> expect(global.fetch).toHaveBeenCalled());
-    // Nombre llenado
-    await waitFor(()=> expect(screen.getByDisplayValue(/indice inflamatorio tiroideo/i)).toBeInTheDocument());
+  // Nueva UX: el nombre ingresado NO se sobrescribe por la sugerencia IA.
+  // Verificamos que aparezca el panel de sugerencia y que el input conserve el valor del usuario.
+  await waitFor(()=> expect(screen.getByText(/sugerencia ia/i)).toBeInTheDocument());
+  // Duplicados potenciales por animaciones Radix -> usamos getAll y tomamos el último
+  const matchingNameInputs = screen.getAllByDisplayValue(/indice x/i);
+  expect(matchingNameInputs[matchingNameInputs.length -1]).toBeInTheDocument();
+  // El nombre propuesto por IA se muestra como texto informativo, no en el input
+  expect(screen.getByText(/propuso nombre, ignorado/i)).toBeInTheDocument();
     const acceptBtn = screen.getByRole('button', { name: /aceptar/i });
     fireEvent.click(acceptBtn);
     expect(onAccept).toHaveBeenCalledTimes(1);
-    expect(onAccept.mock.calls[0][0]).toMatchObject({ name: mockParam.name });
+  // Debe enviarse el nombre del usuario, no el sugerido por IA
+  expect(onAccept.mock.calls[0][0]).toMatchObject({ name: 'Indice X' });
   });
-  it('muestra error de sugerencia pero permite aceptar manualmente', async () => {
+  it('muestra error de generación pero permite aceptar manualmente', async () => {
     global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 400, text: async () => 'Bad Request' });
     render(<AIAssistParameterDialog {...baseProps} />);
-    const suggestBtn = screen.getByRole('button', { name: /sugerir nombre/i });
+  // Nombre requerido antes de intentar generar
+  const nameInputCandidates = screen.getAllByPlaceholderText(/índice inflamatorio tiroideo/i);
+  const nameInput0 = nameInputCandidates[nameInputCandidates.length - 1];
+  fireEvent.change(nameInput0, { target: { value: 'Indice X' } });
+  const suggestBtns = screen.getAllByTestId('ai-generate-ranges-btn');
+  const suggestBtn = suggestBtns[suggestBtns.length - 1];
     fireEvent.click(suggestBtn);
     await waitFor(()=> expect(global.fetch).toHaveBeenCalled());
     await waitFor(()=> expect(screen.getByText(/http 400/i)).toBeInTheDocument());

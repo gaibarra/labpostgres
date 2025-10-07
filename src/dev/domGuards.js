@@ -71,7 +71,10 @@ if (import.meta.env.DEV && typeof window !== 'undefined') {
   let lastPreMismatchKey = '';
   let lastPreMismatchTime = 0;
   const PRE_MISMATCH_COOLDOWN = 300; // ms
+  const PRE_MISMATCH_MAX_LOGS_PER_KEY = 8; // después de este número de logs individuales por key, se suprime detalle
+  const PRE_MISMATCH_AGG_INTERVAL = 5000; // ms entre resúmenes agregados
   const preMismatchCounter = new Map();
+  let lastAggPrint = 0;
   Element.prototype.removeChild = function patchedRemoveChild(child) {
     // Pre-check: if child is already detached or parent mismatch, log once and swallow.
     if (!child || child.parentNode !== this) {
@@ -89,10 +92,27 @@ if (import.meta.env.DEV && typeof window !== 'undefined') {
         const key = `${preEvt.parent?.tag||'UNK'}>${preEvt.child?.tag||'UNK'}:${preEvt.child?.role||''}`;
         const count = (preMismatchCounter.get(key) || 0) + 1;
         preMismatchCounter.set(key, count);
-        // Throttle logs de la misma relación
-        if (key !== lastPreMismatchKey || (now - lastPreMismatchTime) > PRE_MISMATCH_COOLDOWN) {
+        const shouldLogDetail = count <= PRE_MISMATCH_MAX_LOGS_PER_KEY;
+        // Throttle logs de la misma relación (solo mientras aún no superamos el máximo de detalle)
+        if (shouldLogDetail && (key !== lastPreMismatchKey || (now - lastPreMismatchTime) > PRE_MISMATCH_COOLDOWN)) {
           lastPreMismatchKey = key; lastPreMismatchTime = now;
           console.warn('[domGuard][removeChild.preMismatch]', { key, count, sample: preEvt });
+        }
+        // Logging agregado periódico una vez alcanzado el límite de detalle para cualquier key
+        const anyOverLimit = count === PRE_MISMATCH_MAX_LOGS_PER_KEY + 1; // primer momento en que lo superamos
+        const timeForAgg = now - lastAggPrint > PRE_MISMATCH_AGG_INTERVAL;
+        if (anyOverLimit || timeForAgg) {
+          lastAggPrint = now;
+          const aggregate = {};
+          preMismatchCounter.forEach((v,k)=>{ aggregate[k] = v; });
+          console.info('[domGuard][removeChild.preMismatch][aggregate]', {
+            keys: Object.keys(aggregate).length,
+            top: Object.entries(aggregate).sort((a,b)=> b[1]-a[1]).slice(0,5),
+            totalEvents: Array.from(preMismatchCounter.values()).reduce((a,b)=>a+b,0)
+          });
+          if (anyOverLimit) {
+            console.info('[domGuard] (silenciando detalles repetidos por key>', PRE_MISMATCH_MAX_LOGS_PER_KEY, ') usar window.__dumpPreMismatch() para ver más');
+          }
         }
       }
       // Early exit: no attempt to actually remove to evitar throw en cascada
@@ -147,15 +167,43 @@ if (import.meta.env.DEV && typeof window !== 'undefined') {
       return originalAppendChild.call(this, child);
     };
 
-    // Patch insertBefore para mismo caso + beforeNode descriptor
+    // Patch insertBefore con detección adicional de before desacoplado
+    const insertStats = { reparent:0, beforeDetached:0 };
+    window.__DOM_GUARDS_INSERT_STATS__ = insertStats;
     Element.prototype.insertBefore = function patchedInsertBefore(child, before) {
       const reparent = child?.parentNode && child.parentNode !== this;
+      const beforeDetached = before && before.parentNode !== this;
       if (reparent) {
-        const evt = { type:'insertBefore.reparent', time:Date.now(), newParent: describeNode(this), oldParent: describeNode(child.parentNode), before: describeNode(before), child: describeNode(child) };
+        insertStats.reparent++;
+        const evt = { type:'insertBefore.reparent', time:Date.now(), newParent: describeNode(this), oldParent: describeNode(child.parentNode), before: describeNode(before), child: describeNode(child), stats: { ...insertStats } };
         pushEvent(evt);
         console.warn('[domGuard][insertBefore.reparent]', evt);
       }
+      if (beforeDetached) {
+        insertStats.beforeDetached++;
+        const evt = { type:'insertBefore.beforeDetached', time:Date.now(), parent: describeNode(this), before: describeNode(before), child: describeNode(child), siblings: siblingsOf(this), stats: { ...insertStats } };
+        pushEvent(evt);
+        // Fallback: si el nodo objetivo ya no es hijo, degradar a appendChild para evitar NotFoundError
+        try {
+          console.warn('[domGuard][insertBefore.beforeDetached] fallback -> appendChild');
+          return originalAppendChild.call(this, child);
+        } catch (err) {
+          console.error('[domGuard][insertBefore.beforeDetached] append fallback failed', err);
+          // Último recurso: devolver child sin lanzar
+          return child;
+        }
+      }
       return originalInsertBefore.call(this, child, before);
+    };
+
+    // Exponer volcado simple de estadísticas
+    window.__dumpDomGuardStats = () => {
+      try {
+        const evts = (window.__REMOVE_CHILD_EVENTS||[]).slice(-10);
+        console.info('[domGuard][stats]', { insertStats: { ...insertStats }, lastEvents: evts });
+      } catch (e) {
+        console.warn('[domGuard][stats] error', e);
+      }
     };
 
     window.__restoreDomGuards = () => {
@@ -167,6 +215,18 @@ if (import.meta.env.DEV && typeof window !== 'undefined') {
         console.info('[domGuard] DOM guard patches restored to originals');
       }
     };
+
+    // Exponer volcado agregado de preMismatch
+    window.__dumpPreMismatch = () => {
+      const aggregate = {};
+      preMismatchCounter.forEach((v,k)=>{ aggregate[k] = v; });
+      const entries = Object.entries(aggregate).sort((a,b)=> b[1]-a[1]);
+      console.info('[domGuard][preMismatch.dump]', { totalKeys: entries.length, entries });
+    };
+
+    // Flags rápidas (para inspección en consola):
+    // window.__LABG40_SUPPRESS_REMOVECHILD_PREMISMATCH__ = true  -> silencia cualquier preMismatch
+    // window.__dumpPreMismatch()                                 -> muestra distribución completa
 
     console.info('[domGuard] removeChild/appendChild/insertBefore diagnostic patches installed');
   })();

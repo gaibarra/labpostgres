@@ -121,8 +121,9 @@ export const useStudies = (searchTerm) => {
     }
   }, []);
 
-  const upsertStudy = async (studyData) => {
-    const { id, parameters, created_at, particularPrice, ...studyInfo } = studyData;
+  const upsertStudy = useCallback(async (studyInfo) => {
+    if (!studyInfo) throw new Error('studyInfo requerido');
+    const id = studyInfo.id || null;
     const payload = {
       clave: studyInfo.clave || undefined,
       name: studyInfo.name || '',
@@ -144,7 +145,7 @@ export const useStudies = (searchTerm) => {
       await logAuditEvent('EstudioCreado', { studyId: saved.id, studyName: saved.name }, user?.id);
     }
     return saved;
-  };
+  }, [generateStudyKey, user]);
 
   // Combina valores de referencia Masculino/Femenino idénticos en una sola fila 'Ambos'
   function combineReferenceValues(refs = []) {
@@ -188,7 +189,7 @@ export const useStudies = (searchTerm) => {
     return merged;
   }
 
-  const syncParameters = async (studyId, parameters) => {
+  const syncParameters = useCallback(async (studyId, parameters) => {
     if (!studyId) throw new Error('studyId requerido para sincronizar parámetros');
     // Prevalidación cliente antes de enviar
     const allowedAgeUnits = new Set(['años','year','years','meses','months','dias','días','days']);
@@ -210,7 +211,28 @@ export const useStudies = (searchTerm) => {
     }
     const clientErrors = [];
     const cleanedParameters = (parameters || []).map((p,pIndex)=>{
-      const valorReferencia = combineReferenceValues(p.valorReferencia || []).map((vr,rIndex)=>{
+      const originalCombined = combineReferenceValues(p.valorReferencia || []);
+      const beforeCount = originalCombined.length;
+      // Detect canonical placeholder segmentation (6 segments 0-1,1-2,2-12,12-18,18-65,65-120 all Ambos, null values, placeholder note)
+      const CANON_SEGS = [[0,1],[1,2],[2,12],[12,18],[18,65],[65,120]];
+      const isCanonicalPlaceholderSet = beforeCount === CANON_SEGS.length && originalCombined.every(seg => {
+        return seg.sexo === 'Ambos'
+          && CANON_SEGS.some(([a,b]) => a === (seg.age_min ?? seg.edadMin) && b === (seg.age_max ?? seg.edadMax))
+          && (seg.normal_min ?? seg.valorMin ?? null) == null
+          && (seg.normal_max ?? seg.valorMax ?? null) == null
+          && /sin referencia establecida/i.test(seg.notas || '');
+      });
+      const valorReferencia = originalCombined
+        // Nuevo criterio: sólo descartar si absolutamente TODOS (lower/upper/textos) están vacíos y la nota es placeholder.
+        .filter(vr => {
+          if (isCanonicalPlaceholderSet) return true; // preservamos los 6 segmentos canónicos vacíos
+          const hasNumeric = vr.normal_min != null || vr.normal_max != null;
+          const hasText = (vr.textoLibre && vr.textoLibre.trim()) || (vr.textoPermitido && vr.textoPermitido.trim());
+          const isPlaceholderNote = vr.notas && /sin referencia establecida/i.test(vr.notas);
+          if (!hasNumeric && !hasText && isPlaceholderNote) return false; // descartar verdadero placeholder (no canónico)
+          return true; // conservar incluso rangos abiertos (solo lower o solo upper)
+        })
+        .map((vr,rIndex)=>{
         const age_unit_raw = vr.age_unit || vr.unidadEdad || 'años';
         const age_unit = canonicalAgeUnit(age_unit_raw);
         const normal_min = vr.normal_min ?? vr.valorMin ?? null;
@@ -229,11 +251,59 @@ export const useStudies = (searchTerm) => {
           tipoValor: vr.tipoValor || (vr.textoLibre ? 'textoLibre' : (vr.textoPermitido ? 'alfanumerico' : 'numerico')),
           normal_min,
           normal_max,
+          // Aliases para compatibilidad backend (persistencia de límites IA)
+          valorMin: normal_min,
+          valorMax: normal_max,
+          lower: normal_min,
+          upper: normal_max,
           textoPermitido: vr.textoPermitido || '',
           textoLibre: vr.textoLibre || '',
           notas: vr.notas || ''
         };
       });
+      if (process.env.NODE_ENV !== 'production') {
+        try {
+          // eslint-disable-next-line no-console
+          console.debug('[useStudies][syncParameters] paramIndex=%d name="%s" ranges before=%d after=%d', pIndex, p.name, beforeCount, valorReferencia.length);
+        } catch(_) { /* noop */ }
+      }
+      // Si todos los rangos originales eran placeholders (beforeCount>0) y tras el filtrado quedó vacío, agregamos
+      // un placeholder sintético neutro para que el backend (parameters-sync) active su fallback e inserte
+      // un rango visible en DB. Sin esto, rawRanges=[] provoca preservación (sin rangos) y el usuario percibe
+      // que el parámetro "no se guardó" (especialmente en flujo Parámetro IA con sólo placeholders).
+      if (valorReferencia.length === 0 && beforeCount > 0) {
+        // Si era el set canónico, mantenemos los 6 segmentos (no debería ocurrir porque los preservamos arriba)
+        if (isCanonicalPlaceholderSet) {
+          CANON_SEGS.forEach(([a,b])=>{
+            valorReferencia.push({
+              sexo: 'Ambos',
+              edadMin: a,
+              edadMax: b,
+              unidadEdad: 'años',
+              valorMin: null,
+              valorMax: null,
+              lower: null,
+              upper: null,
+              notas: 'Sin referencia establecida'
+            });
+          });
+        } else {
+          valorReferencia.push({
+            sexo: 'Ambos',
+            edadMin: null,
+            edadMax: null,
+            unidadEdad: 'años',
+            valorMin: null,
+            valorMax: null,
+            lower: null,
+            upper: null,
+            notas: 'Sin referencia establecida'
+          });
+        }
+        if (process.env.NODE_ENV !== 'production') {
+          try { console.debug('[useStudies][syncParameters] inserted synthetic placeholder to trigger backend fallback paramIndex=%d', pIndex); } catch(_) { /* noop */ }
+        }
+      }
       return {
         id: p.id || null,
         name: (p.name || '').trim(),
@@ -263,7 +333,7 @@ export const useStudies = (searchTerm) => {
         const sample = cleanedParameters?.[0]?.valorReferencia?.[0];
         // eslint-disable-next-line no-console
         console.debug('[useStudies][parameters-sync] sample first range payload', sample);
-      } catch {}
+  } catch (e) { /* noop debug sample */ }
     }
     let res;
     try {
@@ -301,11 +371,11 @@ export const useStudies = (searchTerm) => {
         notas: rr.notes || ''
       }))
     }));
-  };
+  }, []);
 
   const syncReferenceRanges = async () => { /* ya se maneja en parameters-sync */ };
 
-  const updateParticularPrice = async (studyId, price) => {
+  const updateParticularPrice = useCallback(async (studyId, price) => {
     if (price === undefined || !particularReferrer) return;
     try {
       // Re-fetch referrer
@@ -321,8 +391,9 @@ export const useStudies = (searchTerm) => {
     } catch (e) {
       toast.warning('Precio Particular no actualizado', { description: e.message });
     }
-  };
+  }, [particularReferrer]);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const handleSubmit = useCallback(
     async (studyData) => {
       setIsSubmitting(true);
@@ -349,7 +420,8 @@ export const useStudies = (searchTerm) => {
         setIsSubmitting(false);
       }
     },
-    [user, generateStudyKey, mutate, loadData, particularReferrer]
+    // Dependencias reducidas: funciones estables por definición en este hook
+    [upsertStudy, syncParameters, updateParticularPrice, mutate, loadData]
   );
 
   const handleDeleteStudy = useCallback(

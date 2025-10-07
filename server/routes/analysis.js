@@ -4,11 +4,11 @@ const auth = require('../middleware/auth');
 const { requirePermission } = require('../middleware/permissions');
 const { parsePagination, buildSearchFilter } = require('../utils/pagination');
 const { AppError } = require('../utils/errors');
+const { hashCatalog } = require('../utils/catalogHash');
 
 const router = express.Router();
 function activePool(req){ return req.tenantPool || pool; }
-const { validate } = require('../middleware/validate');
-const { analysisCreateSchema, analysisUpdateSchema } = require('../validation/schemas');
+// Eliminados validate, analysisCreateSchema, analysisUpdateSchema (no usados) para limpiar lint.
 const { audit } = require('../middleware/audit');
 
 // --- Sex tokens dynamic normalization ---------------------------------------
@@ -29,7 +29,7 @@ function bridgeToLegacyIfNeeded(sex){
       if (sex === _sexTokensStyle.Masculino) return 'M';
       if (sex === _sexTokensStyle.Femenino) return 'F';
     }
-  } catch(_){}
+  } catch(err){ /* swallow: fallback al valor original */ }
   return sex;
 }
 
@@ -64,6 +64,129 @@ function normalizeSex(raw){
   // Fallback defensivo: preferimos token neutro que siempre pasa constraint
   return _sexTokensStyle.Ambos;
 }
+// --- Reference range backend normalization helpers ------------------------
+// (Los segmentos fallback se definen en frontend; aquí no necesitamos la constante explícita.)
+
+function coerceInt(v){ if (v==null || v==='') return null; const n = Number(v); return Number.isFinite(n)? n : null; }
+function coerceNum(v){ if (v==null || v==='') return null; const n = Number(v); return Number.isFinite(n)? n : null; }
+
+/**
+ * Normaliza, expande cobertura 0-120 y detecta superposiciones.
+ * Reglas:
+ *  - Un rango sin edad (age_min/max null) para un sexo cubre todo (0-120) -> no se generan placeholders.
+ *  - Para cada sexo presente, se rellenan huecos entre 0 y 120 con placeholders (lower/upper null, notes='Auto-fill gap').
+ *  - Rangos que se traslapan (overlap) para mismo sexo generan error.
+ *  - Si sólo existe sexo 'Ambos' se trata como único grupo.
+ */
+function expandAndValidateRanges(rawRanges){
+  const normalized = [];
+  for (const r of (rawRanges||[])) {
+    if (!r) continue;
+    const sex = normalizeSex(r.gender || r.sexo || r.sex);
+    const age_min = coerceInt(r.age_min ?? r.edadMin ?? r.min ?? null);
+    const age_max = coerceInt(r.age_max ?? r.edadMax ?? r.max ?? null);
+    const lower = coerceNum(r.lower ?? r.valorMin ?? r.min_value ?? null);
+    const upper = coerceNum(r.upper ?? r.valorMax ?? r.max_value ?? null);
+    const age_min_unit = r.age_min_unit || r.age_unit || r.unidadEdad || 'años';
+    const text_value = r.text_value || r.textoPermitido || r.textoLibre || null;
+    const notes = r.notes || r.notas || null;
+    const unit = r.unit || r.unidad || null;
+    // Ignorar filas completamente vacías (sin límites, texto ni notas)
+    if (lower==null && upper==null && !text_value && !notes) continue;
+    normalized.push({ sex, age_min, age_max, age_min_unit, lower, upper, text_value, notes, unit });
+  }
+  if (!normalized.length) return []; // nada que insertar
+  const sexes = Array.from(new Set(normalized.map(r=>r.sex)));
+  const isOnlyAmbos = sexes.length === 1 && sexes[0] === _sexTokensStyle.Ambos;
+  const groups = isOnlyAmbos ? { [_sexTokensStyle.Ambos]: normalized } : normalized.reduce((acc,r)=>{ (acc[r.sex]=acc[r.sex]||[]).push(r); return acc; }, {});
+  const finalOut = [];
+  const processGroup = (sex, list) => {
+    // Si cualquier rango cubre toda la vida (null-null) tratamos como cobertura completa
+    const hasAllLife = list.some(r=> r.age_min==null && r.age_max==null);
+    if (hasAllLife) {
+      // Mantener sólo el primer rango que cubre todo para evitar insertar duplicados vacíos
+      const first = list.find(r=> r.age_min==null && r.age_max==null);
+      finalOut.push({ ...first, sex, age_min:null, age_max:null });
+      return;
+    }
+      // --- Deduplicación estricta de spans idénticos (evita falsos solapamientos) ---
+      if (list.length > 1) {
+        const bySpan = new Map(); // key: a|b -> record con preferencia por uno que tenga datos
+        for (const r of list) {
+          const k = `${r.age_min}|${r.age_max}`;
+          const existing = bySpan.get(k);
+          const hasVals = (r.lower!=null || r.upper!=null || r.text_value);
+          if (!existing) { bySpan.set(k, r); continue; }
+          const existingHasVals = (existing.lower!=null || existing.upper!=null || existing.text_value);
+            if (!existingHasVals && hasVals) { bySpan.set(k, r); }
+          // Si ambos tienen valores, conservamos el primero (determinismo) y descartamos duplicado silenciosamente
+        }
+        list = Array.from(bySpan.values());
+      }
+    // Normalizar límites nulos -> clamp en extremos para cálculo de gaps (sin mutar original para persistencia)
+    const ordered = list.map(r=>({ ...r, _amin: r.age_min==null?0:r.age_min, _amax: r.age_max==null?120:r.age_max }))
+      .sort((a,b)=> a._amin - b._amin || a._amax - b._amax);
+    // Detectar overlaps reales
+    // Pre-fusión de casos de contención donde uno sea placeholder (sin lower/upper/text_value)
+    for (let i=1;i<ordered.length;i++){
+      const prev = ordered[i-1];
+      const curr = ordered[i];
+      const prevIsPlaceholder = prev.lower==null && prev.upper==null && !prev.text_value;
+      const currIsPlaceholder = curr.lower==null && curr.upper==null && !curr.text_value;
+      // Caso específico reportado: prev 0-1, curr 0-17 (u otro mayor) para mismo sexo.
+      // Si ambos comienzan igual y el actual se extiende más:
+      if (curr._amin === prev._amin && curr._amax > prev._amax) {
+        // Si el anterior es placeholder y el actual tiene datos -> sustituir
+        if (prevIsPlaceholder && !currIsPlaceholder) {
+          ordered[i-1] = curr; ordered.splice(i,1); i--; continue;
+        }
+        // Si el actual es placeholder y el anterior tiene datos -> descartar actual
+        if (currIsPlaceholder && !prevIsPlaceholder) {
+          ordered.splice(i,1); i--; continue;
+        }
+        // Si ambos son placeholder conservar el más amplio
+        if (prevIsPlaceholder && currIsPlaceholder) {
+          ordered[i-1] = curr; ordered.splice(i,1); i--; continue;
+        }
+      }
+      // Caso inverso (curr contenido totalmente dentro de prev y placeholder)
+      if (curr._amin >= prev._amin && curr._amax <= prev._amax) {
+        if (currIsPlaceholder && !prevIsPlaceholder) { ordered.splice(i,1); i--; continue; }
+        if (currIsPlaceholder && prevIsPlaceholder) { ordered.splice(i,1); i--; continue; }
+      }
+    }
+    // Detección final de solapamientos reales (ya deduplicados contenedores placeholder)
+    for (let i=1;i<ordered.length;i++) {
+      const prev = ordered[i-1];
+      const curr = ordered[i];
+      if (curr._amin < prev._amax) {
+        // Permitimos adyacencia exacta (_amin === _amax)
+        if (curr._amin === prev._amax) continue;
+        throw new AppError(400,`Rangos superpuestos (${sex})`,`REFERENCE_RANGE_OVERLAP`, { sex, prev: { age_min: prev.age_min, age_max: prev.age_max }, curr: { age_min: curr.age_min, age_max: curr.age_max } });
+      }
+    }
+    // Relleno de huecos 0-120
+    let cursor = 0;
+    for (const r of ordered){
+      if (r._amin > 120) break; // fuera de rango
+      if (r._amin > cursor) {
+        finalOut.push({ sex, age_min: cursor, age_max: Math.min(r._amin-1,120), age_min_unit: 'años', lower: null, upper: null, text_value: null, notes: 'Auto-fill gap', unit: null });
+      }
+      // Insertar original (sin campos internos _amin/_amax)
+      const persisted = { ...r }; delete persisted._amin; delete persisted._amax; finalOut.push(persisted);
+      cursor = Math.max(cursor, r._amax + 1);
+      if (cursor>120) break;
+    }
+    if (cursor <= 120) {
+      finalOut.push({ sex, age_min: cursor, age_max: 120, age_min_unit:'años', lower:null, upper:null, text_value:null, notes:'Auto-fill gap', unit:null });
+    }
+  };
+  if (isOnlyAmbos) processGroup(_sexTokensStyle.Ambos, groups[_sexTokensStyle.Ambos]);
+  else {
+    Object.entries(groups).forEach(([sex,list])=> processGroup(sex,list));
+  }
+  return finalOut;
+}
 
 // --- Dynamic schema adaptation (simplificado; sex mode deprecated) -----------
 let analysisColumnsCache = null;
@@ -71,17 +194,18 @@ let sexConstraintCache = null; // { tokens:[], meta:[], ts }
 async function loadAnalysisSchema(req){
   const db = activePool(req);
   if (!analysisColumnsCache) {
-    async function colSet(table){
+    const colSet = async (table)=>{
       const { rows } = await db.query(`SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name=$1`, [table]);
       return new Set(rows.map(r=>r.column_name));
-    }
-    const [aCols, pCols, rCols] = await Promise.all([
+    };
+    const [aCols, pCols, legacyRCols, modernRCols] = await Promise.all([
       colSet('analysis'),
       colSet('analysis_parameters'),
-      colSet('reference_ranges')
+      colSet('reference_ranges'),
+      colSet('analysis_reference_ranges').catch(()=> new Set())
     ]);
-    analysisColumnsCache = { aCols, pCols, rCols };
-    console.info('[ANALYSIS][SCHEMA] cached columns (analysis, parameters, ranges)');
+    analysisColumnsCache = { aCols, pCols, rCols: modernRCols.size ? modernRCols : legacyRCols, modernRanges: modernRCols.size>0, legacyRanges: legacyRCols.size>0 };
+    console.info('[ANALYSIS][SCHEMA] cached columns (analysis, parameters, ranges=%s source=%s)', analysisColumnsCache.rCols.size, analysisColumnsCache.modernRanges?'modern':'legacy');
   }
   // Refrescar constraint (cada 60s máximo) para soportar migraciones en caliente.
   const now = Date.now();
@@ -92,17 +216,18 @@ async function loadAnalysisSchema(req){
         FROM pg_constraint c
         JOIN pg_class t ON c.conrelid = t.oid
         JOIN pg_namespace n ON n.oid = t.relnamespace
-        WHERE t.relname='reference_ranges' AND c.contype='c' AND pg_get_constraintdef(c.oid) ILIKE '%sex%'
+        WHERE t.relname='reference_ranges'
+          AND c.contype='c'
+          AND pg_get_constraintdef(c.oid) ILIKE '%sex%'
       `);
-      const meta = rows.map(r=>({ conname: r.conname, def: r.def }));
-      let tokens = null;
-      function extractQuoted(def){
-        // Extrae todos los 'valor' ignorando ::text y paréntesis; luego filtra duplicados
+  const meta = rows;
+  let tokens = null;
+      const extractQuoted = (def)=>{
         const found = [];
         const re = /'([^']+)'/g; let m;
         while ((m = re.exec(def))) { found.push(m[1]); }
         return [...new Set(found)];
-      }
+      };
       // Reordenar priorizando constraints que ya tengan 'Ambos'
       const ordered = [...meta].sort((a,b)=>{
         const aCanon = /'ambos'/i.test(a.def) ? 0 : 1;
@@ -188,14 +313,18 @@ function unifyRange(r, schema){
       outwardSex = outwardSex.charAt(0).toUpperCase() + outwardSex.slice(1);
     }
   }
+  const rawLower = rCols.has('lower') ? r.lower : (r.min_value ?? null);
+  const rawUpper = rCols.has('upper') ? r.upper : (r.max_value ?? null);
+  // Convertir numeric (string) a Number si es convertible
+  const toNum = (v)=> (v===null || v===undefined || v==='') ? null : (typeof v === 'number' ? v : (Number.isFinite(Number(v)) ? Number(v) : null));
   return {
     id: r.id,
     sex: outwardSex,
     age_min: r.age_min ?? null,
     age_max: r.age_max ?? null,
     age_min_unit: rCols.has('age_min_unit') ? (r.age_min_unit || null) : null,
-    lower: rCols.has('lower') ? r.lower : (r.min_value ?? null),
-    upper: rCols.has('upper') ? r.upper : (r.max_value ?? null),
+    lower: toNum(rawLower),
+    upper: toNum(rawUpper),
     text_value: rCols.has('text_value') ? r.text_value : null,
     notes: rCols.has('notes') ? r.notes : null,
     unit: rCols.has('unit') ? r.unit : null
@@ -210,7 +339,10 @@ function unifyParameter(p, schema, ranges){
     unit: p.unit || null,
     decimal_places: pCols.has('decimal_places') ? p.decimal_places : null,
     position: pCols.has('position') ? p.position : null,
-    reference_ranges: (ranges || []).map(rr => unifyRange(rr, schema))
+    reference_ranges: (ranges || [])
+      .slice()
+      .sort((a,b)=> (a.age_min ?? -1) - (b.age_min ?? -1) || (a.age_max ?? 9999) - (b.age_max ?? 9999) || String(a.sex).localeCompare(String(b.sex)))
+      .map(rr => unifyRange(rr, schema))
   };
 }
 
@@ -269,14 +401,15 @@ router.get('/detailed', auth, requirePermission('studies','read'), async (req,re
       const paramIds = paramRows.map(p=>p.id);
       let rangeRows = [];
       if (paramIds.length) {
-        const rSelect = ['id','parameter_id','sex','age_min','age_max','created_at'];
+  const rTable = schema.modernRanges ? 'analysis_reference_ranges' : 'reference_ranges';
+  const rSelect = ['id','parameter_id','sex','age_min','age_max','created_at'];
         if (schema.rCols.has('age_min_unit')) rSelect.push('age_min_unit');
         if (schema.rCols.has('lower')) { rSelect.push('lower','upper'); }
         else if (schema.rCols.has('min_value')) { rSelect.push('min_value','max_value'); }
         if (schema.rCols.has('text_value')) rSelect.push('text_value');
         if (schema.rCols.has('notes')) rSelect.push('notes');
         if (schema.rCols.has('unit')) rSelect.push('unit');
-        const { rows } = await activePool(req).query(`SELECT ${rSelect.join(', ')} FROM reference_ranges WHERE parameter_id = ANY($1) ORDER BY created_at`, [paramIds]);
+  const { rows } = await activePool(req).query(`SELECT ${rSelect.join(', ')} FROM ${rTable} WHERE parameter_id = ANY($1) ORDER BY created_at`, [paramIds]);
         rangeRows = rows;
       }
       const rangesByParam = rangeRows.reduce((acc,r)=>{ (acc[r.parameter_id] = acc[r.parameter_id] || []).push(r); return acc; }, {});
@@ -364,8 +497,8 @@ router.get('/sex-constraints-audit', auth, requirePermission('studies','read'), 
     const mismatch = canonical.length === 0 || legacy.length > 0;
     // search_path para detectar schema divergente
     let searchPath = null; let currentDb = null;
-    try { const { rows: sp } = await activePool(req).query('SHOW search_path'); searchPath = sp[0].search_path; } catch{}
-    try { const { rows: dbn } = await activePool(req).query('SELECT current_database() AS db'); currentDb = dbn[0].db; } catch{}
+  try { const { rows: sp } = await activePool(req).query('SHOW search_path'); searchPath = sp[0].search_path; } catch(err){ /* ignore */ }
+  try { const { rows: dbn } = await activePool(req).query('SELECT current_database() AS db'); currentDb = dbn[0].db; } catch(err){ /* ignore */ }
     res.json({
       tokensInUse: schema.allowedSexTokens,
       constraints: enriched,
@@ -397,7 +530,8 @@ router.post('/:id/parameters-sync', auth, requirePermission('studies','update'),
     const incomingIds = new Set(incoming.filter(p=>p.id).map(p=>p.id));
     const toDelete = [...existingIds].filter(id => !incomingIds.has(id));
     if (toDelete.length) {
-      await client.query('DELETE FROM reference_ranges WHERE parameter_id = ANY($1)', [toDelete]);
+      const rTableDel = schema.modernRanges ? 'analysis_reference_ranges' : 'reference_ranges';
+      await client.query(`DELETE FROM ${rTableDel} WHERE parameter_id = ANY($1)`, [toDelete]);
       await client.query('DELETE FROM analysis_parameters WHERE id = ANY($1)', [toDelete]);
     }
   const paramIdMap = new Map();
@@ -427,15 +561,46 @@ router.post('/:id/parameters-sync', auth, requirePermission('studies','update'),
         paramIdMap.set(p, rows[0].id);
       }
     }
-    // Second pass ranges
+    // Second pass ranges (normalización & expansión backend)
     for (let pIndex=0; pIndex < incoming.length; pIndex++) {
       const p = incoming[pIndex];
       const paramId = p.id || paramIdMap.get(p); if (!paramId) continue;
-      await client.query('DELETE FROM reference_ranges WHERE parameter_id=$1', [paramId]);
-      const ranges = Array.isArray(p.valorReferencia) ? p.valorReferencia : (Array.isArray(p.reference_ranges) ? p.reference_ranges : []);
-      for (let rIndex=0; rIndex < ranges.length; rIndex++) {
-        const vr = ranges[rIndex];
-  let sex = normalizeSex(vr.gender || vr.sexo || vr.sex || null);
+      const hasValorProp = Object.prototype.hasOwnProperty.call(p,'valorReferencia') || Object.prototype.hasOwnProperty.call(p,'reference_ranges');
+      const clearExplicit = p.clearRanges === true; // nueva bandera para permitir borrado intencional
+      const rawRanges = Array.isArray(p.valorReferencia) ? p.valorReferencia : (Array.isArray(p.reference_ranges) ? p.reference_ranges : undefined);
+      if (!hasValorProp && !clearExplicit) {
+        // No se envió la propiedad => preservamos rangos existentes
+        if (process.env.DEBUG_SYNC_RANGES === '1') {
+          console.info(`[ANALYSIS][SYNC][${requestId}] preserve ranges paramId=${paramId} (no valorReferencia field)`);
+        }
+        continue;
+      }
+      if ((rawRanges === undefined || rawRanges === null) && !clearExplicit) {
+        // Misma lógica de preservación defensiva
+        if (process.env.DEBUG_SYNC_RANGES === '1') {
+          console.info(`[ANALYSIS][SYNC][${requestId}] preserve ranges paramId=${paramId} (valorReferencia undefined/null)`);
+        }
+        continue;
+      }
+      if (Array.isArray(rawRanges) && rawRanges.length === 0 && !clearExplicit) {
+        // Array vacío sin clearRanges explícito: asumimos que el frontend perdió estado y evitamos borrado accidental
+        if (process.env.DEBUG_SYNC_RANGES === '1') {
+          console.warn(`[ANALYSIS][SYNC][${requestId}] skip destructive empty ranges paramId=${paramId}`);
+        }
+        continue;
+      }
+      // Llegados aquí sí procedemos a reemplazar (borrado + inserción) porque:
+      //  - hubo clearRanges explícito, o
+      //  - hay un array con contenido
+  const rTable = schema.modernRanges ? 'analysis_reference_ranges' : 'reference_ranges';
+  await client.query(`DELETE FROM ${rTable} WHERE parameter_id=$1`, [paramId]);
+      let rangesExpanded = [];
+      try { rangesExpanded = expandAndValidateRanges(rawRanges); }
+      catch(expErr){ await client.query('ROLLBACK'); if (expErr instanceof AppError) return next(expErr); return next(new AppError(400,'Error normalizando rangos','REFERENCE_RANGE_NORMALIZATION_FAIL',{ message: expErr.message })); }
+      let insertedForParam = 0; // contador por parámetro
+      for (let rIndex=0; rIndex < rangesExpanded.length; rIndex++) {
+        const vr = rangesExpanded[rIndex];
+        let sex = normalizeSex(vr.gender || vr.sexo || vr.sex || null);
         const age_min = vr.age_min ?? vr.edadMin ?? null;
         const age_max = vr.age_max ?? vr.edadMax ?? null;
         const age_min_unit = schema.rCols.has('age_min_unit') ? (vr.age_min_unit || vr.unidadEdad || null) : null;
@@ -444,19 +609,20 @@ router.post('/:id/parameters-sync', auth, requirePermission('studies','update'),
         const text_value = schema.rCols.has('text_value') ? (vr.text_value || vr.textoPermitido || vr.textoLibre || null) : null;
         const notes = schema.rCols.has('notes') ? (vr.notes || vr.notas || null) : null;
         const unit = schema.rCols.has('unit') ? (vr.unit || vr.unidad || null) : null;
-        // Validaciones básicas antes de insertar
         if (lower != null && upper != null && Number(lower) > Number(upper)) {
           await client.query('ROLLBACK');
           return next(new AppError(400,`Rango inválido: lower > upper (${lower} > ${upper})`,'INVALID_RANGE_INTERVAL', { paramIndex: pIndex, rangeIndex: rIndex, lower, upper }));
         }
-        if ((lower == null && upper == null && !text_value) ) {
-          // Nada que almacenar salvo notas -> opcional: saltar silenciosamente
-          if (!notes) continue; // no insertamos filas vacías
+        if ((lower == null && upper == null && !text_value)) {
+          // Evita insertar placeholders vacíos (por ejemplo los generados en cliente con notas "Sin referencia establecida")
+          if (!notes || /sin referencia establecida/i.test(String(notes))) {
+            continue;
+          }
         }
-  // Bridge legacy: adaptar sex si constraint vigente es M/F/O únicamente
-  const bridgedSex = bridgeToLegacyIfNeeded(sex);
+        const bridgedSex = bridgeToLegacyIfNeeded(sex);
+  const rTableIns = schema.modernRanges ? 'analysis_reference_ranges' : 'reference_ranges';
   const cols = ['parameter_id','sex','age_min','age_max'];
-  const vals = [paramId, bridgedSex, age_min, age_max];
+        const vals = [paramId, bridgedSex, age_min, age_max];
         if (schema.rCols.has('age_min_unit')) { cols.push('age_min_unit'); vals.push(age_min_unit); }
         if (schema.rCols.has('lower')) { cols.push('lower','upper'); vals.push(lower, upper); }
         else if (schema.rCols.has('min_value')) { cols.push('min_value','max_value'); vals.push(lower, upper); }
@@ -466,17 +632,11 @@ router.post('/:id/parameters-sync', auth, requirePermission('studies','update'),
         const ph = cols.map((_,i)=>'$'+(i+1));
         try {
           if (process.env.DEBUG_SEX_TOKENS === '1') {
-            console.info('[ANALYSIS][SYNC][PRE-INSERT-RANGE]', {
-              paramId,
-              normalizedSex: sex,
-              allowedSexTokens: schema.allowedSexTokens,
-              rawSexInput: vr.gender||vr.sexo||vr.sex||null,
-              cols,
-              valsPreview: vals.slice(0,6)
-            });
+            console.info('[ANALYSIS][SYNC][PRE-INSERT-RANGE]', { paramId, normalizedSex: sex, allowedSexTokens: schema.allowedSexTokens, rawSexInput: vr.gender||vr.sexo||vr.sex||null, cols, valsPreview: vals.slice(0,6) });
           }
-          await client.query(`INSERT INTO reference_ranges(${cols.join(',')}) VALUES(${ph.join(',')})`, vals);
+          await client.query(`INSERT INTO ${rTableIns}(${cols.join(',')}) VALUES(${ph.join(',')})`, vals);
           insertedRangesTotal++;
+          insertedForParam++;
         } catch(dbErr){
           const contextMeta = { paramId, sex, age_min, age_max, age_min_unit, lower, upper, text_value: text_value ? (text_value.slice(0,40)+'…') : null, paramIndex: pIndex, rangeIndex: rIndex };
           await client.query('ROLLBACK');
@@ -485,45 +645,46 @@ router.post('/:id/parameters-sync', auth, requirePermission('studies','update'),
             return next(new AppError(409,'Rango duplicado','DUPLICATE_REFERENCE_RANGE', contextMeta));
           }
           if (dbErr.code === '23514') {
-            // Añadir contexto de tokens permitidos detectados actualmente
             const allowed = (schema.allowedSexTokens || []).join(',');
-            // Re-introspección inmediata (refresca cache ignorando TTL)
-            try { sexConstraintCache = null; await loadAnalysisSchema(req); } catch(_){}
-            // Snapshot constraints en BD por si hay divergencia con introspección en cache
+            try { sexConstraintCache = null; await loadAnalysisSchema(req); } catch(refreshErr){ /* ignore */ }
             let liveConstraints = [];
             try {
-              const { rows: crows } = await activePool(req).query(`SELECT c.conname, pg_get_constraintdef(c.oid) AS def
-                FROM pg_constraint c
-                JOIN pg_class t ON c.conrelid=t.oid
-                JOIN pg_namespace n ON n.oid=t.relnamespace
-                WHERE t.relname='reference_ranges' AND c.contype='c'`);
+              const { rows: crows } = await activePool(req).query(`SELECT c.conname, pg_get_constraintdef(c.oid) AS def FROM pg_constraint c JOIN pg_class t ON c.conrelid=t.oid JOIN pg_namespace n ON n.oid=t.relnamespace WHERE t.relname='reference_ranges' AND c.contype='c'`);
               liveConstraints = crows;
-            } catch(errSnap){
-              liveConstraints = [{ error: 'snapshot_failed', message: errSnap.message }];
-            }
+            } catch(errSnap){ liveConstraints = [{ error: 'snapshot_failed', message: errSnap.message }]; }
             const hexSex = typeof sex === 'string' ? Buffer.from(sex,'utf8').toString('hex') : null;
             const sexInputRaw = vr.gender||vr.sexo||vr.sex||null;
             const hexInputRaw = typeof sexInputRaw === 'string' ? Buffer.from(sexInputRaw,'utf8').toString('hex') : null;
             const dbDetail = dbErr.detail || null;
             const dbWhere = dbErr.where || null;
             console.warn(`[ANALYSIS][SYNC][${requestId}] Violación constraint sexo`, { constraint: dbErr.constraint, allowed, rawSexInput: vr.gender||vr.sexo||vr.sex||null, normalizedSex: sex, postRefreshAllowed: (sexConstraintCache?.tokens||[]).join(','), ...contextMeta });
-            return next(new AppError(400,'Rango inválido (constraint)','REFERENCE_RANGE_CONSTRAINT_FAIL', {
-              constraint: dbErr.constraint,
-              allowed,
-              postRefreshAllowed: (sexConstraintCache?.tokens||[]).join(','),
-              rawSexInput: sexInputRaw,
-              normalizedSex: sex,
-              hexNormalizedSex: hexSex,
-              hexRawSexInput: hexInputRaw,
-              liveConstraints,
-              dbDetail,
-              dbWhere,
-              legacyBridgeActive: !!(sexConstraintCache && sexConstraintCache.legacyPresent && !sexConstraintCache.canonicalPresent),
-              ...contextMeta
-            }));
+            return next(new AppError(400,'Rango inválido (constraint)','REFERENCE_RANGE_CONSTRAINT_FAIL', { constraint: dbErr.constraint, allowed, postRefreshAllowed: (sexConstraintCache?.tokens||[]).join(','), rawSexInput: sexInputRaw, normalizedSex: sex, hexNormalizedSex: hexSex, hexRawSexInput: hexInputRaw, liveConstraints, dbDetail, dbWhere, legacyBridgeActive: !!(sexConstraintCache && sexConstraintCache.legacyPresent && !sexConstraintCache.canonicalPresent), ...contextMeta }));
           }
           console.error(`[ANALYSIS][SYNC][${requestId}] Error insert range`, dbErr, contextMeta);
           return next(new AppError(500,'Error insertando rango','REFERENCE_RANGE_INSERT_FAIL', contextMeta));
+        }
+      }
+      // Fallback sintético: si se envió algún rango (rawRanges no vacío) pero todos fueron descartados por ser placeholders vacíos,
+      // insertamos un único rango placeholder para preservar la existencia visible del parámetro.
+      if (Array.isArray(rawRanges) && rawRanges.length > 0 && insertedForParam === 0) {
+        try {
+          const cols = ['parameter_id','sex','age_min','age_max'];
+          const vals = [paramId, bridgeToLegacyIfNeeded(null), null, null];
+          if (schema.rCols.has('age_min_unit')) { cols.push('age_min_unit'); vals.push(null); }
+          if (schema.rCols.has('lower')) { cols.push('lower','upper'); vals.push(null, null); }
+          else if (schema.rCols.has('min_value')) { cols.push('min_value','max_value'); vals.push(null, null); }
+          if (schema.rCols.has('text_value')) { cols.push('text_value'); vals.push(null); }
+          if (schema.rCols.has('notes')) { cols.push('notes'); vals.push('Sin referencia establecida'); }
+          if (schema.rCols.has('unit')) { cols.push('unit'); vals.push(null); }
+          const ph = cols.map((_,i)=>'$'+(i+1));
+          const rTableIns2 = schema.modernRanges ? 'analysis_reference_ranges' : 'reference_ranges';
+          await client.query(`INSERT INTO ${rTableIns2}(${cols.join(',')}) VALUES(${ph.join(',')})`, vals);
+          insertedRangesTotal++;
+          if (process.env.DEBUG_SYNC_RANGES === '1') {
+            console.info(`[ANALYSIS][SYNC][${requestId}] inserted synthetic placeholder range paramId=${paramId}`);
+          }
+        } catch(synthErr) {
+          console.warn(`[ANALYSIS][SYNC][${requestId}] failed synthetic placeholder insertion paramId=${paramId}`, synthErr.message);
         }
       }
     }
@@ -540,7 +701,8 @@ router.post('/:id/parameters-sync', auth, requirePermission('studies','update'),
       if (schema.rCols.has('text_value')) rSel.push('text_value');
       if (schema.rCols.has('notes')) rSel.push('notes');
       if (schema.rCols.has('unit')) rSel.push('unit');
-      const { rows: rr } = await client.query(`SELECT ${rSel.join(', ')} FROM reference_ranges WHERE parameter_id=$1 ORDER BY created_at`, [p.id]);
+  const rTableSel = schema.modernRanges ? 'analysis_reference_ranges' : 'reference_ranges';
+  const { rows: rr } = await client.query(`SELECT ${rSel.join(', ')} FROM ${rTableSel} WHERE parameter_id=$1 ORDER BY created_at`, [p.id]);
       result.push(unifyParameter(p, schema, rr));
     }
     await client.query('COMMIT');
@@ -666,36 +828,56 @@ router.delete('/parameters/:paramId', auth, requirePermission('studies','update'
   } catch(e){ console.error(e); res.status(500).json({ error:'Error eliminando parámetro'});} 
 });
 
-router.get('/parameters/:paramId/reference-ranges', auth, requirePermission('studies','read'), async (req,res)=>{ try { const { rows } = await activePool(req).query('SELECT * FROM reference_ranges WHERE parameter_id=$1 ORDER BY created_at',[req.params.paramId]); res.json(rows); } catch(e){ console.error(e); res.status(500).json({ error:'Error listando rangos'});} });
+router.get('/parameters/:paramId/reference-ranges', auth, requirePermission('studies','read'), async (req,res)=>{
+  try {
+    const schema = await loadAnalysisSchema(req);
+    const rTable = schema.modernRanges ? 'analysis_reference_ranges' : 'reference_ranges';
+    const cols = ['id','sex','age_min','age_max','created_at'];
+    if (schema.rCols.has('age_min_unit')) cols.push('age_min_unit');
+    if (schema.rCols.has('lower')) cols.push('lower','upper'); else if (schema.rCols.has('min_value')) cols.push('min_value','max_value');
+    if (schema.rCols.has('text_value')) cols.push('text_value');
+    if (schema.rCols.has('notes')) cols.push('notes');
+    if (schema.rCols.has('unit')) cols.push('unit');
+    const { rows } = await activePool(req).query(`SELECT ${cols.join(', ')} FROM ${rTable} WHERE parameter_id=$1 ORDER BY created_at`, [req.params.paramId]);
+    res.json(rows.map(r=>unifyRange(r, schema)));
+  } catch(e){ console.error(e); res.status(500).json({ error:'Error listando rangos'});} });
 
 router.post('/parameters/:paramId/reference-ranges', auth, requirePermission('studies','update'), audit('create','reference_range', (req,r)=>r.locals?.rangeId, (req)=>({ body: req.body, param_id: req.params.paramId })), async (req,res)=>{
-  const body = req.body || {};
-  const cols = ['sex','age_min','age_max','unit','min_value','max_value'];
-  const values = [
-  (await (async()=>{ const s=await loadAnalysisSchema(req); return normalizeSex(body.sex || null); })()),
-    body.age_min ?? null,
-    body.age_max ?? null,
-    body.unit || null,
-    body.lower ?? body.min_value ?? null,
-    body.upper ?? body.max_value ?? null
-  ];
   try {
-    const { rows } = await activePool(req).query(`INSERT INTO reference_ranges(parameter_id,${cols.join(',')}) VALUES($1,${cols.map((_,i)=>'$'+(i+2)).join(',')}) RETURNING id, parameter_id, sex, age_min, age_max, unit, min_value, max_value, created_at`, [req.params.paramId, ...values]);
+    const body = req.body || {};
+    const schema = await loadAnalysisSchema(req);
+    const rTable = schema.modernRanges ? 'analysis_reference_ranges' : 'reference_ranges';
+    let sex = normalizeSex(body.sex || body.gender || null);
+    sex = bridgeToLegacyIfNeeded(sex);
+    const age_min = body.age_min ?? body.edadMin ?? null;
+    const age_max = body.age_max ?? body.edadMax ?? null;
+    const age_min_unit = schema.rCols.has('age_min_unit') ? (body.age_min_unit || body.age_unit || body.unidadEdad || null) : null;
+    const lower = body.lower ?? body.valorMin ?? body.min_value ?? null;
+    const upper = body.upper ?? body.valorMax ?? body.max_value ?? null;
+    const text_value = schema.rCols.has('text_value') ? (body.text_value || body.textoLibre || body.textoPermitido || null) : null;
+    const notes = schema.rCols.has('notes') ? (body.notes || body.notas || null) : null;
+    const unit = schema.rCols.has('unit') ? (body.unit || body.unidad || null) : null;
+    if (lower!=null && upper!=null && Number(lower) > Number(upper)) return res.status(400).json({ error:'lower > upper'});
+    if (lower==null && upper==null && !text_value && (!notes || /sin referencia establecida/i.test(String(notes)))) return res.status(400).json({ error:'Rango vacío'});
+    const cols=['parameter_id','sex','age_min','age_max']; const vals=[req.params.paramId, sex, age_min, age_max];
+    if (schema.rCols.has('age_min_unit')) { cols.push('age_min_unit'); vals.push(age_min_unit); }
+    if (schema.rCols.has('lower')) { cols.push('lower','upper'); vals.push(lower, upper); } else if (schema.rCols.has('min_value')) { cols.push('min_value','max_value'); vals.push(lower, upper); }
+    if (schema.rCols.has('text_value')) { cols.push('text_value'); vals.push(text_value); }
+    if (schema.rCols.has('notes')) { cols.push('notes'); vals.push(notes); }
+    if (schema.rCols.has('unit')) { cols.push('unit'); vals.push(unit); }
+    const ph = cols.map((_,i)=>'$'+(i+1));
+    const { rows } = await activePool(req).query(`INSERT INTO ${rTable}(${cols.join(',')}) VALUES(${ph.join(',')}) RETURNING *`, vals);
     const created = rows[0];
     res.locals.rangeId = created.id;
-    res.status(201).json({
-      id: created.id,
-      sex: created.sex,
-      age_min: created.age_min,
-      age_max: created.age_max,
-      unit: created.unit,
-      lower: created.min_value,
-      upper: created.max_value
-    });
-  } catch(e){ console.error(e); res.status(500).json({ error:'Error creando rango'});} });
+    res.status(201).json(unifyRange(created, schema));
+  } catch(e){
+    if (e.code === '23514') return res.status(400).json({ error:'constraint', detail:e.detail });
+    console.error(e); res.status(500).json({ error:'Error creando rango'});
+  }
+});
 
 router.put('/reference-ranges/:rangeId', auth, requirePermission('studies','update'), audit('update','reference_range', req=>req.params.rangeId, (req)=>({ body: req.body })), async (req,res)=>{
-  const schema = await loadAnalysisSchema(req);
+  await loadAnalysisSchema(req); // ensure schema cache ready (side effects)
   const map = { sex:'sex', age_min:'age_min', age_max:'age_max', unit:'unit', lower:'min_value', upper:'max_value', min_value:'min_value', max_value:'max_value' };
   const sets = []; const vals = [];
   Object.entries(map).forEach(([inKey,col])=>{ 
@@ -716,7 +898,41 @@ router.put('/reference-ranges/:rangeId', auth, requirePermission('studies','upda
   } catch(e){ console.error(e); res.status(500).json({ error:'Error actualizando rango'}); }
 });
 
-router.delete('/reference-ranges/:rangeId', auth, requirePermission('studies','update'), audit('delete','reference_range', req=>req.params.rangeId), async (req,res)=>{ try { const { rowCount } = await activePool(req).query('DELETE FROM reference_ranges WHERE id=$1',[req.params.rangeId]); if(!rowCount) return res.status(404).json({ error:'No encontrado'}); res.status(204).send(); } catch(e){ console.error(e); res.status(500).json({ error:'Error eliminando rango'});} });
+router.delete('/reference-ranges/:rangeId', auth, requirePermission('studies','update'), audit('delete','reference_range', req=>req.params.rangeId), async (req,res)=>{ try { const { rowCount } = await activePool(req).query('DELETE FROM reference_ranges WHERE id=$1',[req.params.rangeId]); if(!rowCount) return res.status(404).json({ error:'No encontrado'}); res.status(204).send(); } catch(e){ console.error(e); res.status(500).json({ error:'Error eliminando rango'}); } });
+
+router.get('/catalog/stats', auth, requirePermission('studies','read'), async (req,res,next)=>{
+  try {
+    const db = activePool(req);
+    // Determinar si existen columnas code/clave para construir SELECT seguro
+    let hasCode = false; let hasClave = false;
+    try {
+      const { rows: cols } = await db.query(`SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='analysis' AND column_name IN ('code','clave')`);
+      cols.forEach(r=>{ if (r.column_name==='code') hasCode=true; if (r.column_name==='clave') hasClave=true; });
+    } catch(_) { /* fallback false */ }
+    const keyExpr = hasCode && hasClave ? 'COALESCE(code, clave)' : (hasCode ? 'code' : (hasClave ? 'clave' : 'name'));
+    const orderExpr = hasCode || hasClave ? keyExpr : 'name';
+    const { rows: analyses } = await db.query(`SELECT id, name, ${keyExpr} AS key FROM analysis ORDER BY ${orderExpr}`);
+    // Obtener todos los parámetros y rangos en bloques para evitar N+1
+    const { rows: params } = await db.query(`SELECT id, analysis_id, name, unit, decimal_places FROM analysis_parameters ORDER BY analysis_id, position NULLS LAST, created_at`);
+    // Determinar columnas de rangos (lower/upper vs min_value/max_value) de forma defensiva
+    let rangeCols = 'id, parameter_id, sex, age_min, age_max, age_min_unit, lower, upper, notes';
+    try { await db.query('SELECT lower FROM reference_ranges LIMIT 0'); }
+    catch(_) { rangeCols = 'id, parameter_id, sex, age_min, age_max, age_min_unit, min_value AS lower, max_value AS upper, notes'; }
+    const { rows: ranges } = await db.query(`SELECT ${rangeCols} FROM reference_ranges ORDER BY parameter_id, created_at`);
+    const rangesByParam = ranges.reduce((acc,r)=>{ (acc[r.parameter_id]=acc[r.parameter_id]||[]).push({ sex:r.sex, age_min:r.age_min, age_max:r.age_max, age_min_unit:r.age_min_unit, lower:r.lower, upper:r.upper, notes:r.notes }); return acc; },{});
+    const paramsByAnalysis = params.reduce((acc,p)=>{ (acc[p.analysis_id]=acc[p.analysis_id]||[]).push({ name:p.name, unit:p.unit, decimal_places:p.decimal_places, ranges: rangesByParam[p.id]||[] }); return acc; },{});
+    const items = analyses.map(a=>({ key: a.key, name: a.name, parameters: paramsByAnalysis[a.id]||[] }));
+    const hash = hashCatalog({ items });
+    const totalRanges = ranges.length;
+    // Version actual (si existe la tabla)
+    let version = null; let version_hash = null;
+    try {
+      const { rows: vrows } = await db.query('SELECT version_number, hash_sha256 FROM catalog_versions ORDER BY version_number DESC LIMIT 1');
+      if (vrows[0]) { version = vrows[0].version_number; version_hash = vrows[0].hash_sha256; }
+    } catch(_) { /* tabla puede no existir aún */ }
+    res.json({ analysis_count: analyses.length, parameter_count: params.length, range_count: totalRanges, hash, current_version: version, current_version_hash: version_hash });
+  } catch(e){ next(e); }
+});
 
 module.exports = router;
 // AI helper endpoint (simple placeholder)
@@ -741,51 +957,3 @@ router.post('/ai/generate-study-details', auth, requirePermission('studies','cre
 });
 
 // Nuevo endpoint: generar UN solo parámetro IA para un estudio existente
-router.post('/ai/generate-parameter', auth, requirePermission('studies','update'), async (req,res)=>{
-  try {
-    const body = req.body || {};
-    const studyId = body.studyId || null;
-    const studyName = (body.studyName || '').trim();
-    const prompt = (body.prompt || '').trim();
-    const existing = Array.isArray(body.existingParameters) ? body.existingParameters : [];
-    if (!studyId) return res.status(400).json({ error:'studyId requerido', code:'MISSING_STUDY_ID' });
-    if (!studyName) return res.status(400).json({ error:'studyName requerido', code:'MISSING_STUDY_NAME' });
-    // Estrategia determinista local (mock). En producción real se llamaría a OpenAI u otro proveedor.
-    const baseSeed = (studyName + ':' + prompt).replace(/[^a-zA-Z0-9]/g,'').toLowerCase().slice(0,16);
-    const hash = baseSeed.split('').reduce((a,c)=> (a*33 + c.charCodeAt(0)) % 100000, 5381);
-    // Generar nombre sugerido a partir de prompt o fallback
-    let rawName = prompt.split(/[,.;:\n]/)[0].trim() || 'Parametro IA';
-    if (rawName.length < 3) rawName = 'Parametro IA';
-    rawName = rawName.replace(/\s+/g,' ').trim();
-    // Evitar colisiones con existing
-    let candidate = rawName;
-    let i=1;
-    while (existing.map(e=>e.toLowerCase()).includes(candidate.toLowerCase()) && i<50) {
-      candidate = `${rawName} ${++i}`;
-    }
-    const unitPool = ['mg/dL','U/L','IU/mL','ng/mL','pg/mL','%'];
-    const unit = unitPool[hash % unitPool.length];
-    // Construir 2 rangos sintéticos (Ambos) con distribución basada en hash
-    const spread = (hash % 40) + 20; // 20-59
-    const mid = (hash % 70) + 30; // 30-99
-    const lower1 = Math.max(0, (mid - spread/2)/10).toFixed(1);
-    const upper1 = (mid/10).toFixed(1);
-    const lower2 = (mid/10).toFixed(1);
-    const upper2 = ((mid + spread/2)/10).toFixed(1);
-    const parameter = {
-      name: candidate,
-      unit,
-      decimal_places: 1,
-      position: null,
-      reference_ranges: [
-        { sex: 'Ambos', age_min: null, age_max: null, age_min_unit: 'años', lower: parseFloat(lower1), upper: parseFloat(upper1), text_value: null },
-        { sex: 'Ambos', age_min: null, age_max: null, age_min_unit: 'años', lower: parseFloat(lower2), upper: parseFloat(upper2), text_value: null }
-      ],
-      notes: prompt ? `Generado a partir del prompt: "${prompt.slice(0,120)}"` : null
-    };
-    res.json({ parameter, meta: { strategy:'deterministic-mock', hash, seed: baseSeed } });
-  } catch(e){
-    console.error('[AI][GENERATE-PARAMETER]', e);
-    res.status(500).json({ error:'Error generando parámetro IA'});
-  }
-});

@@ -21,6 +21,7 @@ describe('Analysis & Packages', () => {
   test('create package', async () => {
     if (!db) return expect(true).toBe(true);
     const res = await request(app).post('/api/packages').set('Authorization', `Bearer ${token}`).send({ name: 'Perfil Basico' });
-    expect([201,500]).toContain(res.status);
+    // Debe crear correctamente; no aceptamos ya 500 porque la tabla real existe (analysis_packages)
+    expect([201,409]).toContain(res.status);
   });
 });

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -8,7 +8,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import StudyParameters from '@/components/modules/studies/StudyParameters';
 import { Sparkles, Loader2, Info, Save, ChevronDown, ChevronUp, PlusCircle } from 'lucide-react';
-import { toast } from 'sonner';
+// import { toast } from 'sonner'; // (no utilizado actualmente)
 
 const studyCategories = [
   'Hematología', 'Química Clínica', 'Inmunología', 'Microbiología', 'Uroanálisis',
@@ -23,9 +23,8 @@ const slugify = (s) =>
     .toUpperCase()
     .slice(0, 20);
 
-const StudyForm = ({ initialStudy, onSubmit, onCancel, isSubmitting, onAIAssist, onImmediateParameterSave, onImmediateParameterDelete, onPersistParameterOrder, onAIAddParameter, invalidHighlight }) => {
+const StudyForm = forwardRef(function StudyFormFwd({ initialStudy, onSubmit, onCancel, isSubmitting, onAIAssist, onImmediateParameterSave, onImmediateParameterDelete, onPersistParameterOrder, invalidHighlight }, ref) {
   const [study, setStudy] = useState(initialStudy);
-  const [aiParamLoading, setAiParamLoading] = useState(false);
   const [showParameters, setShowParameters] = useState(true);
   const paramsCompRef = useRef(null);
   const lastHighlightRef = useRef(null);
@@ -55,7 +54,7 @@ const StudyForm = ({ initialStudy, onSubmit, onCancel, isSubmitting, onAIAssist,
       try {
         // Abrir diálogo del parámetro correspondiente si ref expone método
         paramsCompRef.current?.openParameterByIndex?.(invalidHighlight.paramIndex);
-      } catch {}
+  } catch (e) { /* ignore highlight open error */ }
       // Intentar localizar el contenedor del rango dentro del diálogo de edición (usa data atributos que añadiremos más adelante)
       setTimeout(() => {
         const selector = `[data-param-index="${invalidHighlight.paramIndex}"][data-range-index="${invalidHighlight.rangeIndex}"]`;
@@ -109,32 +108,8 @@ const StudyForm = ({ initialStudy, onSubmit, onCancel, isSubmitting, onAIAssist,
     paramsCompRef.current?.openNew?.();
   };
 
-  const handleAIAddParameterClick = () => {
-    if (typeof onAIAddParameter !== 'function' || aiParamLoading) return;
-    const ctx = {
-      studyName: study.name,
-      category: study.category,
-      existingParameters: (study.parameters||[]).map(p=>p.name).filter(Boolean)
-    };
-    setAiParamLoading(true);
-    try {
-      const maybePromise = onAIAddParameter(ctx, (newParam)=>{
-        if (newParam) {
-          setStudy(prev => ({ ...prev, parameters: [...(prev.parameters||[]), newParam] }));
-          if (!showParameters) setShowParameters(true);
-          try { paramsCompRef.current?.focusLast?.(); } catch {}
-        }
-      });
-      if (maybePromise && typeof maybePromise.finally === 'function') {
-        maybePromise.finally(()=> setAiParamLoading(false));
-      } else {
-        // Fallback: reset after short delay if callback style only
-        setTimeout(()=> setAiParamLoading(false), 1200);
-      }
-    } catch {
-      setAiParamLoading(false);
-    }
-  };
+  // Ya no exponemos addAIParameter (flujo IA eliminado)
+  useImperativeHandle(ref, () => ({ /* reservado para futuras extensiones */ }), []);
 
   const handleParametersChange = (newParameters) => {
     const arr = Array.isArray(newParameters) ? newParameters : [];
@@ -237,18 +212,6 @@ const StudyForm = ({ initialStudy, onSubmit, onCancel, isSubmitting, onAIAssist,
                     >
                       <PlusCircle className="mr-2 h-4 w-4" /> Añadir Parámetro
                     </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={handleAIAddParameterClick}
-                      disabled={aiParamLoading || isSubmitting}
-                      className={`relative overflow-hidden ${aiParamLoading ? 'opacity-80 cursor-wait' : ''} text-purple-600 border-purple-600 hover:bg-purple-100 dark:text-purple-400 dark:border-purple-400 dark:hover:bg-slate-800/60`}
-                      title="Genera un nuevo parámetro con IA (novedoso o adicional)"
-                      aria-busy={aiParamLoading}
-                    >
-                      {aiParamLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />} {aiParamLoading ? 'Generando...' : 'Parámetro IA'}
-                    </Button>
                     <CollapsibleTrigger asChild>
                       <Button type="button" variant="ghost" size="sm" className="hover:bg-slate-200/50 dark:hover:bg-slate-800/50">
                         {showParameters ? <><ChevronUp className="mr-1 h-4 w-4" /> Ocultar</> : <><ChevronDown className="mr-1 h-4 w-4" /> Mostrar</>}
@@ -288,6 +251,7 @@ const StudyForm = ({ initialStudy, onSubmit, onCancel, isSubmitting, onAIAssist,
       </div>
     </div>
   );
-};
+});
+StudyForm.displayName = 'StudyForm';
 
 export default StudyForm;

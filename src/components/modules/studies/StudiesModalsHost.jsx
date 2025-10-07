@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useCallback, useState } from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 // flushSync era usado para forzar sincronía en toggles de diálogos; lo retiramos
 // para reducir riesgo de reconciliaciones intercaladas que lleven a removeChild
@@ -8,7 +8,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 // (Removidos imports de Card* no utilizados)
 import { ScrollArea } from '@/components/ui/scroll-area';
 import StudyForm from './StudyForm';
-import AIAssistParameterDialog from './AIAssistParameterDialog';
 import DeleteStudyDialog from './DeleteStudyDialog';
 import AIAssistDialog from './AIAssistDialog';
 import AIAssistPreviewModal from './AIAssistPreviewModal';
@@ -78,9 +77,87 @@ export function StudiesModalsHost({
   // mountRef removido (no usado)
   const lastFocusRef = useRef(null);
   // Eliminado estado transitioning (se usaba para bloquear pointer-events y podía interferir con foco)
-  const [isAIParamDialogOpen, setIsAIParamDialogOpen] = useState(false);
-  const [aiParamContext, setAiParamContext] = useState({});
+  // Eliminado flujo de parámetro IA
+  const studyFormRef = useRef(null);
   const instEnabled = enableInstrumentation && (import.meta?.env?.VITE_STUDIES_DIALOG_INST === 'on');
+  const appliedInertRef = useRef(new Set());
+
+  // ===== Accesibilidad: Mitigación aria-hidden / aislamiento con inert =====
+  useEffect(()=>{
+    // Determinar si hay algún modal abierto relevante
+  const anyOpen = isFormOpen || isDeleteConfirmOpen || isAIAssistOpen || isPreviewModalOpen || isPriceModalOpen;
+    if (!anyOpen) {
+      // Cleanup inert previo
+  appliedInertRef.current.forEach(el=>{ try { el.removeAttribute('inert'); el.removeAttribute('data-labg40-inert'); } catch(_e){ /* ignore cleanup error */ } });
+      appliedInertRef.current.clear();
+      return;
+    }
+    // Defer para permitir que Radix monte contenidos y aplique hideOthers
+    const raf = requestAnimationFrame(()=>{
+      try {
+        // Recolectar diálogos visibles
+  const dialogs = Array.from(document.querySelectorAll('[role="dialog"], [role="alertdialog"]'));
+  if (instEnabled) console.info('[A11Y][inert] dialogs encontrados:', dialogs.map(d=>d.getAttribute('role')));
+        // Quitar aria-hidden erróneo si el foco está dentro
+        dialogs.forEach(d=>{
+          if (d.contains(document.activeElement) && d.getAttribute('aria-hidden') === 'true') {
+            d.removeAttribute('aria-hidden');
+            if (instEnabled) console.info('[A11Y][fix] aria-hidden removido de dialog activo');
+          }
+        });
+        // Construir whitelist incluyendo cada dialog y sus ancestros hasta body (evita inert en contenedor portal personalizado)
+        const whitelist = new Set();
+        dialogs.forEach(d=>{
+          let node = d;
+            while (node && node !== document.body) {
+              whitelist.add(node);
+              node = node.parentNode;
+            }
+        });
+        // Añadir explícitamente root custom si existe
+        const portalRoot = document.getElementById('studies-modal-root');
+        if (portalRoot) whitelist.add(portalRoot);
+        const bodyChildren = Array.from(document.body.children);
+        bodyChildren.forEach(node=>{
+          if (whitelist.has(node)) return; // es portal o dialog
+          // Evitar volver a aplicar
+          if (!node.hasAttribute('inert')) {
+            try {
+              node.setAttribute('inert','');
+              node.setAttribute('data-labg40-inert','1');
+              appliedInertRef.current.add(node);
+            } catch(_e){ /* ignore inert apply error */ }
+          } else if (node.getAttribute('data-labg40-inert') !== '1') {
+            // Si inert ajeno, no tocar
+          }
+        });
+        // Retirar inert de nodos whitelisted si lo tienen por error
+        whitelist.forEach(el=>{ if (el.hasAttribute('inert') && el.getAttribute('data-labg40-inert')==='1'){ el.removeAttribute('inert'); el.removeAttribute('data-labg40-inert'); appliedInertRef.current.delete(el);} });
+      } catch(e){ /* noop */ }
+    });
+    return ()=> cancelAnimationFrame(raf);
+  }, [isFormOpen, isDeleteConfirmOpen, isAIAssistOpen, isPreviewModalOpen, isPriceModalOpen, instEnabled]);
+
+  // Listener de focus para corregir aria-hidden re-aplicado dinámicamente
+  useEffect(()=>{
+    function onFocusIn(e){
+      const el = e.target;
+      if (!(el instanceof HTMLElement)) return;
+      const dialog = el.closest('[role="dialog"]');
+      if (dialog && dialog.getAttribute('aria-hidden') === 'true') {
+        dialog.removeAttribute('aria-hidden');
+        if (instEnabled) console.info('[A11Y][focus-fix] aria-hidden removido en focusin');
+      }
+    }
+    document.addEventListener('focusin', onFocusIn, true);
+    return ()=> document.removeEventListener('focusin', onFocusIn, true);
+  }, [instEnabled]);
+
+  // Cleanup total al unmount
+  useEffect(()=>()=>{
+    appliedInertRef.current.forEach(el=>{ try { el.removeAttribute('inert'); el.removeAttribute('data-labg40-inert'); } catch(_e){ /* ignore cleanup */ } });
+    appliedInertRef.current.clear();
+  },[]);
 
   // Utilidad de log centralizada
   const log = useCallback((evt, payload={})=>{
@@ -284,6 +361,7 @@ export function StudiesModalsHost({
           </DialogHeader>
           <ScrollArea className="h-[75vh] p-4">
             <StudyForm
+              ref={studyFormRef}
               initialStudy={currentStudy}
               onSubmit={handleFormSubmit}
               onAIAssist={()=>{ 
@@ -292,15 +370,6 @@ export function StudiesModalsHost({
             safeSetFormOpen(false); 
             setTimeout(()=> setIsAIAssistOpen(true), 0); 
           }}
-              onAIAddParameter={(ctx /*, accept */)=>{
-                // Abrimos el nuevo diálogo avanzado sin generar de inmediato.
-                setAiParamContext({
-                  studyId: currentStudy?.id,
-                  studyName: ctx.studyName || currentStudy?.name || '',
-                  existingParameters: (currentStudy?.parameters || []).map(p=>p.name)
-                });
-                setIsAIParamDialogOpen(true);
-              }}
               onCancel={()=> safeSetFormOpen(false)}
               getParticularPriceForStudy={getParticularPrice}
               isSubmitting={isSubmitting}
@@ -353,42 +422,6 @@ export function StudiesModalsHost({
         referrers={referrers}
         onUpdatePrices={updateStudyPrices}
         isSubmitting={isSubmitting}
-      />
-      {/* AI Parameter Dialog */}
-      <AIAssistParameterDialog
-        isOpen={isAIParamDialogOpen}
-        onOpenChange={(open)=>{
-          setIsAIParamDialogOpen(open);
-        }}
-        studyId={aiParamContext.studyId}
-        studyName={aiParamContext.studyName}
-        existingParameters={aiParamContext.existingParameters}
-        onAccept={(param)=>{
-          // Inserción inmediata en el formulario: delegamos al callback ya existente
-          // Reutilizamos onImmediateParameterSave para persistir orden
-          try {
-            const position = (currentStudy?.parameters?.length || 0) + 1;
-            const enriched = { ...param, id: undefined, position };
-            // Usamos handleImmediateParameterSave si existe
-            if (typeof handleImmediateParameterSave === 'function') {
-              if (!currentStudy?.id) {
-                console.warn('[AIAssistParameterDialog][accept] falta currentStudy.id, parámetro sólo local');
-              } else {
-                const sid = currentStudy.id;
-                // FIX: orden correcto (studyId, payload)
-                try {
-                  handleImmediateParameterSave(sid, enriched, { focus: true });
-                } catch (e) {
-                  console.error('[AIAssistParameterDialog][accept] error persistiendo inmediato', e);
-                }
-              }
-            } else {
-              console.warn('[AIAssistParameterDialog][accept] handleImmediateParameterSave no es función');
-            }
-          } catch (e) {
-            console.warn('[AIAssistParameterDialog][accept] error', e);
-          }
-        }}
       />
     </>
   );

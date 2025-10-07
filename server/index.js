@@ -2,7 +2,7 @@ require('dotenv').config();
 // Log inicial de variables clave para depuración multi-tenant
 try {
   console.log('[BOOT] MULTI_TENANT=', process.env.MULTI_TENANT, 'TENANT_DEBUG=', process.env.TENANT_DEBUG, 'NODE_ENV=', process.env.NODE_ENV);
-} catch {}
+} catch (e) { /* noop log */ }
 const express = require('express');
 const security = require('./middleware/security');
 const requestId = require('./middleware/requestId');
@@ -12,7 +12,7 @@ const { AppError, errorResponse } = require('./utils/errors');
 const { metricsMiddleware, metricsEndpoint } = require('./metrics');
 const cookieParser = require('cookie-parser');
 const net = require('net');
-const { execSync, spawn } = require('child_process');
+const { execSync } = require('child_process');
 const authMiddleware = require('./middleware/auth');
 
 const app = express();
@@ -166,6 +166,9 @@ registerRoute('/api/packages', packagesRoutes, { tenant: true });
 // AI assist
 const aiRoutes = require('./routes/ai');
 registerRoute('/api/ai', aiRoutes, { tenant: true });
+// Catálogo clínico
+const catalogRoutes = require('./routes/catalog');
+registerRoute('/api', catalogRoutes, { tenant: true });
 // Configuración laboratorio
 const configRoutes = require('./routes/config');
 const configValidateRoutes = require('./routes/configValidate');
@@ -237,7 +240,7 @@ function start(port, attempts=0){
         try {
           const raw = require('child_process').execSync(`lsof -ti:${port}`, { stdio:['ignore','pipe','ignore'] }).toString().trim();
           occupyingPids = raw.split(/\s+/).filter(Boolean).map(n=>parseInt(n,10));
-        } catch {}
+  } catch (e) { /* ignore readlink failures */ }
         if (occupyingPids.length === 1 && occupyingPids.includes(process.pid)) {
           console.warn(`[SERVER] Aviso: evento EADDRINUSE emitido pero el PID actual posee el puerto ${port}. Ignorando falso positivo.`);
           return; // no abortar
@@ -284,7 +287,7 @@ async function maybeStealPort(port){
         console.warn(`[SERVER] PORT_STRICT_STEAL=1: Terminando proceso previo ${pid} en ${port}`);
         process.kill(parseInt(pid,10), 'SIGTERM');
       }
-    } catch{}
+  } catch (e) { /* ignore maybeStealPort kill errors */ }
   }
   // breve espera a liberar socket
   await new Promise(r=>setTimeout(r, 800));
