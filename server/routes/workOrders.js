@@ -24,7 +24,12 @@ async function ensureWorkOrderColumns(req) {
     workOrderColumns = new Set(rows.map(r => r.column_name));
   } catch (e) {
     console.warn('[work_orders] No se pudieron detectar columnas, usando conjunto mínimo por defecto.', e.code || e.message);
-    workOrderColumns = new Set(['id','folio','patient_id','referring_entity_id','referring_doctor_id','order_date','status','selected_items','total_price','results_finalized','receipt_generated','created_at']);
+    // Fallback ampliado para soportar nuevos campos usados por el frontend
+    workOrderColumns = new Set([
+      'id','folio','patient_id','referring_entity_id','referring_doctor_id','order_date','status',
+      'selected_items','subtotal','descuento','anticipo','total_price','notas','results','validation_notes',
+      'results_finalized','receipt_generated','institution_reference','created_at'
+    ]);
   }
   return workOrderColumns;
 }
@@ -89,6 +94,24 @@ router.post('/', auth, validate(createWorkOrderSchema), audit('create','work_ord
         await ensureWorkOrderColumns(req);
         console.log('[WORK_ORDERS_ADD_COLUMN] institution_reference añadida');
       } catch (e) { console.warn('[WORK_ORDERS_ADD_COLUMN_FAIL] institution_reference', e.code || e.message); }
+    }
+    // Crear columna results jsonb si llega en el payload y no existe
+    if (results !== undefined && !cols.has('results')) {
+      try {
+        await activePool(req).query('ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS results jsonb');
+        workOrderColumns = null;
+        await ensureWorkOrderColumns(req);
+        console.log('[WORK_ORDERS_ADD_COLUMN] results añadida');
+      } catch (e) { console.warn('[WORK_ORDERS_ADD_COLUMN_FAIL] results', e.code || e.message); }
+    }
+    // Crear columna validation_notes si llega y no existe
+    if (validation_notes !== undefined && !cols.has('validation_notes')) {
+      try {
+        await activePool(req).query('ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS validation_notes text');
+        workOrderColumns = null;
+        await ensureWorkOrderColumns(req);
+        console.log('[WORK_ORDERS_ADD_COLUMN] validation_notes añadida');
+      } catch (e) { console.warn('[WORK_ORDERS_ADD_COLUMN_FAIL] validation_notes', e.code || e.message); }
     }
     const jsonbFields = new Set(['selected_items','results']);
     // Campos posibles que podríamos insertar desde el payload
@@ -193,9 +216,25 @@ router.put('/:id', auth, validate(updateWorkOrderSchema), audit('update','work_o
       try {
         await activePool(req).query('ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS institution_reference text');
         workOrderColumns = null;
-        const refreshed = await ensureWorkOrderColumns(req);
+        await ensureWorkOrderColumns(req);
         console.log('[WORK_ORDERS_ADD_COLUMN] institution_reference añadida durante UPDATE');
       } catch(e){ console.warn('[WORK_ORDERS_ADD_COLUMN_FAIL][UPDATE]', e.code || e.message); }
+    }
+    if (Object.prototype.hasOwnProperty.call(req.body,'results') && !cols.has('results')) {
+      try {
+        await activePool(req).query('ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS results jsonb');
+        workOrderColumns = null;
+        await ensureWorkOrderColumns(req);
+        console.log('[WORK_ORDERS_ADD_COLUMN] results añadida durante UPDATE');
+      } catch(e){ console.warn('[WORK_ORDERS_ADD_COLUMN_FAIL][UPDATE][results]', e.code || e.message); }
+    }
+    if (Object.prototype.hasOwnProperty.call(req.body,'validation_notes') && !cols.has('validation_notes')) {
+      try {
+        await activePool(req).query('ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS validation_notes text');
+        workOrderColumns = null;
+        await ensureWorkOrderColumns(req);
+        console.log('[WORK_ORDERS_ADD_COLUMN] validation_notes añadida durante UPDATE');
+      } catch(e){ console.warn('[WORK_ORDERS_ADD_COLUMN_FAIL][UPDATE][validation_notes]', e.code || e.message); }
     }
     const fields = ['folio','patient_id','referring_entity_id','referring_doctor_id','institution_reference','order_date','status','selected_items','subtotal','descuento','anticipo','total_price','notas','results','validation_notes','results_finalized','receipt_generated'];
     const updates = [];
