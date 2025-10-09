@@ -7,10 +7,29 @@ const { requirePermission } = require('../middleware/permissions');
 // (Schemas externalizados)
 const { validateStudy, validateParameter } = require('../validation/ai-schemas');
 const JSON5 = require('json5');
+const crypto = require('crypto');
 
 // --- Infraestructura de jobs en memoria ---
 const aiJobs = new Map();
 function newJobId(){ return 'job_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8); }
+
+// In-memory short cache for recommendations (60s TTL) to reduce token usage
+const recCache = new Map(); // key -> { ts, data }
+const REC_TTL_MS = 60 * 1000;
+function getCache(key){
+  const v = recCache.get(key);
+  if (!v) return null;
+  if (Date.now() - v.ts > REC_TTL_MS) { recCache.delete(key); return null; }
+  return v.data;
+}
+function setCache(key, data){
+  recCache.set(key, { ts: Date.now(), data });
+  // opportunistic cleanup
+  if (recCache.size > 500) {
+    const now = Date.now();
+    for (const [k, v] of recCache.entries()) { if (now - v.ts > REC_TTL_MS) recCache.delete(k); }
+  }
+}
 
 // --- API Key helper: primero DB (lab_configuration.integrations_settings), luego variable de entorno ---
 async function getApiKey(){
@@ -257,6 +276,101 @@ router.post('/generate-study-details/async', requireAuth, requirePermission('stu
     catch(e){ job.status='error'; job.error={ message:e.message, code:e.code, details:e.details }; }
   });
   res.json({ jobId });
+});
+
+// ===== REAL RECOMMENDATIONS ENDPOINT =====
+function buildRecommendationsPrompt(patientInfo, results){
+  return [
+    'Actúa como bioquímico clínico. Proporciona análisis y sugerencias educativas SIN diagnosticar ni indicar tratamientos definitivos.',
+    'Devuelve SOLO JSON con forma:',
+    '{ "summary": string, "outOfRangeRecommendations": [ { "parameterName": string, "result": string|number, "status": string, "explanation": string, "recommendations": [string] } ], "inRangeComments": [ { "parameterName": string, "comment": string } ], "finalDisclaimer": string }',
+    'Reglas:',
+    '- status puede ser bajo|alto|normal|invalido-alfanumerico|no-evaluable.',
+    '- Explicaciones concisas (<180 chars).',
+    '- recommendations: máximo 3 bullets accionables de seguimiento o correlación clínica, no prescribir fármacos.',
+    '- finalDisclaimer menciona que no reemplaza juicio clínico.',
+    `Paciente: edad=${patientInfo.age ?? 'NA'} sexo=${patientInfo.sex||'NA'}`,
+    'Resultados (JSON):', JSON.stringify(results).slice(0,4000)
+  ].join('\n');
+}
+
+async function callChatJson(model, key, prompt){
+  const r = await fetch('https://api.openai.com/v1/chat/completions', {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${key}` },
+    body: JSON.stringify({
+      model,
+      messages:[ { role:'system', content:'Asistente de laboratorio clínico. Sólo JSON válido.'}, { role:'user', content: prompt } ],
+      temperature:0.3,
+      response_format:{ type:'json_object' },
+      max_tokens:1200
+    })
+  });
+  if (!r.ok){ const txt = await r.text(); throw Object.assign(new Error('AI_API_FAIL'), { code:'AI_API_FAIL', details: txt.slice(0,400) }); }
+  const data = await r.json();
+  const msg = data?.choices?.[0]?.message?.content?.trim() || '{}';
+  let parsed=null; try { parsed = JSON.parse(msg); } catch(e){ try { parsed=JSON5.parse(msg); } catch(_){} }
+  if (!parsed || typeof parsed!=='object') throw Object.assign(new Error('AI_BAD_JSON'), { code:'AI_BAD_JSON', raw: msg.slice(0,400) });
+  return parsed;
+}
+
+router.post('/recommendations', requireAuth, requirePermission('orders','enter_results'), async (req,res,next)=>{
+  const t0 = Date.now();
+  try {
+    const { patientInfo, results } = req.body || {};
+    if (!Array.isArray(results) || results.length===0) return res.status(400).json({ error:'SIN_RESULTADOS_VALIDOS' });
+    const key = await getApiKey();
+    if (!key) return res.status(400).json({ error:'API_KEY_FALTANTE', code:'NO_KEY' });
+    // Sanitizar resultados (limitar tamaño, remover PHI)
+    const safeResults = results.slice(0,100).map(r=>({
+      parameterName: String(r.parameterName||'').slice(0,60),
+      result: String(r.result ?? '' ).slice(0,40),
+      unit: r.unit ? String(r.unit).slice(0,15) : '',
+      refRange: r.refRange ? String(r.refRange).slice(0,80) : '',
+      status: String(r.status||'').slice(0,25)
+    }));
+    // Canonicalize order for stable hash
+    safeResults.sort((a,b)=> a.parameterName.localeCompare(b.parameterName));
+    const safePatient = { age: Number.isFinite(patientInfo?.age) ? patientInfo.age : null, sex: patientInfo?.sex || null };
+    const model = process.env.AI_RECOMMENDATIONS_MODEL || 'gpt-4o-mini';
+    const cacheKey = crypto.createHash('sha256').update(JSON.stringify({ model, safePatient, safeResults })).digest('hex');
+    const cached = getCache(cacheKey);
+    if (cached) {
+      const latency = Date.now()-t0;
+      if (process.env.AI_DEBUG) console.log('[AI][recs][CACHE_HIT]', { key: cacheKey.slice(0,8), latencyMs: latency });
+      return res.json({ ...cached, cached: true });
+    }
+    const prompt = buildRecommendationsPrompt(patientInfo||{}, safeResults);
+    const raw = await callChatJson(model, key, prompt);
+    // Normalizar estructura
+    const out = {
+      summary: String(raw.summary||'Resumen no disponible').slice(0,600),
+      outOfRangeRecommendations: Array.isArray(raw.outOfRangeRecommendations) ? raw.outOfRangeRecommendations.slice(0,25).map(o=>({
+        parameterName: String(o.parameterName||'').slice(0,60),
+        result: String(o.result ?? '').slice(0,40),
+        status: String(o.status||'').slice(0,25),
+        explanation: String(o.explanation||'').slice(0,200),
+        recommendations: Array.isArray(o.recommendations)? o.recommendations.slice(0,3).map(r=>String(r).slice(0,120)) : []
+      })) : [],
+      inRangeComments: Array.isArray(raw.inRangeComments)? raw.inRangeComments.slice(0,40).map(c=>({
+        parameterName: String(c.parameterName||'').slice(0,60),
+        comment: String(c.comment||'').slice(0,200)
+      })) : [],
+      finalDisclaimer: String(raw.finalDisclaimer || 'La información no sustituye la valoración clínica profesional.').slice(0,300),
+      model,
+      generatedAt: new Date().toISOString(),
+      token: crypto.randomUUID()
+    };
+    setCache(cacheKey, out);
+    const latency = Date.now()-t0;
+    if (process.env.AI_DEBUG) console.log('[AI][recs]', { count: safeResults.length, latencyMs: latency });
+    res.json(out);
+  } catch(e){
+    if (process.env.AI_DEBUG) console.error('[AI][recs][ERR]', e.code || e.message, e.details || e.raw || '');
+    if (e.code === 'AI_API_FAIL') return res.status(502).json({ error:e.code, details:e.details });
+    if (e.code === 'AI_BAD_JSON') return res.status(500).json({ error:e.code, raw:e.raw });
+    next(e);
+  }
 });
 
 // === Endpoint de parámetro individual (usa OpenAI si hay API key válida; fallback stub) ===

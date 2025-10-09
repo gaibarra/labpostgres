@@ -186,6 +186,12 @@ registerRoute('/api/templates', templatesRoutes, { tenant: true });
 const branchesRoutes = require('./routes/branches');
 registerRoute('/api/branches', branchesRoutes, { tenant: true });
 
+// Antibiotics catalog and antibiogram results
+const antibioticsRoutes = require('./routes/antibiotics');
+registerRoute('/api/antibiotics', antibioticsRoutes, { tenant: true });
+const antibiogramRoutes = require('./routes/antibiogram');
+registerRoute('/api/antibiogram', antibiogramRoutes, { tenant: true });
+
 // Health
 const { pool } = require('./db');
 app.get('/api/health', async (req, res) => {

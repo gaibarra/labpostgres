@@ -1,0 +1,13 @@
+[Unit]
+Description=Backfill qualitative ranges for tenants without reference ranges
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/labg40
+ExecStart=/usr/bin/npm --prefix server run backfill:qualitative
+User=labg40
+Group=labg40
+
+[Install]
+WantedBy=multi-user.target

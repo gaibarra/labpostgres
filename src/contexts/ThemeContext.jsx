@@ -5,7 +5,7 @@ import { apiClient } from '@/lib/apiClient';
 const ThemeContext = createContext({
   theme: 'light',
   toggleTheme: () => {},
-  setSpecificTheme: (theme) => {},
+  setSpecificTheme: (_theme) => {},
 });
 
 export const useTheme = () => useContext(ThemeContext);
@@ -21,7 +21,7 @@ export const ThemeProvider = ({ children, defaultTheme = 'light' }) => {
     (async () => {
       try {
         if (user) {
-          const res = await apiClient.get('/profiles/me/theme');
+          const res = await apiClient.get('/profiles/me/theme?debug=0').catch(() => null);
           if (!cancelled) setTheme(res?.theme || defaultTheme);
         } else if (!cancelled) {
           setTheme(defaultTheme);
@@ -39,7 +39,7 @@ export const ThemeProvider = ({ children, defaultTheme = 'light' }) => {
     root.classList.remove('light', 'dark');
     if (theme) {
       root.classList.add(theme);
-      if (user && ready) apiClient.put('/profiles/me/theme', { theme }).catch(() => {});
+      if (user && ready) apiClient.put('/profiles/me/theme', { theme }).catch(() => { /* silence 500 theme */ });
     }
   }, [theme, user, ready]);
 

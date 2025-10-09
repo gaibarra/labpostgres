@@ -1,10 +1,10 @@
 import React, { useState, useMemo, useCallback } from 'react';
-    import { AnimatePresence } from 'framer-motion';
     import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
     import OrderForm from '@/components/modules/orders/OrderForm';
     import OrderPreviewModal from '@/components/modules/orders/OrderPreviewModal';
     import WorkSheetModal from '@/components/modules/orders/WorkSheetModal';
     import OrderResultsModal from '@/components/modules/orders/OrderResultsModal';
+    import { useResultWorkflow } from '@/components/modules/orders/hooks/useResultWorkflow';
     import OrderQRLabelsModal from '@/components/modules/orders/OrderQRLabelsModal';
     import FinalReportPreviewModal from '@/components/modules/orders/FinalReportPreviewModal';
     import AIRecommendationsModal from '@/components/modules/orders/AIRecommendationsModal';
@@ -18,12 +18,13 @@ import React, { useState, useMemo, useCallback } from 'react';
       referrers, 
       onSubmit,
       onSaveResults,
-      onFetchAIRecommendations,
-      currentOrder,
+  // onFetchAIRecommendations,
+  // currentOrder,
       setCurrentOrder,
       initialOrderForm
     }) => {
-      const { toast } = useToast();
+  const { toast } = useToast();
+  const resultWorkflow = useResultWorkflow();
       const [modalState, setModalState] = useState({
         isOpen: false,
         type: null,
@@ -40,7 +41,7 @@ import React, { useState, useMemo, useCallback } from 'react';
       }, [patients, referrers]);
 
       const openModal = useCallback((type, order, extraData = {}) => {
-        const { patient, referrer } = getDetails(order);
+  const { patient } = getDetails(order);
 
         if (!patient && ['preview', 'worksheet', 'results', 'report', 'labels', 'form', 'ai-recommendations', 'ai-preview'].includes(type) && order?.id) {
            toast({
@@ -70,32 +71,40 @@ import React, { useState, useMemo, useCallback } from 'react';
         }
       }, [modalState.type, setCurrentOrder, initialOrderForm]);
 
-      const handleFormSubmit = async (orderData) => {
+      const handleFormSubmit = useCallback(async (orderData) => {
         setIsSubmitting(true);
         const savedOrder = await onSubmit(orderData, (newOrder) => {
-            openModal('worksheet', newOrder);
+          openModal('worksheet', newOrder);
         });
         setIsSubmitting(false);
-        if (savedOrder) {
-          closeModal();
-        }
-      };
+        if (savedOrder) closeModal();
+      }, [onSubmit, openModal, closeModal]);
 
       const handleValidateAndPreview = useCallback(async (orderId, results, status, notes) => {
-        await onSaveResults(orderId, results, status, notes, (updatedOrder) => {
-          openModal('report', updatedOrder);
+        // Primera fase: persist draft with provided status (if user set Reportada we respect, else keep status)
+        const desiredStatus = status === 'Reportada' ? 'Reportada' : status;
+        await onSaveResults(orderId, results, desiredStatus, notes, async (saved) => {
+          try {
+            // Enforce validated stage if not already
+            if (saved.status !== 'Reportada') {
+              const locked = await resultWorkflow.validateAndLock(orderId);
+              openModal('report', { ...saved, ...locked });
+            } else {
+              openModal('report', saved);
+            }
+          } catch (e) {
+            toast({ title: 'Error validando', description: e.message, variant: 'destructive' });
+          }
         });
-      }, [onSaveResults, openModal]);
+      }, [onSaveResults, openModal, resultWorkflow, toast]);
 
-      const openAIPreviewModal = useCallback((order, recommendations) => {
-        openModal('ai-preview', order, { recommendations });
-      }, [openModal]);
+  // openAIPreviewModal removed (unused)
 
 
       // Montaje permanente de todos los modales; sólo alternamos open
       const persistentModals = useMemo(() => {
         const { type, orderData, aiRecommendations } = modalState;
-        const { patient, referrer } = getDetails(orderData);
+  const { patient, referrer } = getDetails(orderData);
         const isType = (t) => modalState.isOpen && type === t;
 
         return (
@@ -149,6 +158,7 @@ import React, { useState, useMemo, useCallback } from 'react';
               patient={patient}
               onSaveResults={onSaveResults}
               onValidateAndPreview={handleValidateAndPreview}
+              workflowStage={resultWorkflow.stage}
             />
 
             <OrderQRLabelsModal
@@ -188,7 +198,7 @@ import React, { useState, useMemo, useCallback } from 'react';
             />
           </>
         );
-      }, [modalState, closeModal, getDetails, patients, referrers, studiesDetails, packagesDetails, onSaveResults, handleValidateAndPreview, handleFormSubmit, isSubmitting, openModal]);
+  }, [modalState, closeModal, getDetails, patients, referrers, studiesDetails, packagesDetails, onSaveResults, handleValidateAndPreview, handleFormSubmit, isSubmitting, openModal, resultWorkflow.stage]);
 
       return {
         openModal,

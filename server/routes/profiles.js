@@ -219,6 +219,29 @@ async function ensureProfileRow(user, client) {
   }
 }
 
+async function collectProfileConflictInfo(client, user) {
+  const info = { emailRows: [], userRows: [] };
+  try {
+    if (user?.email) {
+      const r1 = await client.query(
+        'SELECT id, user_id, email, theme, role, created_at FROM public.profiles WHERE email=$1 LIMIT 10',
+        [user.email]
+      );
+      info.emailRows = r1.rows;
+    }
+    if (user?.id) {
+      const r2 = await client.query(
+        'SELECT id, user_id, email, theme, role, created_at FROM public.profiles WHERE user_id=$1 OR id=$1 LIMIT 10',
+        [user.id]
+      );
+      info.userRows = r2.rows;
+    }
+  } catch (e) {
+    info.collectError = { code: e.code, message: e.message };
+  }
+  return info;
+}
+
 // GET my theme
 router.get('/me/theme', auth, async (req, res, next) => {
   const p = req.tenantPool || pool;
@@ -265,40 +288,54 @@ router.put('/me/theme', auth, async (req, res, next) => {
   if (theme && !['light', 'dark'].includes(theme)) return next(new AppError(400, 'Tema inválido', 'PROFILE_THEME_VALIDATION'));
   const p = req.tenantPool || pool;
   const client = await p.connect();
+  const diag = { step: 'init', userId: req.user?.id, role: req.user?.role, email: req.user?.email, incomingTheme: theme || null };
   try {
     const claims = { sub: req.user.id, role: req.user.role || null, email: req.user.email || null };
   const claimsStr = JSON.stringify(claims).replace(/'/g, "''");
   await client.query(`SELECT set_config('request.jwt.claims', '${claimsStr}', false)`);
+  diag.step = 'auth_claims_set';
   await ensureAuthUidFunction(client);
+  diag.step = 'auth_uid_ready';
   await ensurePgcrypto(client);
+  diag.step = 'pgcrypto_ready';
   await ensureProfilesTable(client);
+  diag.step = 'profiles_table_ready';
   await extendProfilesPolicies(client);
+  diag.step = 'policies_extended';
   await ensureThemeColumn(client);
+  diag.step = 'theme_column_ready';
   await ensureProfileRow(req.user, client);
+  diag.step = 'profile_row_ready';
     const hasUID = await hasUserIdColumn(client);
     const uidUnique = hasUID ? await hasUserIdUnique(client) : false;
   const _col = hasUID ? 'user_id' : 'id';
     // Unified idempotent UPSERT: always set id = user.id
     let upsertSql;
+    let upsertVariant = 'legacy_id_only';
     if (hasUID && uidUnique) {
       upsertSql = `INSERT INTO public.profiles (id, user_id, email, role, theme)
                    VALUES ($1, $1, $2, COALESCE($3,''), $4)
                    ON CONFLICT (user_id) DO UPDATE SET theme=EXCLUDED.theme, email=COALESCE(public.profiles.email, EXCLUDED.email)`;
+      upsertVariant = 'user_id_unique_conflict_user_id';
     } else if (hasUID && !uidUnique) {
       // fallback to id conflict until uniqueness added
       upsertSql = `INSERT INTO public.profiles (id, user_id, email, role, theme)
                    VALUES ($1, $1, $2, COALESCE($3,''), $4)
                    ON CONFLICT (id) DO UPDATE SET theme=EXCLUDED.theme, email=COALESCE(public.profiles.email, EXCLUDED.email)`;
+      upsertVariant = 'user_id_present_conflict_id';
     } else {
       upsertSql = `INSERT INTO public.profiles (id, email, role, theme)
                    VALUES ($1, $2, COALESCE($3,''), $4)
                    ON CONFLICT (id) DO UPDATE SET theme=EXCLUDED.theme, email=COALESCE(public.profiles.email, EXCLUDED.email)`;
     }
+    Object.assign(diag, { hasUID, uidUnique, upsertVariant });
     try {
       await client.query(upsertSql, [req.user.id, req.user.email || null, req.user.role || null, theme || null]);
+      diag.step = 'upsert_done';
     } catch(eUp) {
       if (eUp.code === '23505' && req.user.email) {
   // unique conflict, attempt merge by email
+        if (process.env.THEME_DEBUG === '1') console.error('[profiles:theme PUT][23505] unique conflict pre-merge', { code: eUp.code, detail: eUp.detail, constraint: eUp.constraint, diag });
         // Attempt to update existing email row (legacy row) to have this id (legacy schema) and/or just set theme
         if (!hasUID) {
           try {
@@ -308,6 +345,7 @@ router.put('/me/theme', auth, async (req, res, next) => {
               [req.user.id, req.user.email, theme || null, req.user.role || null]
             );
             // merge by email attempted
+            diag.step = 'legacy_merge_email_update';
           } catch(eMerge) {
             console.error('[profiles:theme PUT] merge email fail', eMerge.code, eMerge.message);
             throw eMerge; // rethrow so outer catch handles
@@ -320,13 +358,26 @@ router.put('/me/theme', auth, async (req, res, next) => {
                WHERE email=$2 AND (user_id IS NULL OR user_id=$1)`,
               [req.user.id, req.user.email, theme || null]
             );
-            await client.query(upsertSql, [req.user.id, req.user.email || null, req.user.role || null, theme || null]);
+            diag.step = 'user_id_email_attach_attempt';
+            try {
+              await client.query(upsertSql, [req.user.id, req.user.email || null, req.user.role || null, theme || null]);
+              diag.step = 'retry_upsert_after_email_attach';
+            } catch (eRetry) {
+              if (eRetry.code === '23505') {
+                diag.step = 'email_conflict_persistent';
+                diag.conflict = await collectProfileConflictInfo(client, req.user);
+                // Mark a special flag so outer handler can map a clearer error code
+                diag.specialCode = 'EMAIL_OWNERSHIP_CONFLICT';
+              }
+              throw eRetry; // propagate
+            }
           } catch(eMerge2) {
             console.error('[profiles:theme PUT] merge email user_id fail', eMerge2.code, eMerge2.message);
             throw eMerge2;
           }
         }
       } else {
+        if (process.env.THEME_DEBUG === '1') console.error('[profiles:theme PUT] upsert immediate fail', { code: eUp.code, message: eUp.message, detail: eUp.detail, diag });
         throw eUp;
       }
     }
@@ -335,13 +386,17 @@ router.put('/me/theme', auth, async (req, res, next) => {
     if (!result.rows[0]) return next(new AppError(404, 'Perfil no encontrado', 'PROFILE_NOT_FOUND'));
     res.json({ theme: result.rows[0].theme });
   } catch (e) {
-  console.error('[profiles:theme PUT] error', e.code || e.name, e.message);
+  diag.error = { code: e.code, message: e.message, detail: e.detail, constraint: e.constraint };
+  if (process.env.THEME_DEBUG === '1') console.error('[profiles:theme PUT] error extended', { diag });
+  else console.error('[profiles:theme PUT] error', e.code || e.name, e.message);
+  const persistentEmailConflict = diag.specialCode === 'EMAIL_OWNERSHIP_CONFLICT';
   if (req.query.debug === '1') {
-    return res.status(500).json({ error:'debug', code:e.code || e.name, message:e.message, detail:e.detail });
+    return res.status(500).json({ error:'debug', code: persistentEmailConflict ? 'EMAIL_OWNERSHIP_CONFLICT' : (e.code || e.name), message:e.message, detail:e.detail, diag });
   }
   if (e.code === '42501') return next(new AppError(500, 'Acceso denegado (RLS)', 'PROFILE_THEME_RLS_DENIED'));
   if (e.code === '42P01') return next(new AppError(500, 'Tabla profiles inexistente', 'PROFILE_THEME_NO_TABLE'));
   if (e.code === '22P02') return next(new AppError(500, 'sub JWT no es UUID válido', 'PROFILE_THEME_SUB_INVALID'));
+  if (persistentEmailConflict) return next(new AppError(500, 'Email pertenece a otro perfil (conflicto)', 'PROFILE_THEME_EMAIL_CONFLICT'));
   next(new AppError(500, 'Error guardando tema', 'PROFILE_THEME_SAVE_FAIL'));
   } finally {
   try { await client.query("SELECT set_config('request.jwt.claims','',false)"); } catch(e){ /* ignore reset claims */ }

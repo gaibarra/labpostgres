@@ -1,0 +1,10 @@
+[Unit]
+Description=Run qualitative ranges backfill daily
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+Unit=backfill-qualitative.service
+
+[Install]
+WantedBy=timers.target

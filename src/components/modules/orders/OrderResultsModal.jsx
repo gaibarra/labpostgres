@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
     import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose, DialogDescription } from "@/components/ui/dialog";
     import { Button } from '@/components/ui/button';
@@ -7,15 +7,17 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
     import { Textarea } from '@/components/ui/textarea';
     import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
     import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-    import { useToast } from "@/components/ui/use-toast";
-    import { FileEdit, Save, Beaker, AlertTriangle, Eye, Info } from 'lucide-react';
+  import { useToast } from "@/components/ui/use-toast";
+  import { FileEdit, Beaker, AlertTriangle, Info } from 'lucide-react';
     import { cn } from "@/lib/utils";
     import { useEvaluationUtils } from './report_utils/evaluationUtils.js';
     import { useOrderManagement } from './hooks/useOrderManagement.js';
     import { formatInTimeZone } from '@/lib/dateUtils';
 
-    const OrderResultsModal = ({ isOpen, onOpenChange, order, studiesDetails, packagesData, patient, onSaveResults, onValidateAndPreview }) => {
-      const { toast } = useToast();
+  import { Badge } from '@/components/ui/badge';
+  import AntibiogramEditor from './AntibiogramEditor.jsx';
+  const OrderResultsModal = ({ isOpen, onOpenChange, order, studiesDetails, packagesData, patient, onSaveResults, onValidateAndPreview, workflowStage }) => {
+  const { toast: _toastUnused } = useToast();
       const [resultsData, setResultsData] = useState({});
       const [orderStatus, setOrderStatus] = useState(order?.status || 'Pendiente');
       const [validationNotes, setValidationNotes] = useState(order?.validation_notes || '');
@@ -29,10 +31,13 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
         return { ageYears: 0, unit: 'años', fullMonths: 0, fullDays: 0, fullWeeks: 0, fullHours: 0 };
       }, [patient?.date_of_birth, calculateAgeInUnits]);
 
-      const studiesToDisplay = useMemo(() => {
+  const studiesToDisplay = useMemo(() => {
         if (!order || !studiesDetails || !packagesData) return [];
         return getStudiesAndParametersForOrder(order.selected_items, studiesDetails, packagesData);
       }, [order, studiesDetails, packagesData, getStudiesAndParametersForOrder]);
+
+  const [abgOpen, setAbgOpen] = useState(false);
+  const abgStudy = useMemo(()=> (studiesToDisplay||[]).find(s => s?.name === 'Antibiograma' || String(s?.clave||'').toUpperCase() === 'ABG'), [studiesToDisplay]);
 
       useEffect(() => {
         if (order && studiesToDisplay.length > 0 && patient) {
@@ -94,7 +99,16 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
         return merged;
       };
 
+      const logEditSnapshot = (label) => {
+        try {
+          const studyKeys = Object.keys(resultsData || {});
+          const totalParams = studyKeys.reduce((a,k)=> a + (Array.isArray(resultsData[k])?resultsData[k].length:0),0);
+          console.debug('[RESULTS][EDIT]', { action: label, studies: studyKeys.length, totalParams, studyKeys });
+  } catch (e) { /* ignore snapshot log error */ }
+      };
+
       const handleSave = () => {
+        logEditSnapshot('save');
         const edited = {};
         for (const studyId in resultsData) {
           if (Array.isArray(resultsData[studyId])) {
@@ -109,6 +123,7 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
       };
 
       const handleValidateAndPreviewAction = () => {
+        logEditSnapshot('validate_preview');
         const edited = {};
         for (const studyId in resultsData) {
           if (Array.isArray(resultsData[studyId])) {
@@ -122,6 +137,16 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
         onValidateAndPreview(order.id, merged, orderStatus, validationNotes);
       };
 
+      const stageVariant = (workflowStage) => {
+        switch (workflowStage) {
+          case 'draft': return 'secondary';
+          case 'editing': return 'default';
+          case 'validated': return 'success';
+          case 'delivered': return 'outline';
+          default: return 'secondary';
+        }
+      };
+
       return (
         <ErrorBoundary dialogStates={{ modal: 'OrderResultsModal', open: isOpen }}>
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -129,7 +154,8 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
             <DialogHeader>
               <DialogTitle className="text-sky-700 dark:text-sky-400 flex items-center">
                 <FileEdit className="h-6 w-6 mr-2 text-sky-500" />
-                Registrar Resultados para Orden: {order.folio}
+                Registrar Resultados | {order.folio}
+                <span className="ml-3"><Badge variant={stageVariant(workflowStage)}>{workflowStage || 'idle'}</Badge></span>
               </DialogTitle>
               <DialogDescription>
                 Paciente: {patient?.full_name || 'N/A'} | Fecha Orden: {formatInTimeZone(order.order_date, "dd/MM/yyyy")}
@@ -150,9 +176,16 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
               {studiesToDisplay.map(studyItem => (
                 <Card key={studyItem.id} className="bg-white dark:bg-slate-800/50">
                   <CardHeader>
-                    <CardTitle className="text-lg text-sky-600 dark:text-sky-400 flex items-center">
-                      <Beaker className="h-5 w-5 mr-2"/> {studyItem.name} {studyItem.clave ? `(${studyItem.clave})` : ''}
-                    </CardTitle>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-lg text-sky-600 dark:text-sky-400 flex items-center">
+                        <Beaker className="h-5 w-5 mr-2"/> {studyItem.name} {studyItem.clave ? `(${studyItem.clave})` : ''}
+                      </CardTitle>
+                      {(studyItem.name === 'Antibiograma' || String(studyItem.clave||'').toUpperCase() === 'ABG') && (
+                        <Button size="sm" variant="outline" onClick={()=> setAbgOpen(true)}>
+                          Abrir Antibiograma
+                        </Button>
+                      )}
+                    </div>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     {(resultsData[studyItem.id] && resultsData[studyItem.id].length > 0) ? (
@@ -213,29 +246,34 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
                   </div>
                   <div>
                     <Label htmlFor="validationNotes" className="text-slate-700 dark:text-slate-300">Notas de Validación / Observaciones</Label>
-                    <Textarea 
-                      id="validationNotes" 
-                      value={validationNotes} 
-                      onChange={(e) => setValidationNotes(e.target.value)} 
+                    <Textarea
+                      id="validationNotes"
+                      value={validationNotes}
+                      onChange={(e) => setValidationNotes(e.target.value)}
                       placeholder="Anotaciones sobre los resultados, validación, etc."
                       className="bg-white/80 dark:bg-slate-700/80"
                     />
                   </div>
+                  <div className="flex gap-3 justify-end pt-2">
+                    {abgStudy && (
+                      <Button variant="outline" type="button" onClick={()=> setAbgOpen(true)}>
+                        Abrir Antibiograma
+                      </Button>
+                    )}
+                    <Button variant="secondary" type="button" onClick={handleSave}>Guardar Borrador</Button>
+                    <Button variant="default" type="button" onClick={handleValidateAndPreviewAction}>Validar y Previsualizar</Button>
+                    <DialogClose asChild>
+                      <Button variant="outline" type="button" onClick={() => onOpenChange(false)}>Cerrar</Button>
+                    </DialogClose>
+                  </div>
                 </CardContent>
               </Card>
 
+              {abgStudy && (
+                <AntibiogramEditor open={abgOpen} onOpenChange={setAbgOpen} workOrder={order} analysisId={abgStudy.id} />
+              )}
             </div>
-            <DialogFooter className="gap-2 sm:gap-0">
-              <Button onClick={handleValidateAndPreviewAction} className="bg-blue-500 hover:bg-blue-600 text-white w-full sm:w-auto">
-                <Eye className="mr-2 h-4 w-4" /> Validar y Previsualizar Reporte
-              </Button>
-              <Button onClick={handleSave} className="bg-green-500 hover:bg-green-600 text-white w-full sm:w-auto">
-                <Save className="mr-2 h-4 w-4" /> Guardar Resultados y Estado
-              </Button>
-              <DialogClose asChild>
-                <Button variant="outline" className="w-full sm:w-auto" onClick={() => onOpenChange(false)}>Cerrar</Button>
-              </DialogClose>
-            </DialogFooter>
+            <DialogFooter className="pt-2" />
           </DialogContent>
         </Dialog>
         </ErrorBoundary>

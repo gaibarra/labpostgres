@@ -4,9 +4,9 @@ import { Button } from '@/components/ui/button';
 import autoTable from 'jspdf-autotable';
 // ...existing code...
 import React, { useMemo, useState } from 'react';
+import { useResultWorkflow } from './hooks/useResultWorkflow.js';
 import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
     import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
-    import { ScrollArea } from '@/components/ui/scroll-area';
     import { CheckSquare } from 'lucide-react';
     import { useToast } from "@/components/ui/use-toast";
     import { useEvaluationUtils } from './report_utils/evaluationUtils.js';
@@ -21,7 +21,7 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
 
     const FinalReportPreviewModal = ({ isOpen, onOpenChange, order, patient, referrer, studiesDetails, packagesData, onSend }) => {
   const [pdfUrl, setPdfUrl] = useState(null);
-  const [aiPreview, setAIPreview] = useState({ order: null, recommendations: null });
+  // const [aiPreview, setAIPreview] = useState({ order: null, recommendations: null }); // (unused currently)
   const [isAIPreviewOpen, setIsAIPreviewOpen] = useState(false);
       const { toast } = useToast();
       const { settings: labSettings } = useSettings();
@@ -41,6 +41,10 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
         if (!order || !studiesDetails || !packagesData) return [];
         return getStudiesAndParametersForOrder(order.selected_items, studiesDetails, packagesData);
       }, [order, studiesDetails, packagesData, getStudiesAndParametersForOrder]);
+
+          // (debug eliminado: consola de resultados del reporte)
+      // Snapshot conciso al montar/abrir (limpia logs anteriores ruidosos)
+  const wf = useResultWorkflow();
 
 
       if (!order || !patient || !labSettings) return null;
@@ -152,7 +156,7 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
             <DialogHeader className="p-6 pb-0 shrink-0">
               <DialogTitle className="text-sky-700 dark:text-sky-400 flex items-center">
                 <CheckSquare className="h-7 w-7 mr-2 text-sky-500" />
-                Previsualización de Reporte Final: {order.folio}
+                Reporte: {order.folio} {order.status && <span className="ml-3 text-xs font-medium px-2 py-0.5 rounded bg-sky-100 dark:bg-sky-800/40 text-sky-700 dark:text-sky-300">{order.status}{order.results_finalized ? ' ✓' : ''}</span>}
               </DialogTitle>
               <DialogDescription>
                 Revise cuidadosamente los resultados finales antes de generar o enviar el reporte.
@@ -187,7 +191,25 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
                     }))
                   };
                   
-                  const currentOrderResults = order.results?.[studyDetail.id] || [];
+                  // INTENTO PRINCIPAL: usar la key exacta del estudio
+                  let directResults = order.results?.[studyDetail.id] || order.results?.[String(studyDetail.id)] || [];
+                  const allResultKeys = Object.keys(order.results || {});
+                  let usedFallback = false;
+                  // FALLBACK: si no hay resultados directos pero sí existen otras keys, intentar localizar por parametroId
+                  if ((!directResults || directResults.length === 0) && allResultKeys.length > 0) {
+                    // Aplanar todas las entradas y filtrar por parámetros pertenecientes a este estudio
+                    const flat = allResultKeys.flatMap(k => Array.isArray(order.results[k]) ? order.results[k] : []);
+                    const paramIdsSet = new Set((studyDetail.parameters || []).map(p => String(p.id)));
+                    const matched = flat.filter(r => paramIdsSet.has(String(r.parametroId)));
+                    if (matched.length) {
+                      directResults = matched;
+                      usedFallback = true;
+                    }
+                  }
+                  if (typeof window !== 'undefined') {
+                    try { console.debug('[REPORT][STUDY]', { id: studyDetail.id, name: studyDetail.name, finalCount: directResults.length, usedFallback }); } catch (e) { /* ignore log error */ }
+                  }
+                  const currentOrderResults = directResults;
 
                   return (
                     <ReportStudySection
@@ -212,13 +234,26 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
             </div>
 
             <DialogFooter className="bg-slate-50 dark:bg-slate-900 p-6 border-t dark:border-slate-700 shrink-0">
-               <ReportFooter 
+               <div className="flex w-full justify-between items-center">
+                 <div className="flex gap-2">
+                   {(order.status === 'Reportada' || order.status === 'Entregada') && (
+                     <Button type="button" variant="outline" size="sm" onClick={async ()=>{
+                       try {
+                         await wf.reopenForCorrection(order.id);
+                         toast({ title: 'Orden Reabierta', description: 'Estado cambiado a Procesando para corrección.' });
+                         onOpenChange(false);
+                       } catch(e){ toast({ title: 'Error reabriendo', description: e.message, variant: 'destructive' }); }
+                     }}>Reabrir para Corrección</Button>
+                   )}
+                 </div>
+                 <ReportFooter 
                  order={order}
                  generatePDF={handleGeneratePDF}
                  handleSendAction={handleSendAction}
                  onOpenChange={onOpenChange}
                  onAIAssist={() => setIsAIModalOpen(true)}
-               />
+                 />
+               </div>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -230,7 +265,6 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
           patient={patient}
           studiesToDisplay={studiesToDisplayInReport}
           onOpenPreview={(order, recommendations) => {
-            setAIPreview({ order, recommendations });
             const doc = new jsPDF();
             let y = 20;
             doc.setFontSize(18);

@@ -47,6 +47,7 @@ function requirePermission(module, action) {
     console.log('PERM_CHECK', { uid: req.user.id, role, module, action, hasRoleEntry: permsMap.has(role) });
   }
   const rolePerms = permsMap.get(role) || {};
+  // (Auto-alineación temporal eliminada tras migraciones que garantizan permisos correctos)
   if (rolePerms[module] && rolePerms[module].includes(action)) return next();
   return next(new AppError(403,'Permiso denegado','FORBIDDEN'));
     } catch (e) {

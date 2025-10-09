@@ -164,9 +164,22 @@ async function ensureAuthStructures() {
       INSERT INTO roles_permissions (role_name, permissions, is_system_role) VALUES
       ('Administrador', jsonb_build_object(
         'patients', ARRAY['create','read','update','delete'],
-        'orders', ARRAY['create','read_all','read_assigned','update_status','enter_results','validate_results','print_report','send_report'],
+        'referrers', ARRAY['create','read','update','delete','manage_pricelists'],
+        'studies', ARRAY['create','read','update','delete'],
+        'packages', ARRAY['create','read','update','delete'],
+        'orders', ARRAY['create','read_all','enter_results','update_status','validate_results','print_report','send_report'],
         'administration', ARRAY['manage_users','manage_roles','system_settings','view_audit_log'],
         'profiles', ARRAY['read']
+      ), true),
+      ('Recepcionista', jsonb_build_object(
+        'patients', ARRAY['create','read','update'],
+        'referrers', ARRAY['read'],
+        'studies', ARRAY['read'],
+        'orders', ARRAY['create','read_all','update_status','print_report','send_report']
+      ), true),
+      ('Laboratorista', jsonb_build_object(
+        'patients', ARRAY['read'],
+        'orders', ARRAY['read_all','enter_results','update_status']
       ), true),
       ('Invitado', '{}'::jsonb, true);
     `);

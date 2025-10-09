@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
         import { useAuth } from '@/contexts/AuthContext';
         import { toISOStringWithTimeZone } from '@/lib/dateUtils';
 
-        const initialOrderForm = {
+  const initialOrderForm = {
           id: null,
           folio: '',
           order_date: new Date(),
@@ -73,13 +73,17 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 
               const populatedOrders = (ordersData || []).map(order => {
                 const patient = patientsMap.get(order.patient_id);
-                return {
+                // Mezcla sin pisar results/validation_notes reales: primero base inicial, luego datos de order, luego reinyectar los campos sensibles por si initialOrderForm los sobreescribe.
+                const base = {
                   ...initialOrderForm,
                   ...order,
-                  order_date: order.order_date ? new Date(order.order_date) : new Date(),
-                  patient_name: patient ? patient.full_name : 'Paciente no encontrado',
-                  patient: patient || null
                 };
+                if (order.results !== undefined) base.results = order.results; // preservar
+                if (order.validation_notes !== undefined) base.validation_notes = order.validation_notes;
+                base.order_date = order.order_date ? new Date(order.order_date) : new Date();
+                base.patient_name = patient ? patient.full_name : 'Paciente no encontrado';
+                base.patient = patient || null;
+                return base;
               });
 
               setOrders(populatedOrders);
@@ -198,24 +202,113 @@ import { useState, useEffect, useCallback, useRef } from 'react';
             }
       }, [toast, loadData]);
 
-      const handleSaveResults = useCallback(async (orderId, results, status, notes, openFinalReportModalCallback) => {
-      try {
-    // Optimistic: actualizar local antes de recargar
-    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, results, status, validation_notes: notes } : o));
-    const updatedOrder = await apiClient.put(`/work-orders/${orderId}`, { results, status, validation_notes: notes });
-    // Sincronizar con datos frescos (pero no bloquear percepción inmediata)
-    loadData();
-        await logAuditEvent('ResultadosGuardados', { orderId: orderId, folio: updatedOrder?.folio, status: status });
-              
-              if (openFinalReportModalCallback && updatedOrder) {
-                openFinalReportModalCallback(updatedOrder);
-                toast({ title: "Resultados Validados", description: "Mostrando previsualización del reporte final." });
-              } else {
-                toast({ title: "Resultados Guardados", description: "Los resultados y el estado de la orden han sido actualizados." });
-              }
-            } catch (error) {
-              toast({ title: "Error al guardar resultados", description: error.message, variant: "destructive" });
+      const lastSaveRef = useRef({ orderId: null, hash: null, ts: 0 });
+      const pendingTimeoutRef = useRef(null);
+
+  const previewOpenRef = useRef(false);
+
+  const handleSaveResults = useCallback(async (orderId, rawResults, status, notes, openFinalReportModalCallback) => {
+        // Debounce: limpiar intento previo si existe
+        if (pendingTimeoutRef.current) clearTimeout(pendingTimeoutRef.current);
+        pendingTimeoutRef.current = setTimeout(async () => {
+        try {
+          // 1. Normalizar keys de estudios como strings y deep clone para evitar mutaciones posteriores.
+          const results = Object.fromEntries(Object.entries(rawResults || {}).map(([k, arr]) => [String(k), Array.isArray(arr) ? arr.map(e => ({ ...e, parametroId: e.parametroId })) : arr]));
+
+          // 2. Hash rápido para diagnosticar cambios (longitud JSON + número parámetros totales)
+          const buildResultsHash = (r) => {
+            try {
+              const keys = Object.keys(r || {});
+              const totalParams = keys.reduce((acc, k) => acc + (Array.isArray(r[k]) ? r[k].length : 0), 0);
+              const size = JSON.stringify(r || {}).length;
+              return `${keys.length}k-${totalParams}p-${size}b`;
+            } catch { return 'hash_err'; }
+          };
+
+          const optimisticOrderPatch = { id: orderId, results, status, validation_notes: notes };
+          setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...optimisticOrderPatch } : o));
+
+          const reqHash = buildResultsHash(results);
+          // Evitar PUT si hash y estado igual al último (previene bucles dobles de validación / guardar)
+          if (lastSaveRef.current.orderId === orderId && lastSaveRef.current.hash === reqHash && lastSaveRef.current.status === status) {
+            console.info('[RESULTS][SKIP_DUPLICATE]', orderId, reqHash, status);
+            return;
+          }
+          lastSaveRef.current = { orderId, hash: reqHash, status, ts: Date.now() };
+
+          console.groupCollapsed('%c[RESULTS][REQUEST]','color:#16a34a;font-weight:bold;', orderId);
+          console.info('status=', status, 'notes.len=', (notes||'').length, 'hash=', reqHash);
+          Object.entries(results||{}).forEach(([sid, arr]) => console.info(' study', sid, 'params=', Array.isArray(arr)?arr.map(r=>r.parametroId):'N/A'));
+          console.groupEnd();
+
+          // 3. Enviar PUT
+          const updatedOrder = await apiClient.put(`/work-orders/${orderId}`, { results, status, validation_notes: notes });
+
+            console.groupCollapsed('%c[RESULTS][PUT-RESPONSE]','color:#2563eb;font-weight:bold;', orderId);
+            if (updatedOrder) {
+              console.info('fields=', Object.keys(updatedOrder));
+              const respHash = buildResultsHash(updatedOrder.results || {});
+              console.info('resp.hash=', respHash, 'resp.status=', updatedOrder.status);
+            } else {
+              console.warn('Respuesta vacía del PUT.');
             }
+            console.groupEnd();
+
+          // 4. Merge defensivo (si backend omitió results por tema de columnas dinámicas)
+          const mergedUpdatedOrder = {
+            ...updatedOrder,
+            results: (updatedOrder && updatedOrder.results && Object.keys(updatedOrder.results || {}).length) ? updatedOrder.results : results,
+            status: updatedOrder?.status || status,
+            validation_notes: updatedOrder?.validation_notes ?? notes,
+          };
+
+          // 5. Refetch forzado para confirmar persistencia real antes de abrir modal
+          let refetched = null;
+          try {
+            refetched = await apiClient.get(`/work-orders/${orderId}`);
+            console.groupCollapsed('%c[RESULTS][REFETCH]','color:#9333ea;font-weight:bold;', orderId);
+            console.info('refetch.status=', refetched?.status, 'hash=', buildResultsHash(refetched?.results || {}));
+            if (refetched && refetched.results && typeof refetched.results === 'object') {
+              const diffKeys = Object.keys(results).filter(k => !Object.prototype.hasOwnProperty.call(refetched.results, k));
+              if (diffKeys.length) console.warn('refetch.missingKeys=', diffKeys);
+            }
+            console.groupEnd();
+          } catch (e) {
+            console.warn('[RESULTS][REFETCH_FAIL]', e.message);
+          }
+
+          const finalForModal = refetched ? {
+            ...mergedUpdatedOrder,
+            // Prefer refetched authoritative values si contienen resultados
+            results: (refetched.results && Object.keys(refetched.results).length) ? refetched.results : mergedUpdatedOrder.results,
+            status: refetched.status || mergedUpdatedOrder.status,
+            validation_notes: refetched.validation_notes ?? mergedUpdatedOrder.validation_notes
+          } : mergedUpdatedOrder;
+
+          console.groupCollapsed('%c[RESULTS][PREVIEW_OPEN]','color:#0ea5e9;font-weight:bold;', orderId);
+          console.info('final.status=', finalForModal.status, 'hash=', buildResultsHash(finalForModal.results));
+          console.groupEnd();
+
+          // 6. Sincronizar listado (no esperamos a finalizar para no degradar UX)
+          loadData();
+          await logAuditEvent('ResultadosGuardados', { orderId: orderId, folio: finalForModal?.folio, status: finalForModal.status });
+
+          if (openFinalReportModalCallback) {
+            if (previewOpenRef.current) {
+              console.info('[RESULTS][PREVIEW_SUPPRESSED_DUPLICATE]', orderId);
+            } else {
+              previewOpenRef.current = true;
+              openFinalReportModalCallback(finalForModal);
+              setTimeout(()=>{ previewOpenRef.current = false; }, 800); // ventana anti-doble apertura
+              toast({ title: 'Resultados Validados', description: 'Previsualizando reporte final.' });
+            }
+          } else {
+            toast({ title: 'Resultados Guardados', description: 'Los resultados y estado se actualizaron.' });
+          }
+        } catch (error) {
+          toast({ title: 'Error al guardar resultados', description: error.message, variant: 'destructive' });
+        }
+        }, 200); // 200ms debounce
       }, [toast, loadData]);
 
           const getPatientName = useCallback((patientId) => patients.find(p => p.id === patientId)?.full_name || 'N/A', [patients]);

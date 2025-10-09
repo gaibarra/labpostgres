@@ -29,17 +29,7 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
         const fetchRecommendations = async () => {
           if (!isOpen || !order || !patient || !studiesToDisplay || !settings) return;
 
-          const deepseekApiKey = settings.integrations?.deepseekKey;
-
-          if (!deepseekApiKey) {
-            setError("La API Key de Deepseek no está configurada en los ajustes regionales.");
-            toast({
-              title: "Configuración Incompleta",
-              description: "Por favor, configure la API Key de Deepseek para usar esta función.",
-              variant: "destructive",
-            });
-            return;
-          }
+          // Clave ahora se maneja sólo en backend; front no debe exigirla.
 
           setIsLoading(true);
           setError(null);
@@ -79,26 +69,30 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
             }
 
             // Placeholder: call backend AI endpoint (to be implemented) or simulate
+            let data = null;
             try {
-              const data = await apiClient.post('/analysis/ai/recommendations', {
+              data = await apiClient.post('/ai/recommendations', {
                 patientInfo: { age: patientAgeData.ageYears, sex: patient.sex },
-                results: resultsForAI,
-                apiKey: deepseekApiKey
+                results: resultsForAI
               });
               setRecommendations(typeof data === 'string' ? JSON.parse(data) : data);
             } catch (_e) {
-              // Fallback simulation
-              setRecommendations({
-                summary: 'Recomendaciones simuladas basadas en resultados proporcionados.',
-                outOfRangeRecommendations: resultsForAI.slice(0,3).map(r => ({
-                  parameterName: r.parameterName,
-                  result: r.result,
-                  explanation: 'Valor fuera de rango simulado.',
-                  recommendations: ['Repetir estudio en 2 semanas', 'Correlacionar clínicamente']
-                })),
-                inRangeComments: [],
-                finalDisclaimer: 'Este reporte es una simulación.'
-              });
+              if (import.meta.env.MODE !== 'production') {
+                setRecommendations({
+                  summary: 'Recomendaciones simuladas (fallback DEV).',
+                  outOfRangeRecommendations: resultsForAI.slice(0,3).map(r => ({
+                    parameterName: r.parameterName,
+                    result: r.result,
+                    status: r.status,
+                    explanation: 'Valor fuera de rango simulado.',
+                    recommendations: ['Repetir en 2 semanas', 'Correlación clínica']
+                  })),
+                  inRangeComments: [],
+                  finalDisclaimer: 'Simulación sólo entorno desarrollo.'
+                });
+              } else {
+                throw _e;
+              }
             }
 
           } catch (err) {
@@ -163,7 +157,7 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-slate-700 dark:text-slate-300">{recommendations.summary}</p>
+                <p className="text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{recommendations.summary}</p>
               </CardContent>
             </Card>
 

@@ -49,6 +49,35 @@ Observabilidad:
 - GET /api/health (estado y latencia DB)
 - GET /api/metrics (Prometheus: http_request_duration_seconds + gauges pool)
 
+### Antibiograma (nuevo)
+
+- GET /api/antibiotics
+	- Permiso: studies:read
+	- Query params: q, class, active(true/false), page, pageSize (max 200), sort(name|code)
+	- Respuesta: { count, total, page, pageSize, items: [ { id, code, name, class, is_active, synonyms, updated_at } ] }
+
+- GET /api/antibiotics/classes
+	- Permiso: studies:read
+	- Respuesta: { classes: [ { class, count } ] }
+
+- GET /api/antibiogram/results?work_order_id=...&analysis_id=...&isolate_no=1
+	- Permiso: orders:read
+	- Respuesta: { items: [ fila por antibiótico con fields de antibiogram_results + antibiotic_code/name/class ] }
+
+- POST /api/antibiogram/results
+	- Permiso: orders:enter_results
+	- Body:
+		{
+			work_order_id, analysis_id, isolate_no,
+			organism, specimen_type, method, standard, standard_version,
+			results: [ { antibiotic_code, measure_type: 'ZONE'|'MIC', value_numeric, unit, interpretation: 'S'|'I'|'R', comments } ]
+		}
+	- Upsert por (work_order_id, analysis_id, isolate_no, antibiotic_id).
+
+- DELETE /api/antibiogram/results
+	- Permiso: orders:enter_results
+	- Body: { work_order_id, analysis_id, isolate_no, antibiotic_codes: [ 'CIP', ... ] }
+
 ## Permisos
 Roles y permisos en tabla `roles_permissions` (JSONB). Middleware `requirePermission(module, action)` combina módulo + acción (ej. `profiles:read`).
 
@@ -60,6 +89,8 @@ Ver `.env.example`.
 - npm start
 - npm test (vitest + supertest)
  - npm run test:coverage (coverage)
+ - npm run import:antibiotics -- --db=lab_tenant --file=./antibiotics.json
+	 - JSON: [ { code, name, class, is_active, synonyms:[...] }, ... ]
 
 ## Pasos Iniciales
 1. Copiar `.env.example` a `.env` y ajustar credenciales.

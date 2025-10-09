@@ -16,7 +16,7 @@ const ReportStudySection = ({ studyDetail, orderResults, patient, getReferenceRa
       );
     }
 
-    const paramDefinition = studyDetail.parameters.find(pDef => pDef.id === paramDetail.parametroId);
+  const paramDefinition = studyDetail.parameters.find(pDef => String(pDef.id) === String(paramDetail.parametroId));
     
     const paramForEval = {
       ...paramDetail,
@@ -107,7 +107,12 @@ const ReportStudySection = ({ studyDetail, orderResults, patient, getReferenceRa
           </TableHeader>
           <TableBody>
             {(studyDetail.parameters || []).map(param => {
-              const resultEntry = orderResults.find(r => r.parametroId === param.id);
+              const resultEntry = orderResults.find(r => String(r.parametroId) === String(param.id));
+              if (typeof window !== 'undefined') {
+                try {
+                  console.debug('[REPORT][ROW]', { studyId: studyDetail.id, paramId: param.id, found: !!resultEntry, value: resultEntry?.valor });
+                } catch (e) { /* ignore */ }
+              }
               const rawValue = resultEntry ? resultEntry.valor : undefined;
               let resultValueToDisplay;
               if (rawValue === undefined || rawValue === null || String(rawValue).trim() === '') {
@@ -122,7 +127,7 @@ const ReportStudySection = ({ studyDetail, orderResults, patient, getReferenceRa
               };
               
               return (
-                <TableRow key={param.id || param.name} className="even:bg-slate-50/40 dark:even:bg-slate-800/20 hover:bg-sky-50/30 dark:hover:bg-sky-800/10 border-b dark:border-slate-200/50 dark:border-slate-700/50 last:border-b-0">
+                <TableRow key={param.id || param.name} className="even:bg-slate-50/40 dark:even:bg-slate-800/20 hover:bg-sky-50/30 dark:hover:bg-sky-800/10 border-b dark:border-slate-700/50 last:border-b-0">
                   <TableCell className="pl-4 py-2.5 font-medium text-slate-700 dark:text-slate-200">{param.name}</TableCell>
                   <TableCell className="py-2.5 text-center">
                     {getResultDisplay(resultForDisplay.valor, resultForDisplay)}
