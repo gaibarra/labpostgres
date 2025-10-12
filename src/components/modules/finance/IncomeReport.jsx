@@ -67,13 +67,13 @@ import React, { useState, useMemo } from 'react';
                 });
             } else if (groupBy === 'referrer') {
                 reportData.forEach(order => {
-                    const referrerName = order.referrer?.name || 'Sin Referente';
+                    const referrerName = order.referrer_name || order.referrer?.name || 'Sin Referente';
                     if (!groupedData[referrerName]) groupedData[referrerName] = 0;
                     groupedData[referrerName] += order.total_price || 0;
                 });
             } else if (groupBy === 'patient') {
                 reportData.forEach(order => {
-                    const patientName = order.patient?.full_name || 'Paciente Anónimo';
+                    const patientName = order.patient_name || order.patient?.full_name || 'Paciente Anónimo';
                     if (!groupedData[patientName]) groupedData[patientName] = 0;
                     groupedData[patientName] += order.total_price || 0;
                 });
@@ -226,11 +226,11 @@ import React, { useState, useMemo } from 'react';
                                             </TableHeader>
                                             <TableBody>
                                                 {reportData.map(order => (
-                                                    <TableRow key={order.folio}>
-                                                        <TableCell className="font-mono">{order.folio}</TableCell>
+                                                    <TableRow key={order.id || order.folio}>
+                                                        <TableCell className="font-mono">{order.folio || order.id}</TableCell>
                                                         <TableCell>{format(new Date(order.order_date), 'dd/MM/yyyy')}</TableCell>
-                                                        <TableCell>{order.patient?.full_name || 'N/A'}</TableCell>
-                                                        <TableCell>{order.referrer?.name || 'N/A'}</TableCell>
+                                                        <TableCell>{order.patient_name || order.patient?.full_name || 'N/A'}</TableCell>
+                                                        <TableCell>{order.referrer_name || order.referrer?.name || 'N/A'}</TableCell>
                                                         <TableCell className="text-right">${(order.total_price || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</TableCell>
                                                     </TableRow>
                                                 ))}

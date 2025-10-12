@@ -22,7 +22,8 @@ const AccountsReceivable = () => {
     filterStatus,
     setFilterStatus,
     getPatientName,
-    getReferrerName,
+  getReferrerName,
+  getPatientPhone,
     handleOpenPaymentModal,
     handlePaymentInputChange,
     handlePaymentDateChange,
@@ -73,6 +74,7 @@ const AccountsReceivable = () => {
             orders={filteredOrders}
             getPatientName={getPatientName}
             getReferrerName={getReferrerName}
+            getPatientPhone={getPatientPhone}
             onOpenPaymentModal={handleOpenPaymentModal}
             onSendReminder={handleSendReminder}
             totalPendingAmount={totalPendingAmount}

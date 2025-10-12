@@ -74,6 +74,7 @@ router.get('/receivables', auth, requirePermission('finance','read'), async (req
   const attempt = async (retry=false)=>{
     const cols = await ensureFinanceWorkOrderCols(req, retry);
     const payCols = await ensurePaymentsCols(req, retry);
+    const tables = await ensureFinanceTables(req, retry);
     const { from, to, status, entityType, entityId } = req.query;
     const dateCol = cols.has('order_date') ? 'order_date' : (cols.has('created_at') ? 'created_at' : null);
     const where = [];
@@ -81,7 +82,11 @@ router.get('/receivables', auth, requirePermission('finance','read'), async (req
     if (from && dateCol) { params.push(from); where.push(`wo.${dateCol} >= $${params.length}`); }
     if (to && dateCol) { params.push(to); where.push(`wo.${dateCol} <= $${params.length}`); }
     if (entityType === 'patient' && entityId && cols.has('patient_id')) { params.push(entityId); where.push(`wo.patient_id = $${params.length}`); }
-    if (entityType === 'referrer' && entityId && cols.has('referring_entity_id')) { params.push(entityId); where.push(`wo.referring_entity_id = $${params.length}`); }
+    if (entityType === 'referrer' && entityId && (cols.has('referring_entity_id') || cols.has('referrer_id'))) {
+      params.push(entityId);
+      if (cols.has('referring_entity_id')) where.push(`wo.referring_entity_id = $${params.length}`);
+      else where.push(`wo.referrer_id = $${params.length}`);
+    }
     const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
     const totalExpr = cols.has('total_price') ? 'COALESCE(wo.total_price,0)' : '0';
     const orderParts = [];
@@ -92,17 +97,42 @@ router.get('/receivables', auth, requirePermission('finance','read'), async (req
     const anticipoExpr = cols.has('anticipo') ? 'COALESCE(wo.anticipo,0)' : '0::numeric';
     const paidExpr = joinPayments ? `(${anticipoExpr} + COALESCE(SUM(p.amount) FILTER (WHERE p.id IS NOT NULL),0))` : anticipoExpr;
     const balanceExpr = `(${totalExpr} - ${paidExpr})`;
-    const q = joinPayments ? `SELECT wo.*, ${paidExpr} AS paid_amount, ${balanceExpr} AS balance
+
+    // Construimos una CTE base con el agregado de pagos, y luego unimos a patients/referrers
+    const baseWithPayments = joinPayments ? `
+      SELECT wo.*, ${paidExpr} AS paid_amount, ${balanceExpr} AS balance
       FROM work_orders wo
       LEFT JOIN payments p ON p.work_order_id = wo.id
       ${whereSql}
       GROUP BY wo.id
-      ORDER BY ${orderSql}
-      LIMIT 500` : `SELECT wo.*, ${paidExpr} AS paid_amount, ${balanceExpr} AS balance
+    ` : `
+      SELECT wo.*, ${paidExpr} AS paid_amount, ${balanceExpr} AS balance
       FROM work_orders wo
       ${whereSql}
+    `;
+
+    // Elegir tabla de referentes si existe
+    let refJoin = '';
+    let selectRefName = 'NULL::text AS referrer_name';
+    if (tables.has('referrers')) {
+      refJoin = 'LEFT JOIN referrers r ON r.id = COALESCE(base.referring_entity_id, base.referrer_id)';
+      selectRefName = 'r.name AS referrer_name';
+    } else if (tables.has('referring_entities')) {
+      refJoin = 'LEFT JOIN referring_entities r ON r.id = COALESCE(base.referring_entity_id, base.referrer_id)';
+      selectRefName = 'r.name AS referrer_name';
+    }
+
+    const q = `
+      WITH base AS (
+        ${baseWithPayments}
+      )
+      SELECT base.*, p.full_name AS patient_name, ${selectRefName}
+      FROM base
+      LEFT JOIN patients p ON p.id = base.patient_id
+      ${refJoin}
       ORDER BY ${orderSql}
-      LIMIT 500`;
+      LIMIT 500
+    `;
     const { rows } = await activePool(req).query(q, params);
     let filtered = rows;
     if (status === 'pending') filtered = rows.filter(r=> (parseFloat(r.balance)||0) > 0.009);

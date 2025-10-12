@@ -8,6 +8,7 @@ const ARTable = ({
   orders,
   getPatientName,
   getReferrerName,
+  getPatientPhone,
   onOpenPaymentModal,
   onSendReminder,
   totalPendingAmount,
@@ -38,6 +39,30 @@ const ARTable = ({
     );
   }
 
+  const sanitizePhoneForWhatsApp = (phone) => {
+    if (!phone) return null;
+    const trimmed = String(phone).trim();
+    const cleaned = trimmed.replace(/[^+\d]/g, '');
+    if (!cleaned) return null;
+    // Si no hay + y parece local MX de 10 dígitos, anteponer +52
+    if (!cleaned.startsWith('+') && cleaned.length === 10) return `+52${cleaned}`;
+    return cleaned;
+  };
+
+  const buildWhatsAppUrl = (phone, text) => {
+    const num = sanitizePhoneForWhatsApp(phone);
+    if (!num) return null;
+    const msg = encodeURIComponent(text || 'Hola');
+    return `https://wa.me/${num.replace('+','') }?text=${msg}`;
+  };
+
+  const handleSendWhatsApp = (order) => {
+    const phone = getPatientPhone(order.patient_id);
+    const wurl = buildWhatsAppUrl(phone, `Hola ${getPatientName(order.patient_id)}, te escribimos de LabG40. Tienes un saldo pendiente de ${(() => { const n = parseFloat(order.balance); return Number.isFinite(n)? n.toFixed(2): '0.00'; })()} MXN de la orden ${order.folio}.`);
+    if (!wurl) return alert('No se encontró un teléfono válido para WhatsApp.');
+    window.open(wurl, '_blank', 'noopener,noreferrer');
+  };
+
   return (
     <div className="overflow-x-auto">
       <Table>
@@ -58,8 +83,8 @@ const ARTable = ({
             <TableRow key={order.id}>
               <TableCell>{order.folio}</TableCell>
               <TableCell>{format(new Date(order.order_date), 'dd/MM/yyyy')}</TableCell>
-              <TableCell>{getPatientName(order.patient_id)}</TableCell>
-              <TableCell>{getReferrerName(order.referring_entity_id)}</TableCell>
+              <TableCell>{order.patient_name || getPatientName(order.patient_id)}</TableCell>
+              <TableCell>{order.referrer_name || getReferrerName(order.referring_entity_id)}</TableCell>
               <TableCell className="text-right">{(() => { const n = parseFloat(order.total_price); return Number.isFinite(n)? n.toFixed(2): '0.00'; })()}</TableCell>
               <TableCell className="text-right text-green-600 dark:text-green-400">{(() => { const n = parseFloat(order.paid_amount); return Number.isFinite(n)? n.toFixed(2): '0.00'; })()}</TableCell>
               <TableCell className="text-right font-semibold text-red-600 dark:text-red-400">{(() => { const n = parseFloat(order.balance); return Number.isFinite(n)? n.toFixed(2): '0.00'; })()}</TableCell>
@@ -69,6 +94,10 @@ const ARTable = ({
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => onSendReminder(order)} disabled={order.balance <= 0}>
                   <Send className="h-4 w-4 mr-1" /> Enviar Recordatorio
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => handleSendWhatsApp(order)} disabled={order.balance <= 0}>
+                  {/* Reutilizamos el icono de Send para mantener dependencia ligera */}
+                  <Send className="h-4 w-4 mr-1" /> WhatsApp
                 </Button>
               </TableCell>
             </TableRow>

@@ -36,8 +36,10 @@ export const useAccountsReceivable = () => {
         apiClient.get('/patients?limit=1000').catch(e=>{ throw e; }),
         apiClient.get('/referrers?limit=1000').catch(e=>{ throw e; })
       ]);
-      setPatients((patientsRes?.data||[]).map(p => ({ id: p.id, nombre: p.full_name, email: p.email })));
-      setReferrers((referrersRes?.data||[]).map(r => ({ id: r.id, nombre: r.name })));
+      const patientsArr = Array.isArray(patientsRes?.data) ? patientsRes.data : (Array.isArray(patientsRes) ? patientsRes : []);
+      const referrersArr = Array.isArray(referrersRes?.data) ? referrersRes.data : (Array.isArray(referrersRes) ? referrersRes : []);
+  setPatients(patientsArr.map(p => ({ id: p.id, nombre: p.full_name, email: p.email, phone: p.phone_number || p.phone || null })));
+      setReferrers(referrersArr.map(r => ({ id: r.id, nombre: r.name })));
     } catch (error) {
       toast({ title: 'Error al cargar datos base', description: error.message, variant: 'destructive' });
     }
@@ -68,8 +70,22 @@ export const useAccountsReceivable = () => {
     loadBaseData().then(() => loadOrdersWithBalance());
   }, [loadBaseData, loadOrdersWithBalance]);
 
-  const getPatientName = useCallback((patientId) => patients.find(p => p.id === patientId)?.nombre || 'N/A', [patients]);
-  const getReferrerName = useCallback((referrerId) => referrers.find(r => r.id === referrerId)?.nombre || 'N/A', [referrers]);
+  const getPatientName = useCallback((patientId) => {
+    if (patientId === null || patientId === undefined) return 'N/A';
+    const pid = String(patientId);
+    return patients.find(p => String(p.id) === pid)?.nombre || 'N/A';
+  }, [patients]);
+  const getReferrerName = useCallback((referrerId) => {
+    if (referrerId === null || referrerId === undefined) return 'N/A';
+    const rid = String(referrerId);
+    return referrers.find(r => String(r.id) === rid)?.nombre || 'N/A';
+  }, [referrers]);
+
+  const getPatientPhone = useCallback((patientId) => {
+    if (patientId === null || patientId === undefined) return null;
+    const pid = String(patientId);
+    return patients.find(p => String(p.id) === pid)?.phone || null;
+  }, [patients]);
 
   const handleOpenPaymentModal = (order) => {
     const balNum = parseFloat(order.balance);
@@ -136,8 +152,10 @@ export const useAccountsReceivable = () => {
     }
   };
   
-  const handleSendReminder = (orderId) => {
-    const order = orders.find(o => o.id === orderId);
+  const handleSendReminder = (orderOrId) => {
+    const order = (orderOrId && typeof orderOrId === 'object')
+      ? orderOrId
+      : orders.find(o => o.id === orderOrId);
     if (!order) {
       toast({ title: "Error", description: "Orden no encontrada.", variant: "destructive" });
       return;
@@ -206,8 +224,8 @@ El equipo de ${laboratoryName}`
     if (toDate && orderDate > toDate) return false;
 
     if (filterEntityId !== 'all') {
-      if (filterBy === 'patient' && order.patient_id !== filterEntityId) return false;
-      if (filterBy === 'referrer' && order.referring_entity_id !== filterEntityId) return false;
+      if (filterBy === 'patient' && String(order.patient_id) !== String(filterEntityId)) return false;
+      if (filterBy === 'referrer' && String(order.referring_entity_id) !== String(filterEntityId)) return false;
     }
     
     if (filterStatus === 'pending' && order.balance <= 0.009) return false;
@@ -240,6 +258,7 @@ El equipo de ${laboratoryName}`
     setFilterStatus,
     getPatientName,
     getReferrerName,
+  getPatientPhone,
     handleOpenPaymentModal,
     handlePaymentInputChange,
     handlePaymentDateChange,
