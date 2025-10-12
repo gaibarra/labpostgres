@@ -5,17 +5,18 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { DialogFooter, DialogClose } from "@/components/ui/dialog";
-import { Loader2, FilePlus2, Save } from 'lucide-react';
+import { Loader2, FilePlus2, Save, Mail, Phone, MessageCircle, Send } from 'lucide-react';
 import { useToast } from "@/components/ui/use-toast";
 import { format, parseISO, isValid } from 'date-fns';
 
+const initialPatientState = {
+  full_name: '', date_of_birth: '', sex: '', email: '',
+  phone_number: '', address: '', contact_name: '',
+  contact_phone: '', clinical_history: ''
+};
+
 const PatientForm = ({ patient, onSave, onCancel, isLoading }) => {
   const { toast } = useToast();
-  const initialPatientState = {
-    full_name: '', date_of_birth: '', sex: '', email: '',
-    phone_number: '', address: '', contact_name: '',
-    contact_phone: '', clinical_history: ''
-  };
 
   const [currentPatient, setCurrentPatient] = useState(initialPatientState);
 
@@ -52,6 +53,45 @@ const PatientForm = ({ patient, onSave, onCancel, isLoading }) => {
     } else {
       setCurrentPatient(prev => ({ ...prev, [name]: value }));
     }
+  };
+
+  // --- Acciones de comunicación ---
+  const sanitizePhoneForWhatsApp = (raw) => {
+    if (!raw) return '';
+    const trimmed = String(raw).trim();
+    // Dejar + y dígitos
+    const keep = trimmed.replace(/[^+\d]/g, '');
+    // Si hay múltiples +, deja solo el primero
+    return keep.replace(/\+(?=.*\+)/g, '');
+  };
+  const buildWhatsAppUrl = (phone, name) => {
+    const ph = sanitizePhoneForWhatsApp(phone);
+    if (!ph) return null;
+    const greeting = `Hola ${name || ''}, te contactamos del laboratorio.`.trim();
+    const text = encodeURIComponent(greeting);
+    return `https://wa.me/${ph.replace(/^\+/, '')}?text=${text}`;
+  };
+  const handleSendWhatsApp = (phone, name) => {
+    const url = buildWhatsAppUrl(phone, name);
+    if (!url) {
+      toast({ title: 'Número inválido', description: 'Captura un teléfono móvil válido (con lada país, ej. +52 …).', variant: 'destructive' });
+      return;
+    }
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+  const buildMailTo = (email, name) => {
+    if (!email) return null;
+    const subject = encodeURIComponent('Comunicación del Laboratorio');
+    const body = encodeURIComponent(`Hola ${name || ''},\n\nTe contactamos del laboratorio.\n\nSaludos.`);
+    return `mailto:${encodeURIComponent(email)}?subject=${subject}&body=${body}`;
+  };
+  const handleSendEmail = (email, name) => {
+    const link = buildMailTo(email, name);
+    if (!link) {
+      toast({ title: 'Email faltante', description: 'Captura un correo electrónico para poder enviar.', variant: 'destructive' });
+      return;
+    }
+    window.location.href = link;
   };
 
   const validateForm = () => {
@@ -122,12 +162,28 @@ const PatientForm = ({ patient, onSave, onCancel, isLoading }) => {
                 </select>
               </div>
               <div>
-                <Label htmlFor="email">Email <span className="text-red-500">*</span></Label>
-                <Input id="email" name="email" type="email" value={currentPatient.email || ''} onChange={handleChange} required disabled={isLoading} className="dark:border-slate-600"/>
+                <Label htmlFor="email">Email (comunicación) <span className="text-red-500">*</span></Label>
+                <div className="flex gap-2 items-center">
+                  <Input id="email" name="email" type="email" placeholder="ej. paciente@correo.com" value={currentPatient.email || ''} onChange={handleChange} required disabled={isLoading} className="dark:border-slate-600"/>
+                  <button type="button" onClick={() => handleSendEmail(currentPatient.email, currentPatient.full_name)} className="px-3 py-2 text-sm rounded-md bg-sky-600 hover:bg-sky-700 text-white disabled:opacity-50" disabled={!currentPatient.email} title="Enviar Email">
+                    <span className="inline-flex items-center gap-1"><Send className="h-4 w-4" /> Email</span>
+                  </button>
+                </div>
+                <p className="mt-1 text-xs text-slate-500 flex items-center gap-1">
+                  <Mail className="h-3.5 w-3.5" /> Usaremos este correo para enviar avisos y resultados.
+                </p>
               </div>
               <div>
-                <Label htmlFor="phone_number">Teléfono</Label>
-                <Input id="phone_number" name="phone_number" value={currentPatient.phone_number || ''} onChange={handleChange} disabled={isLoading} className="dark:border-slate-600"/>
+                <Label htmlFor="phone_number">Teléfono móvil (WhatsApp)</Label>
+                <div className="flex gap-2 items-center">
+                  <Input id="phone_number" name="phone_number" type="tel" placeholder="ej. +52 55 1234 5678" value={currentPatient.phone_number || ''} onChange={handleChange} disabled={isLoading} className="dark:border-slate-600"/>
+                  <button type="button" onClick={() => handleSendWhatsApp(currentPatient.phone_number, currentPatient.full_name)} className="px-3 py-2 text-sm rounded-md bg-green-600 hover:bg-green-700 text-white disabled:opacity-50" disabled={!currentPatient.phone_number} title="Enviar WhatsApp">
+                    <span className="inline-flex items-center gap-1"><MessageCircle className="h-4 w-4" /> WhatsApp</span>
+                  </button>
+                </div>
+                <p className="mt-1 text-xs text-slate-500 flex items-center gap-1">
+                  <Phone className="h-3.5 w-3.5" /> Debe ser un número móvil. <MessageCircle className="h-3.5 w-3.5" /> Recibirá comunicaciones por WhatsApp.
+                </p>
               </div>
               <div>
                 <Label htmlFor="address">Dirección</Label>
@@ -138,13 +194,24 @@ const PatientForm = ({ patient, onSave, onCancel, isLoading }) => {
                 <Input id="contact_name" name="contact_name" value={currentPatient.contact_name || ''} onChange={handleChange} disabled={isLoading} className="dark:border-slate-600"/>
               </div>
               <div>
-                <Label htmlFor="contact_phone">Teléfono de Contacto</Label>
-                <Input id="contact_phone" name="contact_phone" value={currentPatient.contact_phone || ''} onChange={handleChange} disabled={isLoading} className="dark:border-slate-600"/>
+                <Label htmlFor="contact_phone">Teléfono móvil de Contacto (WhatsApp)</Label>
+                <div className="flex gap-2 items-center">
+                  <Input id="contact_phone" name="contact_phone" type="tel" placeholder="ej. +52 81 1234 5678" value={currentPatient.contact_phone || ''} onChange={handleChange} disabled={isLoading} className="dark:border-slate-600"/>
+                  <button type="button" onClick={() => handleSendWhatsApp(currentPatient.contact_phone, currentPatient.contact_name || currentPatient.full_name)} className="px-3 py-2 text-sm rounded-md bg-green-600 hover:bg-green-700 text-white disabled:opacity-50" disabled={!currentPatient.contact_phone} title="Enviar WhatsApp a contacto">
+                    <span className="inline-flex items-center gap-1"><MessageCircle className="h-4 w-4" /> WhatsApp</span>
+                  </button>
+                </div>
+                <p className="mt-1 text-xs text-slate-500 flex items-center gap-1">
+                  <Phone className="h-3.5 w-3.5" /> Debe ser un número móvil del contacto. <MessageCircle className="h-3.5 w-3.5" /> También se usará WhatsApp cuando sea necesario.
+                </p>
               </div>
             </div>
             <div className="md:col-span-2">
               <Label htmlFor="clinical_history">Historial Clínico (resumen)</Label>
               <Textarea id="clinical_history" name="clinical_history" value={currentPatient.clinical_history || ''} onChange={handleChange} rows={4} disabled={isLoading} className="dark:border-slate-600"/>
+              <p className="mt-1 text-xs text-slate-500">
+                Nota: La comunicación principal será por correo electrónico y WhatsApp a los números móviles capturados.
+              </p>
             </div>
           </div>
         </div>
