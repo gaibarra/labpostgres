@@ -159,6 +159,103 @@ router.get('/:id', auth, async (req, res, next) => {
   } catch (e) { console.error('[PATIENT_GET_FAIL]', e); next(new AppError(500,'Error obteniendo paciente','PATIENT_GET_FAIL')); }
 });
 
+// Historial clínico agregado (resultados por estudio/parámetro) listo para UI
+// Construido a partir de work_orders.results (JSONB) con compatibilidad para claves legacy.
+router.get('/:id/history', auth, async (req, res, next) => {
+  try {
+    const ap = activePool(req);
+    // 1) Paciente (para futuras mejoras como rangos específicos); hoy lo devolvemos por conveniencia
+    const pQ = await ap.query('SELECT * FROM patients WHERE id=$1', [req.params.id]);
+    if (!pQ.rows[0]) return next(new AppError(404,'Paciente no encontrado','PATIENT_NOT_FOUND'));
+    const patient = projectPatient(pQ.rows[0]);
+
+    // 2) Órdenes con resultados relevantes
+    const { rows: orders } = await ap.query(
+      `SELECT id, folio, order_date, status, results
+       FROM work_orders
+       WHERE patient_id=$1 AND status = ANY($2)
+       ORDER BY order_date`,
+      [req.params.id, ['Concluida','Reportada','Entregada']]
+    );
+
+    // 3) Catálogo de estudios y parámetros (mínimo necesario)
+    const { rows: studiesRows } = await ap.query('SELECT id, name, code, clave, general_units FROM analysis');
+    const studyByAnyKey = new Map();
+    const uniqueStudies = [];
+    for (const s of studiesRows) {
+      const enriched = { ...s, parametersMap: new Map(), parameters: [] };
+      uniqueStudies.push(enriched);
+      const keys = [s.id, s.code, s.clave, s.name].filter(v => v != null);
+      for (const k of keys) studyByAnyKey.set(String(k), enriched);
+    }
+    if (uniqueStudies.length) {
+      const ids = uniqueStudies.map(s => s.id);
+      const { rows: paramsRows } = await ap.query('SELECT id, analysis_id, name, unit FROM analysis_parameters WHERE analysis_id = ANY($1)', [ids]);
+      for (const pr of paramsRows) {
+        const s = uniqueStudies.find(u => u.id === pr.analysis_id);
+        if (!s) continue;
+        const param = { id: pr.id, name: pr.name, unit: pr.unit };
+        s.parameters.push(param);
+        s.parametersMap.set(String(pr.id), param);
+      }
+    }
+
+    // 4) Normalizar resultados
+    const safeNum = (raw) => {
+      if (raw == null || raw === '') return { isNum: false, out: null };
+      const n = (typeof raw === 'string') ? parseFloat(raw.replace(',', '.')) : Number(raw);
+      if (Number.isFinite(n)) return { isNum: true, out: String(n) };
+      return { isNum: false, out: String(raw) };
+    };
+
+    const out = [];
+    for (const o of orders) {
+      const results = o.results;
+      if (!results || typeof results !== 'object') continue;
+      for (const [studyKey, payload] of Object.entries(results)) {
+        let studyInfo = studyByAnyKey.get(String(studyKey));
+        if (!studyInfo) {
+          // fallback lineal por si hay diferencias tipográficas menores
+          studyInfo = uniqueStudies.find(s => [s.id, s.code, s.clave, s.name].some(v => v != null && String(v) === String(studyKey)));
+        }
+        if (!studyInfo) continue;
+        const arr = Array.isArray(payload)
+          ? payload
+          : (typeof payload === 'object' && payload !== null ? Object.values(payload) : []);
+        for (const r of arr) {
+          if (!r || typeof r !== 'object') continue;
+          const pid = r.parametroId;
+          if (!pid) continue;
+          // buscar param por id y luego por nombre
+          let param = studyInfo.parametersMap.get(String(pid));
+          if (!param) param = studyInfo.parameters.find(p => p.name === pid);
+          if (!param) continue;
+          const num = safeNum(r.valor);
+          out.push({
+            date: o.order_date,
+            folio: o.folio,
+            studyId: studyInfo.id,
+            studyName: studyInfo.name,
+            parameterId: param.id,
+            parameterName: param.name,
+            result: num.out ?? r.valor,
+            isNumeric: !!num.isNum,
+            unit: param.unit || studyInfo.general_units || 'N/A'
+          });
+        }
+      }
+    }
+
+    // Orden descendente por fecha en la respuesta estándar
+    out.sort((a,b)=> new Date(b.date) - new Date(a.date));
+    const chartableParams = Array.from(new Set(out.filter(r => r.isNumeric).map(r => r.parameterName)));
+    res.json({ patient, results: out, chartableParameters: chartableParams });
+  } catch (e) {
+    console.error('[PATIENT_HISTORY_FAIL]', e.code || e.message, e.detail || '');
+    next(new AppError(500,'Error obteniendo historial','PATIENT_HISTORY_FAIL'));
+  }
+});
+
 router.put('/:id', auth, sanitizeBody(['full_name','email','phone_number']), validate(updatePatientSchema), audit('update','patient', req=>req.params.id, (req)=>({ body: req.body })), async (req, res, next) => {
   let retriedSchema = false; // para 42703
   let retriedGenerated = false; // para 428C9

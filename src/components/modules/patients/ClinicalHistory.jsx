@@ -43,15 +43,22 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
       const [selectedParameterFilter, setSelectedParameterFilter] = useState('');
 
       const studiesMap = useMemo(() => {
+        // Índice principal por id y, como fallback, por code/clave/nombre para compatibilidad con datos legacy en results
         const map = new Map();
         (allStudiesData || []).forEach(study => {
           const parametersMap = new Map();
           if (Array.isArray(study.parameters)) {
             study.parameters.forEach(param => {
               parametersMap.set(param.id, param);
+              // no indexamos por nombre aquí para evitar colisiones; el fallback lo hará con búsqueda lineal
             });
           }
-          map.set(study.id, { ...study, parametersMap });
+          const enriched = { ...study, parametersMap };
+          map.set(String(study.id), enriched);
+          // Fallbacks opcionales: code/clave/name si existen
+          if (study.code) map.set(String(study.code), enriched);
+          if (study.clave) map.set(String(study.clave), enriched);
+          if (study.name) map.set(String(study.name), enriched);
         });
         return map;
       }, [allStudiesData]);
@@ -61,7 +68,15 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
         if (!order.results || typeof order.results !== 'object') return processed;
 
         Object.entries(order.results).forEach(([studyId, studyResultsData]) => {
-            const studyInfo = studiesMap.get(studyId);
+            // Buscar estudio por múltiples posibles claves (id, code, clave, nombre)
+            let studyInfo = studiesMap.get(String(studyId));
+            if (!studyInfo) {
+              // Búsqueda lineal como último recurso
+              studyInfo = Array.from(new Set(Array.from(studiesMap.values()))).find(s => {
+                const candidates = [s.id, s.code, s.clave, s.name];
+                return candidates.some(v => v != null && String(v) === String(studyId));
+              });
+            }
             if (!studyInfo) {
               return;
             }
@@ -76,7 +91,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
             studyResultsArray.forEach(paramResult => {
                 if (typeof paramResult !== 'object' || paramResult === null) return;
                 
-                const paramId = paramResult.parametroId;
+        const paramId = paramResult.parametroId;
                 if (!paramId) return;
 
                 // First, try to look up by ID (good practice)
@@ -88,12 +103,15 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
                 }
 
                 if (paramInfo) {
+          // Parseo numérico robusto (soporta coma decimal)
+          const raw = paramResult.valor;
+          const parsedNum = (typeof raw === 'string') ? parseFloat(raw.replace(',', '.')) : (raw == null ? NaN : Number(raw));
                     processed.push({
                         date: order.order_date,
                         folio: order.folio,
                         studyName: studyInfo.name,
                         parameterName: paramInfo.name,
-                        result: paramResult.valor,
+            result: isNaN(parsedNum) ? raw : String(parsedNum),
                         unit: paramInfo.unit || studyInfo.general_units || 'N/A',
                         refRange: getReferenceRangeText(paramInfo, patientData)
                     });
@@ -110,20 +128,42 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
         }
         setIsComponentLoading(true);
         try {
+          // Intento 1: usar backend agregado que ya normaliza todo
+          try {
+            const payload = await apiClient.get(`/patients/${patientId}/history`);
+            if (!payload) throw new Error('Respuesta vacía');
+            setPatient(payload.patient);
+            const normalized = (payload.results || []).map(r => ({
+              date: r.date,
+              folio: r.folio,
+              studyName: r.studyName,
+              parameterName: r.parameterName,
+              result: r.result,
+              unit: r.unit,
+              refRange: ''
+            }));
+            setHistoricalResults(normalized);
+            setAllParametersForChart(payload.chartableParameters || []);
+            return; // listo
+          } catch(_e) {
+            // Fallback al flujo anterior si el endpoint no existe o falla
+          }
+
           const patientData = await apiClient.get(`/patients/${patientId}`);
           if (!patientData) throw new Error('No se pudo cargar la información del paciente.');
           setPatient(patientData);
 
-          // Fetch all orders and then filter in memory to keep endpoint simple for now
           const allOrders = await apiClient.get('/work-orders');
           const ordersData = (allOrders||[])
-            .filter(o => o.patient_id === patientId && ['Concluida','Reportada'].includes(o.status))
+            .filter(o => String(o.patient_id) === String(patientId) && ['Concluida','Reportada','Entregada'].includes(o.status))
             .sort((a,b)=> new Date(a.order_date)-new Date(b.order_date));
-          
           const allResults = ordersData.flatMap(order => processOrderResults(order, patientData));
           const chartableParams = new Set(
             allResults
-              .filter(r => !isNaN(parseFloat(r.result)))
+              .filter(r => {
+                const n = (typeof r.result === 'string') ? parseFloat(r.result.replace(',', '.')) : Number(r.result);
+                return !isNaN(n) && isFinite(n);
+              })
               .map(r => r.parameterName)
           );
 
@@ -146,10 +186,14 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
       useEffect(() => {
         if (selectedParameterForChart && historicalResults.length > 0) {
           const data = historicalResults
-            .filter(r => r.parameterName === selectedParameterForChart && !isNaN(parseFloat(r.result)))
+            .filter(r => {
+              if (r.parameterName !== selectedParameterForChart) return false;
+              const n = (typeof r.result === 'string') ? parseFloat(r.result.replace(',', '.')) : Number(r.result);
+              return !isNaN(n) && isFinite(n);
+            })
             .map(r => ({
               date: new Date(r.date),
-              value: parseFloat(r.result),
+              value: (typeof r.result === 'string') ? parseFloat(r.result.replace(',', '.')) : Number(r.result),
             }))
             .sort((a,b) => a.date - b.date)
             .map(r => ({
