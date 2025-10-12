@@ -41,6 +41,7 @@ const studiesFetcher = async ({ page, searchTerm }) => {
   const params = new URLSearchParams();
   params.set('limit', String(limit));
   params.set('offset', String(offset));
+  params.set('sort', 'param_count_desc');
   if (searchTerm) params.set('search', searchTerm);
   // Use detailed endpoint to fetch nested parameters + ranges
   const res = await apiClient.get(`/analysis/detailed?${params.toString()}`);
@@ -73,7 +74,10 @@ const studiesFetcher = async ({ page, searchTerm }) => {
         valorMin: rr.lower,
         valorMax: rr.upper,
         textoPermitido: rr.text_value,
-        tipoValor: rr.text_value ? (rr.text_value.length > 50 ? 'textoLibre' : 'alfanumerico') : 'numerico',
+        // Inferencia: si hay límites numéricos -> numérico; si hay texto -> alfanumérico/textoLibre; si nada -> textoLibre
+        tipoValor: (rr.lower != null || rr.upper != null)
+          ? 'numerico'
+          : (rr.text_value ? (rr.text_value.length > 50 ? 'textoLibre' : 'alfanumerico') : 'textoLibre'),
         notas: rr.notes || ''
       }))
     }))
@@ -367,7 +371,9 @@ export const useStudies = (searchTerm) => {
         valorMin: rr.lower,
         valorMax: rr.upper,
         textoPermitido: rr.text_value,
-        tipoValor: rr.text_value ? (rr.text_value.length > 50 ? 'textoLibre' : 'alfanumerico') : 'numerico',
+        tipoValor: (rr.lower != null || rr.upper != null)
+          ? 'numerico'
+          : (rr.text_value ? (rr.text_value.length > 50 ? 'textoLibre' : 'alfanumerico') : 'textoLibre'),
         notas: rr.notes || ''
       }))
     }));

@@ -49,6 +49,35 @@ Observabilidad:
 - GET /api/health (estado y latencia DB)
 - GET /api/metrics (Prometheus: http_request_duration_seconds + gauges pool)
 
+### Análisis (estudios)
+
+- GET /api/analysis?limit&offset&search
+- GET /api/analysis/detailed
+- GET /api/analysis/next-key
+- GET /api/analysis/count
+- GET /api/analysis/:id
+- POST /api/analysis
+- PUT /api/analysis/:id
+- DELETE /api/analysis/:id
+
+Validaciones clave:
+- Categoría: se valida contra una lista permitida. Si la categoría no está autorizada se responde 400 INVALID_CATEGORY.
+- Actualización sin cambios: si el body no contiene campos actualizables se responde 400 NO_UPDATE_FIELDS.
+
+PUT /api/analysis/:id – mapeo de errores (resumen):
+- 409 DUPLICATE_KEY: intento de asignar una clave/code ya existente (violación unique).
+	- details: cuando es posible se incluye { field, value } a partir del detalle de Postgres.
+- 400 DATA_CONSTRAINT_VIOLATION: falla una constraint de datos (check, etc.). Incluye detalle de constraint.
+- 400 BAD_INPUT_SYNTAX: formato inválido para el tipo de dato (ej. texto en campo numérico).
+- 400 NOT_NULL_VIOLATION: falta un campo requerido (not null).
+- 400 FK_VIOLATION: referencia foránea inválida.
+- 400 NO_UPDATE_FIELDS: no se proporcionaron campos para actualizar.
+- 500 ANALYSIS_UPDATE_FAIL: error inesperado no clasificado en los casos anteriores.
+
+Notas:
+- La validación de categorías usa un allowlist centralizado (utils/analysisCategories.js). Si necesitas añadir una categoría, actualiza dicho archivo y acompáñalo de pruebas.
+- El audit log registra create/update/delete en análisis y sus parámetros/rangos.
+
 ### Antibiograma (nuevo)
 
 - GET /api/antibiotics

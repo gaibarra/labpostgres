@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 10s --health-timeout 5s --health-retries 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install deps (root)
+        run: npm ci
+      - name: Install deps (server)
+        run: npm ci
+        working-directory: server
+      - name: Configure env
+        run: |
+          cat <<'EOF' > server/.env
+          PGHOST=localhost
+          PGPORT=5432
+          PGUSER=postgres
+          PGPASSWORD=postgres
+          PGDATABASE=postgres
+          JWT_SECRET=ci-secret
+          NODE_ENV=test
+          EOF
+      - name: Run migrations
+        run: npm --prefix server run migrate
+      - name: Run tests (server)
+        run: npm --prefix server test
+      - name: Run smoke (reference ranges)
+        run: npm run smoke:reference-ranges

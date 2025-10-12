@@ -5,6 +5,7 @@ const { requirePermission } = require('../middleware/permissions');
 const { parsePagination, buildSearchFilter } = require('../utils/pagination');
 const { AppError } = require('../utils/errors');
 const { hashCatalog } = require('../utils/catalogHash');
+const { CATEGORIES } = require('../utils/analysisCategories');
 
 const router = express.Router();
 function activePool(req){ return req.tenantPool || pool; }
@@ -99,8 +100,31 @@ function expandAndValidateRanges(rawRanges){
   const sexes = Array.from(new Set(normalized.map(r=>r.sex)));
   const isOnlyAmbos = sexes.length === 1 && sexes[0] === _sexTokensStyle.Ambos;
   const groups = isOnlyAmbos ? { [_sexTokensStyle.Ambos]: normalized } : normalized.reduce((acc,r)=>{ (acc[r.sex]=acc[r.sex]||[]).push(r); return acc; }, {});
+  const hasAmbosMixed = !isOnlyAmbos && sexes.includes(_sexTokensStyle.Ambos);
+  // Precalcular cobertura de M/F cuando hay mezcla con Ambos
+  const mfCombined = hasAmbosMixed
+    ? [
+        ...(groups[_sexTokensStyle.Masculino] || []),
+        ...(groups[_sexTokensStyle.Femenino] || [])
+      ].map(r=>({
+        _amin: r.age_min==null?0:Number(r.age_min),
+        _amax: r.age_max==null?120:Number(r.age_max)
+      }))
+      .sort((a,b)=> a._amin - b._amin || a._amax - b._amax)
+    : [];
   const finalOut = [];
   const processGroup = (sex, list) => {
+    // Si hay mezcla (Ambos + M/F), evitamos gap-fill en todos los grupos para no crear placeholders artificiales
+    const avoidGapFill = hasAmbosMixed ? true : false;
+    // Si estamos procesando "Ambos" junto con M/F, eliminar únicamente los tramos que se solapan con la cobertura M/F.
+    if (hasAmbosMixed && sex === _sexTokensStyle.Ambos && mfCombined.length) {
+      list = (list||[]).filter(r=>{
+        const A0 = r.age_min==null?0:Number(r.age_min);
+        const A1 = r.age_max==null?120:Number(r.age_max);
+        // Overlap (right-open adjacency permitida): no hay solape si A1 <= B0 o B1 <= A0
+        return !mfCombined.some(mf => !(A1 <= mf._amin || mf._amax <= A0));
+      });
+    }
     // Si cualquier rango cubre toda la vida (null-null) tratamos como cobertura completa
     const hasAllLife = list.some(r=> r.age_min==null && r.age_max==null);
     if (hasAllLife) {
@@ -165,6 +189,13 @@ function expandAndValidateRanges(rawRanges){
         throw new AppError(400,`Rangos superpuestos (${sex})`,`REFERENCE_RANGE_OVERLAP`, { sex, prev: { age_min: prev.age_min, age_max: prev.age_max }, curr: { age_min: curr.age_min, age_max: curr.age_max } });
       }
     }
+    // Si se evita el gap-fill (porque hay Ambos en el mismo payload), sólo devolvemos los rangos explícitos ordenados
+    if (avoidGapFill) {
+      for (const r of ordered) {
+        const persisted = { ...r }; delete persisted._amin; delete persisted._amax; finalOut.push(persisted);
+      }
+      return;
+    }
     // Relleno de huecos 0-120
     let cursor = 0;
     for (const r of ordered){
@@ -183,9 +214,78 @@ function expandAndValidateRanges(rawRanges){
   };
   if (isOnlyAmbos) processGroup(_sexTokensStyle.Ambos, groups[_sexTokensStyle.Ambos]);
   else {
-    Object.entries(groups).forEach(([sex,list])=> processGroup(sex,list));
+    Object.entries(groups).forEach(([sex,list])=> {
+      // En mezcla, también procesamos "Ambos" pero ya filtramos sus tramos solapados con M/F arriba
+      processGroup(sex,list);
+    });
   }
   return finalOut;
+}
+
+// --- Helper: right-open interval overlap with adjacency allowed ----------
+function _normAge(v, edge){ return v==null ? edge : Number(v); }
+function rightOpenOverlaps(aMin, aMax, bMin, bMax){
+  // Map null -> [0,120]
+  const A0 = _normAge(aMin, 0);
+  const A1 = _normAge(aMax, 120);
+  const B0 = _normAge(bMin, 0);
+  const B1 = _normAge(bMax, 120);
+  // Adjacency allowed: treat touching endpoints as non-overlap.
+  // With inclusive integer ages, ranges [a0..a1] and [b0..b1] do NOT overlap when a1 <= b0 or b1 <= a0.
+  const apart = (A1 <= B0) || (B1 <= A0);
+  return !apart;
+}
+
+async function assertNoSexOverlapOrAmbosConflict(db, rTable, paramId, normalizedSex, ageMin, ageMax, opts){
+  // opts: { method, unit, lower, upper, text_value, tokens }
+  const tokens = opts?.tokens || ['Ambos','Masculino','Femenino'];
+  const Ambos = tokens.find(t=>/^a/i.test(t)) || 'Ambos';
+  const Masculino = tokens.find(t=>/^m/i.test(t)) || 'Masculino';
+  const Femenino = tokens.find(t=>/^f/i.test(t)) || 'Femenino';
+  const norm = (v, edge)=> (v==null?edge:Number(v));
+  const n0 = norm(ageMin, 0), n1 = norm(ageMax, 120);
+
+  // Load existing ranges for param (limited columns for perf)
+  let colLower = 'lower', colUpper = 'upper';
+  try { await db.query(`SELECT ${colLower} FROM ${rTable} LIMIT 0`); }
+  catch(_) { colLower = 'min_value'; colUpper = 'max_value'; }
+  const select = `id, sex, age_min, age_max, ${colLower} AS lower, ${colUpper} AS upper ${opts?.method ? ', method' : ''} ${opts?.unit ? ', unit' : ''} ${opts?.text_value ? ', text_value' : ''}`;
+  const { rows } = await db.query(`SELECT ${select} FROM ${rTable} WHERE parameter_id=$1`, [paramId]);
+  const overlapsWith = (row)=> rightOpenOverlaps(n0, n1, row.age_min, row.age_max);
+
+  // 1) Within same sex: no overlaps
+  const sameSex = rows.filter(r=> String(r.sex) === String(normalizedSex));
+  const ssHit = sameSex.find(overlapsWith);
+  if (ssHit) {
+    throw new AppError(400, 'Rangos superpuestos (mismo sexo)', 'REFERENCE_RANGE_OVERLAP_SEX', { conflict_with: { id: ssHit.id, sex: ssHit.sex, age_min: ssHit.age_min, age_max: ssHit.age_max } });
+  }
+
+  // 2) Ambos vs sex-specific exclusivity on overlapping spans
+  if (String(normalizedSex) === Ambos) {
+    const spec = rows.filter(r=> String(r.sex) === Masculino || String(r.sex) === Femenino);
+    const hit = spec.find(overlapsWith);
+    if (hit) {
+      throw new AppError(400, 'Conflicto con rangos específicos por sexo (existe M/F en el mismo intervalo)', 'AMBOS_SEX_CONFLICT', { conflict_with: { id: hit.id, sex: hit.sex, age_min: hit.age_min, age_max: hit.age_max } });
+    }
+    // 3) Redundancia exacta: si ya existen M y F idénticos, bloquear "Ambos" igual.
+    const matchPredicate = (r)=> r.age_min==ageMin && r.age_max==ageMax &&
+      (opts?.method ? (r.method||null) === opts.method : true) &&
+      (opts?.unit ? (r.unit||null) === opts.unit : true) &&
+      (opts?.text_value ? (r.text_value||null) === opts.text_value : true) &&
+      String(r.lower??null) === String(opts?.lower??null) &&
+      String(r.upper??null) === String(opts?.upper??null);
+    const hasM = rows.some(r=> String(r.sex)===Masculino && matchPredicate(r));
+    const hasF = rows.some(r=> String(r.sex)===Femenino && matchPredicate(r));
+    if (hasM && hasF) {
+      throw new AppError(409, 'Rango "Ambos" redundante: ya existen variantes M y F idénticas', 'AMBOS_REDUNDANT_EXACT_MATCH');
+    }
+  } else if (String(normalizedSex)===Masculino || String(normalizedSex)===Femenino) {
+    const ambosRows = rows.filter(r=> String(r.sex) === Ambos);
+    const hit = ambosRows.find(overlapsWith);
+    if (hit) {
+      throw new AppError(400, 'Conflicto con rango "Ambos" existente en el mismo intervalo', 'AMBOS_SEX_CONFLICT', { conflict_with: { id: hit.id, sex: hit.sex, age_min: hit.age_min, age_max: hit.age_max } });
+    }
+  }
 }
 
 // --- Dynamic schema adaptation (simplificado; sex mode deprecated) -----------
@@ -327,8 +427,50 @@ function unifyRange(r, schema){
     upper: toNum(rawUpper),
     text_value: rCols.has('text_value') ? r.text_value : null,
     notes: rCols.has('notes') ? r.notes : null,
-    unit: rCols.has('unit') ? r.unit : null
+  unit: rCols.has('unit') ? r.unit : null,
+  method: rCols.has('method') ? (r.method || null) : null
   };
+}
+
+// Deduplica filas de rangos por combinación lógica de campos disponibles.
+// Mantiene la primera aparición (según el orden actual del array, que viene ordenado por created_at en las consultas).
+function dedupeRangeRows(rows, schema){
+  if (!Array.isArray(rows) || rows.length === 0) return rows || [];
+  const { rCols } = schema;
+  const normNum = (v) => {
+    if (v == null || v === '') return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : String(v); // prefer numeric canonical form; fallback to raw string
+  };
+  const normText = (v) => (v == null ? '' : String(v).trim());
+  const keyOf = (r)=>{
+    // Importante: deduplicar por parámetro; dos parámetros distintos pueden tener rangos idénticos válidamente
+    const pid = r.parameter_id ?? '∅';
+    const sex = r.sex ?? null;
+    const amin = r.age_min ?? null;
+    const amax = r.age_max ?? null;
+    const unit = rCols.has('age_min_unit') ? (r.age_min_unit ?? 'años') : 'años';
+    // lower/upper pueden venir como min_value/max_value en esquema legacy
+    const rawLower = rCols.has('lower') ? (r.lower ?? null) : (r.min_value ?? null);
+    const rawUpper = rCols.has('upper') ? (r.upper ?? null) : (r.max_value ?? null);
+    const lower = normNum(rawLower);
+    const upper = normNum(rawUpper);
+    const text = rCols.has('text_value') ? normText(r.text_value) : '';
+    const outUnit = rCols.has('unit') ? normText(r.unit) : '';
+    const method = rCols.has('method') ? normText(r.method) : '';
+    return [pid, sex, amin, amax, unit, lower, upper, text, outUnit, method]
+      .map(v => (v == null || v === '') ? '∅' : String(v))
+      .join('|');
+  };
+  const seen = new Set();
+  const out = [];
+  for (const r of rows){
+    const k = keyOf(r);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(r);
+  }
+  return out;
 }
 
 function unifyParameter(p, schema, ranges){
@@ -350,6 +492,7 @@ router.get('/', auth, requirePermission('studies','read'), async (req, res, next
   try {
     const schema = await loadAnalysisSchema(req);
     const { limit, offset } = parsePagination(req.query);
+    const sort = String(req.query.sort || '').toLowerCase();
     const searchFields = ['name'];
     if (schema.aCols.has('clave')) searchFields.push('clave');
     if (schema.aCols.has('code')) searchFields.push('code');
@@ -358,15 +501,26 @@ router.get('/', auth, requirePermission('studies','read'), async (req, res, next
     const cols = ['id','name','created_at'];
     ['clave','code','category','description','indications','sample_type','sample_container','processing_time_hours','general_units','price','active']
       .forEach(c=> schema.aCols.has(c) && cols.push(c));
+    // Ordenamiento configurable
+    let orderClause = 'created_at DESC';
+    if (sort === 'param_count_desc') {
+      cols.push('(SELECT COUNT(*) FROM analysis_parameters ap WHERE ap.analysis_id = analysis.id) AS param_count');
+      orderClause = 'param_count DESC, name ASC';
+    }
     let base = 'FROM analysis';
     if (clause) base += ` WHERE ${clause}`;
-    const rowsQ = `SELECT ${cols.join(', ')} ${base} ORDER BY created_at DESC LIMIT $${params.length+1} OFFSET $${params.length+2}`;
+    const rowsQ = `SELECT ${cols.join(', ')} ${base} ORDER BY ${orderClause} LIMIT $${params.length+1} OFFSET $${params.length+2}`;
     const cntQ = `SELECT COUNT(*)::int AS total ${base}`;
     const [rowsR, cntR] = await Promise.all([
       activePool(req).query(rowsQ, [...params, limit, offset]),
       activePool(req).query(cntQ, params)
     ]);
-    res.json({ data: rowsR.rows.map(r=>projectAnalysis(r, schema)), page: { limit, offset, total: cntR.rows[0].total } });
+    const dataOut = rowsR.rows.map(r=> projectAnalysis(r, schema));
+    // Adjuntar param_count si está presente en el SELECT (por sort=param_count_desc)
+    if (sort === 'param_count_desc') {
+      dataOut.forEach((item, idx) => { if (typeof rowsR.rows[idx].param_count !== 'undefined') item.param_count = rowsR.rows[idx].param_count; });
+    }
+    res.json({ data: dataOut, page: { limit, offset, total: cntR.rows[0].total } });
   } catch (e) { console.error(e); next(new AppError(500,'Error listando estudios','ANALYSIS_LIST_FAIL')); }
 });
 
@@ -375,6 +529,7 @@ router.get('/detailed', auth, requirePermission('studies','read'), async (req,re
   try {
     const schema = await loadAnalysisSchema(req);
     const { limit, offset } = parsePagination(req.query);
+    const sort = String(req.query.sort || '').toLowerCase();
     const searchFields = ['name'];
     if (schema.aCols.has('clave')) searchFields.push('clave');
     if (schema.aCols.has('code')) searchFields.push('code');
@@ -385,13 +540,22 @@ router.get('/detailed', auth, requirePermission('studies','read'), async (req,re
     const selectCols = ['id','name','created_at'];
     ['clave','code','category','description','indications','sample_type','sample_container','processing_time_hours','general_units','price','active']
       .forEach(c=> schema.aCols.has(c) && selectCols.push(c));
-    const rowsQ = `SELECT ${selectCols.join(', ')} ${base} ORDER BY created_at DESC LIMIT $${params.length+1} OFFSET $${params.length+2}`;
+    // Ordenamiento configurable: por cantidad de parámetros si se solicita
+    let orderClause = 'created_at DESC';
+    if (sort === 'param_count_desc') {
+      selectCols.push('(SELECT COUNT(*) FROM analysis_parameters ap WHERE ap.analysis_id = analysis.id) AS param_count');
+      orderClause = 'param_count DESC, name ASC';
+    }
+    const rowsQ = `SELECT ${selectCols.join(', ')} ${base} ORDER BY ${orderClause} LIMIT $${params.length+1} OFFSET $${params.length+2}`;
     const cntQ = `SELECT COUNT(*)::int AS total ${base}`;
     const [rowsR, cntR] = await Promise.all([
       activePool(req).query(rowsQ, [...params, limit, offset]),
       activePool(req).query(cntQ, params)
     ]);
     const list = rowsR.rows.map(r=>projectAnalysis(r, schema));
+    if (sort === 'param_count_desc') {
+      list.forEach((item, idx) => { if (typeof rowsR.rows[idx].param_count !== 'undefined') item.param_count = rowsR.rows[idx].param_count; });
+    }
     const ids = list.map(a=>a.id);
     if (ids.length) {
       const pSelect = ['id','analysis_id','name','unit','created_at'];
@@ -400,7 +564,7 @@ router.get('/detailed', auth, requirePermission('studies','read'), async (req,re
       const { rows: paramRows } = await activePool(req).query(`SELECT ${pSelect.join(', ')} FROM analysis_parameters WHERE analysis_id = ANY($1) ORDER BY position NULLS LAST, created_at`, [ids]);
       const paramIds = paramRows.map(p=>p.id);
       let rangeRows = [];
-      if (paramIds.length) {
+  if (paramIds.length) {
   const rTable = schema.modernRanges ? 'analysis_reference_ranges' : 'reference_ranges';
   const rSelect = ['id','parameter_id','sex','age_min','age_max','created_at'];
         if (schema.rCols.has('age_min_unit')) rSelect.push('age_min_unit');
@@ -409,8 +573,9 @@ router.get('/detailed', auth, requirePermission('studies','read'), async (req,re
         if (schema.rCols.has('text_value')) rSelect.push('text_value');
         if (schema.rCols.has('notes')) rSelect.push('notes');
         if (schema.rCols.has('unit')) rSelect.push('unit');
-  const { rows } = await activePool(req).query(`SELECT ${rSelect.join(', ')} FROM ${rTable} WHERE parameter_id = ANY($1) ORDER BY created_at`, [paramIds]);
-        rangeRows = rows;
+    if (schema.rCols.has('method')) rSelect.push('method');
+        const { rows } = await activePool(req).query(`SELECT ${rSelect.join(', ')} FROM ${rTable} WHERE parameter_id = ANY($1) ORDER BY created_at`, [paramIds]);
+        rangeRows = dedupeRangeRows(rows, schema);
       }
       const rangesByParam = rangeRows.reduce((acc,r)=>{ (acc[r.parameter_id] = acc[r.parameter_id] || []).push(r); return acc; }, {});
       const paramsByAnalysis = {};
@@ -597,6 +762,27 @@ router.post('/:id/parameters-sync', auth, requirePermission('studies','update'),
       let rangesExpanded = [];
       try { rangesExpanded = expandAndValidateRanges(rawRanges); }
       catch(expErr){ await client.query('ROLLBACK'); if (expErr instanceof AppError) return next(expErr); return next(new AppError(400,'Error normalizando rangos','REFERENCE_RANGE_NORMALIZATION_FAIL',{ message: expErr.message })); }
+      // Pre-validación adicional: evitar conflictos Ambos vs M/F dentro del mismo payload
+      try {
+        const tokens = (sexConstraintCache?.tokens || _sexTokensDetected);
+        const Ambos = tokens.find(t=>/^a/i.test(t)) || 'Ambos';
+        const Masculino = tokens.find(t=>/^m/i.test(t)) || 'Masculino';
+        const Femenino = tokens.find(t=>/^f/i.test(t)) || 'Femenino';
+        const grp = rangesExpanded.reduce((acc,r)=>{ (acc[r.sex]=acc[r.sex]||[]).push(r); return acc; },{});
+        const checkCross = (amb)=>{
+          for (const r of (grp[amb]||[])){
+            const n0 = _normAge(r.age_min,0), n1=_normAge(r.age_max,120);
+            for (const sx of [Masculino,Femenino]){
+              for (const s of (grp[sx]||[])){
+                if (rightOpenOverlaps(n0,n1,s.age_min,s.age_max)) {
+                  throw new AppError(400,'Conflicto Ambos vs sexo específico en carga','AMBOS_SEX_CONFLICT_BATCH',{ paramId, ambos:{age_min:r.age_min,age_max:r.age_max}, sex:sx, sex_range:{age_min:s.age_min,age_max:s.age_max} });
+                }
+              }
+            }
+          }
+        };
+        checkCross(Ambos);
+      } catch (preErr){ await client.query('ROLLBACK'); return next(preErr); }
       let insertedForParam = 0; // contador por parámetro
       for (let rIndex=0; rIndex < rangesExpanded.length; rIndex++) {
         const vr = rangesExpanded[rIndex];
@@ -630,6 +816,21 @@ router.post('/:id/parameters-sync', auth, requirePermission('studies','update'),
         if (schema.rCols.has('notes')) { cols.push('notes'); vals.push(notes); }
         if (schema.rCols.has('unit')) { cols.push('unit'); vals.push(unit); }
         const ph = cols.map((_,i)=>'$'+(i+1));
+        // Guardrails: validar contra existentes en DB dentro de la misma transacción (separado del INSERT)
+        try {
+          await assertNoSexOverlapOrAmbosConflict(client, rTableIns, paramId, sex, age_min, age_max, {
+            tokens: schema.allowedSexTokens,
+            method: schema.rCols.has('method') ? (vr.method||null) : undefined,
+            unit: schema.rCols.has('unit') ? (vr.unit||null) : undefined,
+            lower: schema.rCols.has('lower') || schema.rCols.has('min_value') ? (lower ?? null) : undefined,
+            upper: schema.rCols.has('lower') || schema.rCols.has('min_value') ? (upper ?? null) : undefined,
+            text_value: schema.rCols.has('text_value') ? (text_value ?? null) : undefined
+          });
+        } catch(guardErr){
+          await client.query('ROLLBACK');
+          if (guardErr instanceof AppError) return next(guardErr);
+          return next(new AppError(400,'Error validando rango','REFERENCE_RANGE_GUARD_FAIL',{ message: guardErr.message }));
+        }
         try {
           if (process.env.DEBUG_SEX_TOKENS === '1') {
             console.info('[ANALYSIS][SYNC][PRE-INSERT-RANGE]', { paramId, normalizedSex: sex, allowedSexTokens: schema.allowedSexTokens, rawSexInput: vr.gender||vr.sexo||vr.sex||null, cols, valsPreview: vals.slice(0,6) });
@@ -700,10 +901,11 @@ router.post('/:id/parameters-sync', auth, requirePermission('studies','update'),
       else if (schema.rCols.has('min_value')) { rSel.push('min_value','max_value'); }
       if (schema.rCols.has('text_value')) rSel.push('text_value');
       if (schema.rCols.has('notes')) rSel.push('notes');
-      if (schema.rCols.has('unit')) rSel.push('unit');
+  if (schema.rCols.has('unit')) rSel.push('unit');
+  if (schema.rCols.has('method')) rSel.push('method');
   const rTableSel = schema.modernRanges ? 'analysis_reference_ranges' : 'reference_ranges';
-  const { rows: rr } = await client.query(`SELECT ${rSel.join(', ')} FROM ${rTableSel} WHERE parameter_id=$1 ORDER BY created_at`, [p.id]);
-      result.push(unifyParameter(p, schema, rr));
+    const { rows: rr } = await client.query(`SELECT ${rSel.join(', ')} FROM ${rTableSel} WHERE parameter_id=$1 ORDER BY created_at`, [p.id]);
+        result.push(unifyParameter(p, schema, dedupeRangeRows(rr, schema)));
     }
     await client.query('COMMIT');
     console.info(`[ANALYSIS][SYNC][${requestId}] success params=${result.length} ranges=${insertedRangesTotal}`);
@@ -716,6 +918,20 @@ router.post('/', auth, requirePermission('studies','create'), audit('create','an
   try {
     const schema = await loadAnalysisSchema(req);
     if (!req.body.name) return next(new AppError(400,'name requerido','MISSING_FIELDS'));
+    // Normalización/validación de categoría si se proporciona
+    if (schema.aCols.has('category') && Object.prototype.hasOwnProperty.call(req.body,'category')){
+      let cat = req.body.category;
+      if (cat != null && String(cat).trim() === '') {
+        req.body.category = 'Otros';
+      } else if (cat != null) {
+        const { canonicalizeCategory } = require('../utils/analysisCategories');
+        const mapped = canonicalizeCategory(cat);
+        if (!mapped) {
+          return next(new AppError(400, 'Categoría no permitida', 'INVALID_CATEGORY', { allowed: CATEGORIES }));
+        }
+        req.body.category = mapped;
+      }
+    }
     // Key handling when both columns (code & clave) might exist: prefer 'code' for NOT NULL/unique, mirror value to 'clave' if provided only once.
     const hasCode = schema.aCols.has('code');
     const hasClave = schema.aCols.has('clave');
@@ -745,8 +961,16 @@ router.post('/', auth, requirePermission('studies','create'), audit('create','an
     res.status(201).json(created);
   } catch(e){
     if (e && e.code === '23505') {
-      // Unique violation (probablemente code duplicado)
-      return next(new AppError(409,'Clave ya existente','DUPLICATE_KEY'));
+      // Unique violation (probablemente code/clave duplicado)
+      // Intentar inferir campo y valor del detalle del error de Postgres
+      let details = {};
+      if (e.constraint) details.constraint = e.constraint;
+      if (e.detail) {
+        // e.detail común: 'Key (code)=(ABC123) already exists.'
+        const m = /Key \(([^)]+)\)=\(([^)]+)\)/.exec(e.detail);
+        if (m) { details.field = m[1]; details.value = m[2]; }
+      }
+      return next(new AppError(409,'Clave ya existente','DUPLICATE_KEY', details));
     }
     console.error('[ANALYSIS][CREATE]', e);
     next(new AppError(500,'Error creando estudio','ANALYSIS_CREATE_FAIL'));
@@ -772,6 +996,22 @@ router.put('/:id', auth, requirePermission('studies','update'), audit('update','
     const hasCode = schema.aCols.has('code');
     const hasClave = schema.aCols.has('clave');
     const providedKey = req.body.code || req.body.clave;
+    // Validación de categoría contra allowlist (si aplica)
+    if (schema.aCols.has('category') && Object.prototype.hasOwnProperty.call(req.body,'category')){
+      let cat = req.body.category;
+      if (cat != null && String(cat).trim() === '') {
+        // Si llega vacía, por defecto asignamos 'Otros'
+        req.body.category = 'Otros';
+      } else if (cat != null) {
+        const { canonicalizeCategory } = require('../utils/analysisCategories');
+        const mapped = canonicalizeCategory(cat);
+        if (!mapped) {
+          return next(new AppError(400, 'Categoría no permitida', 'INVALID_CATEGORY', { allowed: CATEGORIES }));
+        }
+        // Sustituir la categoría por la canónica
+        req.body.category = mapped;
+      }
+    }
     if (providedKey) {
       if (hasCode && hasClave) {
         sets.push(`code=$${sets.length+1}`); vals.push(providedKey);
@@ -789,7 +1029,34 @@ router.put('/:id', auth, requirePermission('studies','update'), audit('update','
     const { rows } = await activePool(req).query(`UPDATE analysis SET ${sets.join(', ')} WHERE id=$${vals.length} RETURNING ${returning.join(', ')}`, vals);
     if (!rows[0]) return next(new AppError(404,'Estudio no encontrado','ANALYSIS_NOT_FOUND'));
     res.json(projectAnalysis(rows[0], schema));
-  } catch(e){ console.error(e); next(new AppError(500,'Error actualizando estudio','ANALYSIS_UPDATE_FAIL')); }
+  } catch(e){
+    // Log enriquecido para diagnóstico
+    console.error('[ANALYSIS][UPDATE]', { code: e.code, message: e.message, detail: e.detail, constraint: e.constraint });
+    // Mapeo de errores comunes de PostgreSQL a respuestas 4xx útiles
+    switch (e && e.code) {
+      case '23505': // unique_violation
+        {
+          // Enriquecer con field/value si se puede parsear del detail
+          const details = {};
+          if (e.constraint) details.constraint = e.constraint;
+          if (e.detail) {
+            const m = /Key \(([^)]+)\)=\(([^)]+)\)/.exec(e.detail);
+            if (m) { details.field = m[1]; details.value = m[2]; }
+          }
+          return next(new AppError(409, 'Clave ya existente', 'DUPLICATE_KEY', details));
+        }
+      case '23514': // check_violation (p.ej. constraint de categoría)
+        return next(new AppError(400, 'Validación de datos fallida', 'DATA_CONSTRAINT_VIOLATION', { constraint: e.constraint, detail: e.detail }));
+      case '22P02': // invalid_text_representation / bad input syntax
+        return next(new AppError(400, 'Formato de campo inválido', 'BAD_INPUT_SYNTAX', { detail: e.detail }));
+      case '23502': // not_null_violation
+        return next(new AppError(400, 'Campo requerido faltante', 'NOT_NULL_VIOLATION', { column: e.column }));
+      case '23503': // foreign_key_violation
+        return next(new AppError(400, 'Referencia no válida', 'FK_VIOLATION', { constraint: e.constraint, detail: e.detail }));
+      default:
+        return next(new AppError(500,'Error actualizando estudio','ANALYSIS_UPDATE_FAIL'));
+    }
+  }
 });
 
 router.delete('/:id', auth, requirePermission('studies','delete'), audit('delete','analysis', req=>req.params.id), async (req, res, next) => {
@@ -838,8 +1105,10 @@ router.get('/parameters/:paramId/reference-ranges', auth, requirePermission('stu
     if (schema.rCols.has('text_value')) cols.push('text_value');
     if (schema.rCols.has('notes')) cols.push('notes');
     if (schema.rCols.has('unit')) cols.push('unit');
+  if (schema.rCols.has('method')) cols.push('method');
     const { rows } = await activePool(req).query(`SELECT ${cols.join(', ')} FROM ${rTable} WHERE parameter_id=$1 ORDER BY created_at`, [req.params.paramId]);
-    res.json(rows.map(r=>unifyRange(r, schema)));
+    const deduped = dedupeRangeRows(rows, schema);
+    res.json(deduped.map(r=>unifyRange(r, schema)));
   } catch(e){ console.error(e); res.status(500).json({ error:'Error listando rangos'});} });
 
 router.post('/parameters/:paramId/reference-ranges', auth, requirePermission('studies','update'), audit('create','reference_range', (req,r)=>r.locals?.rangeId, (req)=>({ body: req.body, param_id: req.params.paramId })), async (req,res)=>{
@@ -857,6 +1126,7 @@ router.post('/parameters/:paramId/reference-ranges', auth, requirePermission('st
     const text_value = schema.rCols.has('text_value') ? (body.text_value || body.textoLibre || body.textoPermitido || null) : null;
     const notes = schema.rCols.has('notes') ? (body.notes || body.notas || null) : null;
     const unit = schema.rCols.has('unit') ? (body.unit || body.unidad || null) : null;
+  const method = schema.rCols.has('method') ? (body.method || body.metodo || null) : null;
     if (lower!=null && upper!=null && Number(lower) > Number(upper)) return res.status(400).json({ error:'lower > upper'});
     if (lower==null && upper==null && !text_value && (!notes || /sin referencia establecida/i.test(String(notes)))) return res.status(400).json({ error:'Rango vacío'});
     const cols=['parameter_id','sex','age_min','age_max']; const vals=[req.params.paramId, sex, age_min, age_max];
@@ -864,8 +1134,23 @@ router.post('/parameters/:paramId/reference-ranges', auth, requirePermission('st
     if (schema.rCols.has('lower')) { cols.push('lower','upper'); vals.push(lower, upper); } else if (schema.rCols.has('min_value')) { cols.push('min_value','max_value'); vals.push(lower, upper); }
     if (schema.rCols.has('text_value')) { cols.push('text_value'); vals.push(text_value); }
     if (schema.rCols.has('notes')) { cols.push('notes'); vals.push(notes); }
-    if (schema.rCols.has('unit')) { cols.push('unit'); vals.push(unit); }
+  if (schema.rCols.has('unit')) { cols.push('unit'); vals.push(unit); }
+  if (schema.rCols.has('method')) { cols.push('method'); vals.push(method); }
     const ph = cols.map((_,i)=>'$'+(i+1));
+    // Guardrails: validar antes de insertar
+    try {
+      await assertNoSexOverlapOrAmbosConflict(activePool(req), rTable, req.params.paramId, sex, age_min, age_max, {
+        tokens: schema.allowedSexTokens,
+        method,
+        unit,
+        lower,
+        upper,
+        text_value
+      });
+    } catch (guardErr){
+      if (guardErr instanceof AppError) return res.status(guardErr.status || 400).json({ error: guardErr.code, message: guardErr.message, meta: guardErr.meta });
+      return res.status(400).json({ error:'range_guard', message: guardErr.message });
+    }
     const { rows } = await activePool(req).query(`INSERT INTO ${rTable}(${cols.join(',')}) VALUES(${ph.join(',')}) RETURNING *`, vals);
     const created = rows[0];
     res.locals.rangeId = created.id;
@@ -878,7 +1163,7 @@ router.post('/parameters/:paramId/reference-ranges', auth, requirePermission('st
 
 router.put('/reference-ranges/:rangeId', auth, requirePermission('studies','update'), audit('update','reference_range', req=>req.params.rangeId, (req)=>({ body: req.body })), async (req,res)=>{
   await loadAnalysisSchema(req); // ensure schema cache ready (side effects)
-  const map = { sex:'sex', age_min:'age_min', age_max:'age_max', unit:'unit', lower:'min_value', upper:'max_value', min_value:'min_value', max_value:'max_value' };
+  const map = { sex:'sex', age_min:'age_min', age_max:'age_max', unit:'unit', lower:'min_value', upper:'max_value', min_value:'min_value', max_value:'max_value', method:'method' };
   const sets = []; const vals = [];
   Object.entries(map).forEach(([inKey,col])=>{ 
     if(Object.prototype.hasOwnProperty.call(req.body,inKey)){ 
@@ -891,10 +1176,10 @@ router.put('/reference-ranges/:rangeId', auth, requirePermission('studies','upda
   if(!sets.length) return res.status(400).json({ error:'Nada para actualizar'});
   vals.push(req.params.rangeId);
   try {
-    const { rows } = await activePool(req).query(`UPDATE reference_ranges SET ${sets.join(', ')} WHERE id=$${vals.length} RETURNING id, parameter_id, sex, age_min, age_max, unit, min_value, max_value, created_at`, vals);
+    const { rows } = await activePool(req).query(`UPDATE reference_ranges SET ${sets.join(', ')} WHERE id=$${vals.length} RETURNING id, parameter_id, sex, age_min, age_max, unit, min_value, max_value, method, created_at`, vals);
     if(!rows[0]) return res.status(404).json({ error:'No encontrado'});
     const r = rows[0];
-    res.json({ id: r.id, sex: r.sex, age_min: r.age_min, age_max: r.age_max, unit: r.unit, lower: r.min_value, upper: r.max_value });
+    res.json({ id: r.id, sex: r.sex, age_min: r.age_min, age_max: r.age_max, unit: r.unit, lower: r.min_value, upper: r.max_value, method: r.method || null });
   } catch(e){ console.error(e); res.status(500).json({ error:'Error actualizando rango'}); }
 });
 

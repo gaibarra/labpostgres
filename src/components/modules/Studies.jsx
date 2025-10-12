@@ -26,7 +26,7 @@ class StudiesErrorBoundary extends React.Component {
 }
 
 const StudiesInner = () => {
-  const { user } = useAuth();
+  const { user: _user } = useAuth();
   const { referrers } = useAppData();
   const [searchTerm, setSearchTerm] = useState('');
   const {
@@ -49,6 +49,8 @@ const StudiesInner = () => {
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
   // Estado para resaltar un rango inválido (paramIndex, rangeIndex)
   const [invalidHighlight, setInvalidHighlight] = useState(null);
+  // Estado para mostrar modal de clave duplicada
+  const [duplicateKeyError, setDuplicateKeyError] = useState(null);
 
   const handleNewStudyClick = () => {
     setCurrentStudy({ ...initialStudyFormState, parameters: [] });
@@ -64,6 +66,8 @@ const StudiesInner = () => {
   const handleFormSubmit = async (studyData) => {
     // Limpiar highlight previo
     setInvalidHighlight(null);
+    // Cerrar cualquier modal de duplicado previo
+    if (duplicateKeyError) setDuplicateKeyError(null);
     try {
       const success = await handleSubmit(studyData);
       if (success){
@@ -73,6 +77,16 @@ const StudiesInner = () => {
     } catch (e) {
       // Captura de detalles de validación (cliente o servidor) con índices
       const d = e?.details || e; // algunos errores guardan las props en details
+      // Mostrar modal específico cuando backend retorna DUPLICATE_KEY (409) para clave ya existente
+      const code = e?.code || d?.code;
+      if (code === 'DUPLICATE_KEY') {
+        const field = d?.field || d?.details?.field || 'clave';
+        const value = d?.value || d?.details?.value || studyData?.clave || '';
+        setDuplicateKeyError({ field, value });
+        // Mantener el formulario abierto para corregir
+        setIsFormOpen(true);
+        return; // no continuar con highlight logic
+      }
       if (d && (typeof d.paramIndex === 'number' || typeof d.rangeIndex === 'number')) {
         setInvalidHighlight({
           paramIndex: typeof d.paramIndex === 'number' ? d.paramIndex : 0,
@@ -87,7 +101,55 @@ const StudiesInner = () => {
     }
   };
   const handleConfirmDelete = async () => { if (!studyToDelete) return; const success = await handleDeleteStudy(studyToDelete); if (success){ setStudyToDelete(null); setIsDeleteConfirmOpen(false); } };
-  const handleAcceptAIPreview = () => { setCurrentStudy(aiGeneratedData); setIsPreviewModalOpen(false); setIsFormOpen(true); setAiGeneratedData(null); };
+  const handleAcceptAIPreview = (payload) => {
+    const base = payload || aiGeneratedData || null;
+    if (!base) { setIsPreviewModalOpen(false); return; }
+    // Aislar datos IA: clonar profundamente y marcar como borrador IA
+    const cloned = typeof structuredClone === 'function' ? structuredClone(base) : JSON.parse(JSON.stringify(base));
+    cloned.id = null; // siempre como nuevo estudio al aceptar
+    cloned._origin = 'ai';
+    cloned._aiDraft = true;
+    // Normalizar arrays defensivamente
+    const normalizeRanges = (ranges) => {
+      const arr = Array.isArray(ranges) ? ranges : [];
+      return arr.map(vr => {
+        const genderRaw = (vr.gender ?? vr.sexo ?? 'Ambos').toString().trim().toLowerCase();
+        const gender = genderRaw.startsWith('m') ? 'masculino' : genderRaw.startsWith('f') ? 'femenino' : 'ambos';
+        const age_min = vr.age_min ?? vr.edadMin ?? null;
+        const age_max = vr.age_max ?? vr.edadMax ?? null;
+        const age_unit = vr.age_unit ?? vr.unidadEdad ?? 'años';
+        const normal_min = vr.normal_min ?? vr.valorMin ?? vr.lower ?? null;
+        const normal_max = vr.normal_max ?? vr.valorMax ?? vr.upper ?? null;
+        const tipoValor = vr.tipoValor || (vr.textoLibre ? 'textoLibre' : (vr.textoPermitido ? 'alfanumerico' : 'numerico'));
+        const textoPermitido = vr.textoPermitido ?? '';
+        const textoLibre = vr.textoLibre ?? '';
+        const notas = vr.notas ?? '';
+        return {
+          // IDs locales se generarán más adelante en el editor si faltan
+          gender,
+          sexo: gender === 'masculino' ? 'Masculino' : gender === 'femenino' ? 'Femenino' : 'Ambos',
+          age_min, edadMin: age_min,
+          age_max, edadMax: age_max,
+          age_unit, unidadEdad: age_unit,
+          normal_min, valorMin: normal_min,
+          normal_max, valorMax: normal_max,
+          lower: normal_min, upper: normal_max,
+          tipoValor, textoPermitido, textoLibre, notas,
+        };
+      });
+    };
+    cloned.parameters = (Array.isArray(cloned.parameters) ? cloned.parameters : []).map(p => ({
+      ...p,
+      decimal_places: typeof p.decimal_places === 'number' ? p.decimal_places : (typeof p.decimals === 'number' ? p.decimals : 0),
+      unit: p.unit || p.unidad || p.units || '',
+      valorReferencia: normalizeRanges(p.valorReferencia || p.reference_values || p.reference_ranges || p.rangos || [])
+    }));
+    setCurrentStudy(cloned);
+    setIsPreviewModalOpen(false);
+    setIsFormOpen(true);
+    // Limpiar para evitar que otra aceptación accidental reutilice el mismo objeto
+    setAiGeneratedData(null);
+  };
   const handleCancelAIPreview = () => { setIsPreviewModalOpen(false); setAiGeneratedData(null); };
 
   const displayedStudies = studies;
@@ -188,6 +250,8 @@ const StudiesInner = () => {
         handleImmediateParameterSave={handleImmediateParameterSave}
         handleImmediateParameterDelete={handleImmediateParameterDelete}
         getParticularPriceForStudy={getParticularPrice}
+        duplicateKeyError={duplicateKeyError}
+        setDuplicateKeyError={setDuplicateKeyError}
       />
     </motion.div>
   );

@@ -97,7 +97,7 @@ import React from 'react';
             </ScrollArea>
             <DialogFooter className="pt-4 border-t border-slate-200 dark:border-slate-700">
               <Button variant="outline" onClick={onCancel}>Cancelar</Button>
-              <Button onClick={onAccept} className="bg-purple-500 hover:bg-purple-600 text-white">
+              <Button onClick={() => onAccept?.(studyData)} className="bg-purple-500 hover:bg-purple-600 text-white">
                 Aceptar y Usar Datos
               </Button>
             </DialogFooter>

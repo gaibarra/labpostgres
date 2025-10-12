@@ -12,6 +12,7 @@ import DeleteStudyDialog from './DeleteStudyDialog';
 import AIAssistDialog from './AIAssistDialog';
 import AIAssistPreviewModal from './AIAssistPreviewModal';
 import StudyPriceAssignmentModal from './StudyPriceAssignmentModal';
+import DuplicateKeyDialog from './DuplicateKeyDialog';
 // Importaciones removidas: StudyHelpDialog, Loader2 (no usados)
 
 /**
@@ -71,6 +72,9 @@ export function StudiesModalsHost({
   handleImmediateParameterDelete,
   _getParticularPriceForStudy,
   invalidHighlight,
+  // Nuevo: estado de error de clave duplicada
+  duplicateKeyError,
+  setDuplicateKeyError,
   // Instrumentación
   enableInstrumentation = true
 }) {
@@ -85,7 +89,7 @@ export function StudiesModalsHost({
   // ===== Accesibilidad: Mitigación aria-hidden / aislamiento con inert =====
   useEffect(()=>{
     // Determinar si hay algún modal abierto relevante
-  const anyOpen = isFormOpen || isDeleteConfirmOpen || isAIAssistOpen || isPreviewModalOpen || isPriceModalOpen;
+  const anyOpen = isFormOpen || isDeleteConfirmOpen || isAIAssistOpen || isPreviewModalOpen || isPriceModalOpen || !!duplicateKeyError;
     if (!anyOpen) {
       // Cleanup inert previo
   appliedInertRef.current.forEach(el=>{ try { el.removeAttribute('inert'); el.removeAttribute('data-labg40-inert'); } catch(_e){ /* ignore cleanup error */ } });
@@ -136,7 +140,7 @@ export function StudiesModalsHost({
       } catch(e){ /* noop */ }
     });
     return ()=> cancelAnimationFrame(raf);
-  }, [isFormOpen, isDeleteConfirmOpen, isAIAssistOpen, isPreviewModalOpen, isPriceModalOpen, instEnabled]);
+  }, [isFormOpen, isDeleteConfirmOpen, isAIAssistOpen, isPreviewModalOpen, isPriceModalOpen, duplicateKeyError, instEnabled]);
 
   // Listener de focus para corregir aria-hidden re-aplicado dinámicamente
   useEffect(()=>{
@@ -422,6 +426,14 @@ export function StudiesModalsHost({
         referrers={referrers}
         onUpdatePrices={updateStudyPrices}
         isSubmitting={isSubmitting}
+      />
+
+      {/* Duplicate Key Modal persistente */}
+      <DuplicateKeyDialog
+        isOpen={!!duplicateKeyError}
+        onOpenChange={(open)=>{ if (!open) setDuplicateKeyError(null); }}
+        field={duplicateKeyError?.field}
+        value={duplicateKeyError?.value}
       />
     </>
   );

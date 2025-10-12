@@ -55,13 +55,7 @@ UPDATE analysis SET
   processing_time_hours = COALESCE(processing_time_hours, 8)
 WHERE LOWER(name) = LOWER('Perfil Hepático');
 
-UPDATE analysis SET 
-  description = COALESCE(description, 'Panel básico de hormonas para evaluación endocrina.'),
-  indications = COALESCE(indications, 'Trastornos hormonales, fertilidad, seguimiento terapéutico.'),
-  sample_type = COALESCE(sample_type, 'Suero'),
-  sample_container = COALESCE(sample_container, 'Tubo rojo o amarillo (SST)'),
-  processing_time_hours = COALESCE(processing_time_hours, 24)
-WHERE LOWER(name) = LOWER('Perfil Hormonal');
+-- Nota: se eliminó backfill específico de paneles para evitar dependencias.
 
 UPDATE analysis SET 
   description = COALESCE(description, 'Hormonas y marcadores asociados a salud ginecológica.'),

@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily duplicate reference ranges check
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+Unit=check-reference-duplicates.service
+
+[Install]
+WantedBy=timers.target

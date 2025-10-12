@@ -1,5 +1,3 @@
-import { toast } from "@/components/ui/use-toast";
-
 export const ensurePriceListStructureForReferrer = (referrer) => {
   const defaultPriceListStructure = { studies: [], packages: [] };
   const newReferrer = { ...referrer };

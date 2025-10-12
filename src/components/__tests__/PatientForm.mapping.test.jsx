@@ -7,7 +7,7 @@ vi.mock('@/components/ui/use-toast', () => ({ useToast: () => ({ toast: () => {}
 // Mock Dialog components used inside PatientForm (DialogFooter/DialogClose) to eliminate Radix context dependency
 vi.mock('@/components/ui/dialog', () => ({
   DialogFooter: ({ children }) => <div data-testid="dialog-footer">{children}</div>,
-  DialogClose: ({ children, asChild }) => <>{children}</>
+  DialogClose: ({ children }) => <>{children}</>
 }));
 
 import PatientForm from '@/components/modules/patients/PatientForm.jsx';

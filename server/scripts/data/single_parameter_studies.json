@@ -1,0 +1,843 @@
+[ 
+  {
+    "name": "Urea",
+    "unit": "mg/dL",
+    "decimal_places": 1,
+    "parameters": [
+      {
+        "name": "Urea",
+        "unit": "mg/dL",
+        "decimal_places": 1,
+        "reference_ranges": [
+          { "sex": "Ambos", "age_min": 0,  "age_max": 1,   "age_min_unit": "años", "lower": 7,  "upper": 20, "notes": "Lactantes" },
+          { "sex": "Ambos", "age_min": 1,  "age_max": 12,  "age_min_unit": "años", "lower": 7,  "upper": 18, "notes": "Niños" },
+          { "sex": "Ambos", "age_min": 13, "age_max": 17,  "age_min_unit": "años", "lower": 7,  "upper": 20, "notes": "Adolescentes" },
+          { "sex": "Ambos", "age_min": 18, "age_max": 64,  "age_min_unit": "años", "lower": 15, "upper": 40, "notes": "Adultos" },
+          { "sex": "Ambos", "age_min": 65, "age_max": 120, "age_min_unit": "años", "lower": 17, "upper": 49, "notes": "Adultos mayores" }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Nitrógeno ureico (BUN)",
+    "unit": "mg/dL",
+    "decimal_places": 1,
+    "parameters": [
+      {
+        "name": "Nitrógeno ureico (BUN)",
+        "unit": "mg/dL",
+        "decimal_places": 1,
+        "reference_ranges": [
+          { "sex": "Ambos", "age_min": 0,  "age_max": 1,   "age_min_unit": "años", "lower": 5,  "upper": 18 },
+          { "sex": "Ambos", "age_min": 1,  "age_max": 12,  "age_min_unit": "años", "lower": 5,  "upper": 18 },
+          { "sex": "Ambos", "age_min": 13, "age_max": 17,  "age_min_unit": "años", "lower": 7,  "upper": 20 },
+          { "sex": "Ambos", "age_min": 18, "age_max": 64,  "age_min_unit": "años", "lower": 7,  "upper": 20, "notes": "Ayuno recomendado" },
+          { "sex": "Ambos", "age_min": 65, "age_max": 120, "age_min_unit": "años", "lower": 8,  "upper": 23 }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Creatinina",
+    "unit": "mg/dL",
+    "decimal_places": 2,
+    "parameters": [
+      {
+        "name": "Creatinina",
+        "unit": "mg/dL",
+        "decimal_places": 2,
+        "reference_ranges": [
+          { "sex": "Ambos",      "age_min": 0,  "age_max": 1,   "age_min_unit": "años", "lower": 0.20, "upper": 0.40 },
+          { "sex": "Ambos",      "age_min": 1,  "age_max": 3,   "age_min_unit": "años", "lower": 0.30, "upper": 0.70 },
+          { "sex": "Ambos",      "age_min": 4,  "age_max": 12,  "age_min_unit": "años", "lower": 0.40, "upper": 0.90 },
+          { "sex": "Masculino",  "age_min": 13, "age_max": 17,  "age_min_unit": "años", "lower": 0.60, "upper": 1.20 },
+          { "sex": "Femenino",   "age_min": 13, "age_max": 17,  "age_min_unit": "años", "lower": 0.50, "upper": 1.00 },
+          { "sex": "Masculino",  "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 0.74, "upper": 1.35 },
+          { "sex": "Femenino",   "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 0.59, "upper": 1.04 }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Ácido úrico",
+    "unit": "mg/dL",
+    "decimal_places": 1,
+    "parameters": [
+      {
+        "name": "Ácido úrico",
+        "unit": "mg/dL",
+        "decimal_places": 1,
+        "reference_ranges": [
+          { "sex": "Ambos",      "age_min": 0,  "age_max": 12,  "age_min_unit": "años", "lower": 2.0, "upper": 5.5 },
+          { "sex": "Masculino",  "age_min": 13, "age_max": 17,  "age_min_unit": "años", "lower": 3.0, "upper": 7.0 },
+          { "sex": "Femenino",   "age_min": 13, "age_max": 17,  "age_min_unit": "años", "lower": 2.5, "upper": 6.0 },
+          { "sex": "Masculino",  "age_min": 18, "age_max": 64,  "age_min_unit": "años", "lower": 3.5, "upper": 7.2 },
+          { "sex": "Femenino",   "age_min": 18, "age_max": 64,  "age_min_unit": "años", "lower": 2.6, "upper": 6.0 },
+          { "sex": "Masculino",  "age_min": 65, "age_max": 120, "age_min_unit": "años", "lower": 3.5, "upper": 7.5 },
+          { "sex": "Femenino",   "age_min": 65, "age_max": 120, "age_min_unit": "años", "lower": 2.6, "upper": 6.5 }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Colesterol total",
+    "unit": "mg/dL",
+    "decimal_places": 0,
+    "parameters": [
+      {
+        "name": "Colesterol total",
+        "unit": "mg/dL",
+        "decimal_places": 0,
+        "reference_ranges": [
+          { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 0, "upper": 200, "notes": "Deseable <200" }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Triglicéridos",
+    "unit": "mg/dL",
+    "decimal_places": 0,
+    "parameters": [
+      {
+        "name": "Triglicéridos",
+        "unit": "mg/dL",
+        "decimal_places": 0,
+        "reference_ranges": [
+          { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 0, "upper": 150, "notes": "Ayuno" }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "HDL colesterol",
+    "unit": "mg/dL",
+    "decimal_places": 0,
+    "parameters": [
+      {
+        "name": "HDL colesterol",
+        "unit": "mg/dL",
+        "decimal_places": 0,
+        "reference_ranges": [
+          { "sex": "Masculino", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 40, "upper": null, "notes": ">=40 deseable" },
+          { "sex": "Femenino",  "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 50, "upper": null, "notes": ">=50 deseable" }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "LDL directo",
+    "unit": "mg/dL",
+    "decimal_places": 0,
+    "parameters": [
+      {
+        "name": "LDL directo",
+        "unit": "mg/dL",
+        "decimal_places": 0,
+        "reference_ranges": [
+          { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 0, "upper": 130, "notes": "Óptimo <100; aceptable <130" }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "VLDL (calculado/reportado)",
+    "unit": "mg/dL",
+    "decimal_places": 0,
+    "parameters": [
+      {
+        "name": "VLDL (calculado/reportado)",
+        "unit": "mg/dL",
+        "decimal_places": 0,
+        "reference_ranges": [
+          { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 5, "upper": 40 }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Colesterol no-HDL",
+    "unit": "mg/dL",
+    "decimal_places": 0,
+    "parameters": [
+      {
+        "name": "Colesterol no-HDL",
+        "unit": "mg/dL",
+        "decimal_places": 0,
+        "reference_ranges": [
+          { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 0, "upper": 130, "notes": "Objetivo <130" }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Fructosamina",
+    "unit": "µmol/L",
+    "decimal_places": 0,
+    "parameters": [
+      { "name": "Fructosamina", "unit": "µmol/L", "decimal_places": 0, "reference_ranges": [ { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 200, "upper": 285 } ] }
+    ]
+  },
+  {
+    "name": "HbA1c (hemoglobina glucosilada)",
+    "unit": "%",
+    "decimal_places": 1,
+    "parameters": [
+      { "name": "HbA1c", "unit": "%", "decimal_places": 1, "reference_ranges": [ { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 4.0, "upper": 5.6 } ] }
+    ]
+  },
+  {
+    "name": "Insulina basal",
+    "unit": "µIU/mL",
+    "decimal_places": 1,
+    "parameters": [
+      { "name": "Insulina basal", "unit": "µIU/mL", "decimal_places": 1, "reference_ranges": [ { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 2.0, "upper": 25.0 } ] }
+    ]
+  },
+  {
+    "name": "Péptido C",
+    "unit": "ng/mL",
+    "decimal_places": 2,
+    "parameters": [
+      { "name": "Péptido C", "unit": "ng/mL", "decimal_places": 2, "reference_ranges": [ { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 0.8, "upper": 3.1 } ] }
+    ]
+  },
+  {
+    "name": "Homocisteína",
+    "unit": "µmol/L",
+    "decimal_places": 1,
+    "parameters": [
+      { "name": "Homocisteína", "unit": "µmol/L", "decimal_places": 1, "reference_ranges": [ { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 5, "upper": 15 } ] }
+    ]
+  },
+  {
+    "name": "Lactato (ácido láctico)",
+    "unit": "mmol/L",
+    "decimal_places": 1,
+    "parameters": [
+      { "name": "Lactato", "unit": "mmol/L", "decimal_places": 1, "reference_ranges": [ { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 0.5, "upper": 2.2 } ] }
+    ]
+  },
+  {
+    "name": "Amoniaco",
+    "unit": "µmol/L",
+    "decimal_places": 0,
+    "parameters": [
+      { "name": "Amoniaco", "unit": "µmol/L", "decimal_places": 0, "reference_ranges": [ { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 15, "upper": 45 } ] }
+    ]
+  },
+  {
+    "name": "Osmolalidad sérica",
+    "unit": "mOsm/kg",
+    "decimal_places": 0,
+    "parameters": [
+      { "name": "Osmolalidad sérica", "unit": "mOsm/kg", "decimal_places": 0, "reference_ranges": [ { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 275, "upper": 295 } ] }
+    ]
+  },
+  {
+    "name": "Osmolalidad urinaria",
+    "unit": "mOsm/kg",
+    "decimal_places": 0,
+    "parameters": [
+      { "name": "Osmolalidad urinaria", "unit": "mOsm/kg", "decimal_places": 0, "reference_ranges": [ { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 300, "upper": 900 } ] }
+    ]
+  },
+  {
+    "name": "Proteínas totales",
+    "unit": "g/dL",
+    "decimal_places": 1,
+    "parameters": [
+      { "name": "Proteínas totales", "unit": "g/dL", "decimal_places": 1, "reference_ranges": [ { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 6.0, "upper": 8.3 } ] }
+    ]
+  },
+  {
+    "name": "Albúmina sérica",
+    "unit": "g/dL",
+    "decimal_places": 2,
+    "parameters": [
+      { "name": "Albúmina", "unit": "g/dL", "decimal_places": 2, "reference_ranges": [ { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 3.5, "upper": 5.0 } ] }
+    ]
+  },
+  {
+    "name": "Relación A/G (reportado)",
+    "unit": "ratio",
+    "decimal_places": 2,
+    "parameters": [
+      { "name": "Relación A/G", "unit": "ratio", "decimal_places": 2, "reference_ranges": [ { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 1.0, "upper": 2.5 } ] }
+    ]
+  },
+  {
+    "name": "Bilirrubina total",
+    "unit": "mg/dL",
+    "decimal_places": 2,
+    "parameters": [
+      { "name": "Bilirrubina total", "unit": "mg/dL", "decimal_places": 2, "reference_ranges": [ { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 0.1, "upper": 1.2 } ] }
+    ]
+  },
+  {
+    "name": "Bilirrubina directa",
+    "unit": "mg/dL",
+    "decimal_places": 2,
+    "parameters": [
+      { "name": "Bilirrubina directa", "unit": "mg/dL", "decimal_places": 2, "reference_ranges": [ { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 0.0, "upper": 0.3 } ] }
+    ]
+  },
+  {
+    "name": "Bilirrubina indirecta",
+    "unit": "mg/dL",
+    "decimal_places": 2,
+    "parameters": [
+      { "name": "Bilirrubina indirecta", "unit": "mg/dL", "decimal_places": 2, "reference_ranges": [ { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 0.2, "upper": 0.9 } ] }
+    ]
+  },
+  { "name": "ALT (TGP)", "unit": "U/L", "decimal_places": 0, "parameters": [ { "name": "ALT (TGP)", "unit": "U/L", "decimal_places": 0, "reference_ranges": [ { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 7, "upper": 56 } ] } ] },
+  { "name": "AST (TGO)", "unit": "U/L", "decimal_places": 0, "parameters": [ { "name": "AST (TGO)", "unit": "U/L", "decimal_places": 0, "reference_ranges": [ { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 10, "upper": 40 } ] } ] },
+  { "name": "Fosfatasa alcalina", "unit": "U/L", "decimal_places": 0, "parameters": [ { "name": "Fosfatasa alcalina", "unit": "U/L", "decimal_places": 0, "reference_ranges": [ { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 44, "upper": 147 } ] } ] },
+  { "name": "GGT", "unit": "U/L", "decimal_places": 0, "parameters": [ { "name": "GGT", "unit": "U/L", "decimal_places": 0, "reference_ranges": [ { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 9, "upper": 48 } ] } ] },
+  { "name": "LDH", "unit": "U/L", "decimal_places": 0, "parameters": [ { "name": "LDH", "unit": "U/L", "decimal_places": 0, "reference_ranges": [ { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 140, "upper": 280 } ] } ] },
+  { "name": "Amilasa", "unit": "U/L", "decimal_places": 0, "parameters": [ { "name": "Amilasa", "unit": "U/L", "decimal_places": 0, "reference_ranges": [ { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 23, "upper": 85 } ] } ] },
+  { "name": "Lipasa", "unit": "U/L", "decimal_places": 0, "parameters": [ { "name": "Lipasa", "unit": "U/L", "decimal_places": 0, "reference_ranges": [ { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 0, "upper": 160 } ] } ] },
+  { "name": "Ferritina", "unit": "ng/mL", "decimal_places": 0, "parameters": [ { "name": "Ferritina", "unit": "ng/mL", "decimal_places": 0, "reference_ranges": [ { "sex": "Masculino", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 30, "upper": 400 }, { "sex": "Femenino", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 13, "upper": 150 } ] } ] },
+  { "name": "Hierro sérico", "unit": "µg/dL", "decimal_places": 0, "parameters": [ { "name": "Hierro sérico", "unit": "µg/dL", "decimal_places": 0, "reference_ranges": [ { "sex": "Masculino", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 65, "upper": 175 }, { "sex": "Femenino", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 50, "upper": 170 } ] } ] },
+  { "name": "TIBC (capacidad total de fijación de hierro)", "unit": "µg/dL", "decimal_places": 0, "parameters": [ { "name": "TIBC", "unit": "µg/dL", "decimal_places": 0, "reference_ranges": [ { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 250, "upper": 450 } ] } ] },
+  { "name": "Transferrina", "unit": "mg/dL", "decimal_places": 0, "parameters": [ { "name": "Transferrina", "unit": "mg/dL", "decimal_places": 0, "reference_ranges": [ { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 200, "upper": 360 } ] } ] },
+  { "name": "Saturación de transferrina (reportado)", "unit": "%", "decimal_places": 1, "parameters": [ { "name": "Saturación de transferrina", "unit": "%", "decimal_places": 1, "reference_ranges": [ { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 20, "upper": 50 } ] } ] },
+  { "name": "Haptoglobina", "unit": "mg/dL", "decimal_places": 0, "parameters": [ { "name": "Haptoglobina", "unit": "mg/dL", "decimal_places": 0, "reference_ranges": [ { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 30, "upper": 200 } ] } ] },
+  { "name": "Ceruloplasmina", "unit": "mg/dL", "decimal_places": 1, "parameters": [ { "name": "Ceruloplasmina", "unit": "mg/dL", "decimal_places": 1, "reference_ranges": [ { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 20, "upper": 35 } ] } ] },
+  { "name": "Sodio", "unit": "mmol/L", "decimal_places": 0, "parameters": [ { "name": "Sodio", "unit": "mmol/L", "decimal_places": 0, "reference_ranges": [ { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 136, "upper": 145 } ] } ] },
+  { "name": "Potasio", "unit": "mmol/L", "decimal_places": 1, "parameters": [ { "name": "Potasio", "unit": "mmol/L", "decimal_places": 1, "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 1, "age_min_unit": "años", "lower": 3.7, "upper": 5.9 }, { "sex": "Ambos", "age_min": 1, "age_max": 5, "age_min_unit": "años", "lower": 3.5, "upper": 5.5 }, { "sex": "Ambos", "age_min": 6, "age_max": 12, "age_min_unit": "años", "lower": 3.5, "upper": 5.1 }, { "sex": "Ambos", "age_min": 13, "age_max": 120, "age_min_unit": "años", "lower": 3.5, "upper": 5.1 } ] } ] },
+  { "name": "Cloro", "unit": "mmol/L", "decimal_places": 0, "parameters": [ { "name": "Cloro", "unit": "mmol/L", "decimal_places": 0, "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 120, "age_min_unit": "años", "lower": 98, "upper": 107 } ] } ] },
+  { "name": "Calcio total", "unit": "mg/dL", "decimal_places": 1, "parameters": [ { "name": "Calcio total", "unit": "mg/dL", "decimal_places": 1, "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 1, "age_min_unit": "años", "lower": 8.8, "upper": 11.0 }, { "sex": "Ambos", "age_min": 1, "age_max": 17, "age_min_unit": "años", "lower": 8.8, "upper": 10.8 }, { "sex": "Ambos", "age_min": 18, "age_max": 64, "age_min_unit": "años", "lower": 8.6, "upper": 10.2 }, { "sex": "Ambos", "age_min": 65, "age_max": 120, "age_min_unit": "años", "lower": 8.4, "upper": 10.0 } ] } ] },
+  { "name": "Calcio ionizado", "unit": "mmol/L", "decimal_places": 2, "parameters": [ { "name": "Calcio ionizado", "unit": "mmol/L", "decimal_places": 2, "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 17, "age_min_unit": "años", "lower": 1.12, "upper": 1.32 }, { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 1.12, "upper": 1.32 } ] } ] },
+  { "name": "Fósforo", "unit": "mg/dL", "decimal_places": 1, "parameters": [ { "name": "Fósforo", "unit": "mg/dL", "decimal_places": 1, "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 1, "age_min_unit": "años", "lower": 4.5, "upper": 6.7 }, { "sex": "Ambos", "age_min": 1, "age_max": 5, "age_min_unit": "años", "lower": 4.0, "upper": 6.0 }, { "sex": "Ambos", "age_min": 6, "age_max": 12, "age_min_unit": "años", "lower": 3.5, "upper": 5.5 }, { "sex": "Ambos", "age_min": 13, "age_max": 17, "age_min_unit": "años", "lower": 2.9, "upper": 5.4 }, { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 2.5, "upper": 4.5 } ] } ] },
+  { "name": "Magnesio", "unit": "mg/dL", "decimal_places": 2, "parameters": [ { "name": "Magnesio", "unit": "mg/dL", "decimal_places": 2, "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 17, "age_min_unit": "años", "lower": 1.7, "upper": 2.3 }, { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 1.6, "upper": 2.6 } ] } ] },
+  { "name": "Bicarbonato (CO₂ total)", "unit": "mmol/L", "decimal_places": 1, "parameters": [ { "name": "Bicarbonato (CO₂ total)", "unit": "mmol/L", "decimal_places": 1, "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 17, "age_min_unit": "años", "lower": 20, "upper": 28 }, { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 22, "upper": 29 } ] } ] },
+  { "name": "Anión gap (reportado)", "unit": "mmol/L", "decimal_places": 1, "parameters": [ { "name": "Anión gap", "unit": "mmol/L", "decimal_places": 1, "reference_ranges": [ { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 8, "upper": 16 } ] } ] },
+  { "name": "Zinc", "parameters": [ { "name": "Zinc", "reference_ranges": [] } ] },
+  { "name": "Cobre", "parameters": [ { "name": "Cobre", "reference_ranges": [] } ] },
+  { "name": "Yodo urinario", "parameters": [ { "name": "Yodo urinario", "reference_ranges": [] } ] },
+  { "name": "Selenio", "parameters": [ { "name": "Selenio", "reference_ranges": [] } ] },
+  { "name": "Litio (nivel terapéutico)", "parameters": [ { "name": "Litio (nivel terapéutico)", "reference_ranges": [] } ] },
+  { "name": "Plomo (Pb)", "parameters": [ { "name": "Plomo (Pb)", "reference_ranges": [] } ] },
+  { "name": "Mercurio (Hg)", "parameters": [ { "name": "Mercurio (Hg)", "reference_ranges": [] } ] },
+  { "name": "Arsénico", "parameters": [ { "name": "Arsénico", "reference_ranges": [] } ] },
+  { "name": "Aluminio", "parameters": [ { "name": "Aluminio", "reference_ranges": [] } ] },
+  { "name": "Cromo", "parameters": [ { "name": "Cromo", "reference_ranges": [] } ] },
+  { "name": "Manganeso", "parameters": [ { "name": "Manganeso", "reference_ranges": [] } ] },
+  {
+    "name": "TSH",
+    "unit": "µIU/mL",
+    "decimal_places": 2,
+    "parameters": [
+      { "name": "TSH", "unit": "µIU/mL", "decimal_places": 2, "reference_ranges": [
+        { "sex": "Ambos", "age_min": 0,  "age_max": 12,  "age_min_unit": "años", "lower": 0.7, "upper": 5.5 },
+        { "sex": "Ambos", "age_min": 13, "age_max": 17,  "age_min_unit": "años", "lower": 0.5, "upper": 4.5 },
+        { "sex": "Ambos", "age_min": 18, "age_max": 64,  "age_min_unit": "años", "lower": 0.4, "upper": 4.0 },
+        { "sex": "Ambos", "age_min": 65, "age_max": 120, "age_min_unit": "años", "lower": 0.4, "upper": 6.0, "notes": "Puede aumentar con la edad" }
+      ] }
+    ]
+  },
+  {
+    "name": "T4 libre",
+    "unit": "ng/dL",
+    "decimal_places": 2,
+    "parameters": [
+      { "name": "T4 libre", "unit": "ng/dL", "decimal_places": 2, "reference_ranges": [
+        { "sex": "Ambos", "age_min": 0,  "age_max": 12,  "age_min_unit": "años", "lower": 0.9, "upper": 2.0 },
+        { "sex": "Ambos", "age_min": 13, "age_max": 17,  "age_min_unit": "años", "lower": 0.8, "upper": 1.9 },
+        { "sex": "Ambos", "age_min": 18, "age_max": 64,  "age_min_unit": "años", "lower": 0.8, "upper": 1.8 },
+        { "sex": "Ambos", "age_min": 65, "age_max": 120, "age_min_unit": "años", "lower": 0.7, "upper": 1.7 }
+      ] }
+    ]
+  },
+  {
+    "name": "T4 total",
+    "unit": "µg/dL",
+    "decimal_places": 1,
+    "parameters": [
+      { "name": "T4 total", "unit": "µg/dL", "decimal_places": 1, "reference_ranges": [
+        { "sex": "Ambos", "age_min": 0,  "age_max": 12,  "age_min_unit": "años", "lower": 5.5, "upper": 12.5 },
+        { "sex": "Ambos", "age_min": 13, "age_max": 17,  "age_min_unit": "años", "lower": 5.0, "upper": 12.0 },
+        { "sex": "Ambos", "age_min": 18, "age_max": 64,  "age_min_unit": "años", "lower": 5.0, "upper": 12.0 },
+        { "sex": "Ambos", "age_min": 65, "age_max": 120, "age_min_unit": "años", "lower": 4.5, "upper": 11.5 }
+      ] }
+    ]
+  },
+  {
+    "name": "T3 libre",
+    "unit": "pg/mL",
+    "decimal_places": 2,
+    "parameters": [
+      { "name": "T3 libre", "unit": "pg/mL", "decimal_places": 2, "reference_ranges": [
+        { "sex": "Ambos", "age_min": 0,  "age_max": 12,  "age_min_unit": "años", "lower": 2.5, "upper": 6.0 },
+        { "sex": "Ambos", "age_min": 13, "age_max": 17,  "age_min_unit": "años", "lower": 2.3, "upper": 5.0 },
+        { "sex": "Ambos", "age_min": 18, "age_max": 64,  "age_min_unit": "años", "lower": 2.0, "upper": 4.4 },
+        { "sex": "Ambos", "age_min": 65, "age_max": 120, "age_min_unit": "años", "lower": 1.8, "upper": 4.0 }
+      ] }
+    ]
+  },
+  {
+    "name": "T3 total",
+    "unit": "ng/dL",
+    "decimal_places": 0,
+    "parameters": [
+      { "name": "T3 total", "unit": "ng/dL", "decimal_places": 0, "reference_ranges": [
+        { "sex": "Ambos", "age_min": 0,  "age_max": 12,  "age_min_unit": "años", "lower": 100, "upper": 250 },
+        { "sex": "Ambos", "age_min": 13, "age_max": 17,  "age_min_unit": "años", "lower": 90,  "upper": 220 },
+        { "sex": "Ambos", "age_min": 18, "age_max": 64,  "age_min_unit": "años", "lower": 80,  "upper": 200 },
+        { "sex": "Ambos", "age_min": 65, "age_max": 120, "age_min_unit": "años", "lower": 70,  "upper": 180 }
+      ] }
+    ]
+  },
+  { "name": "Anticuerpos anti-TPO", "parameters": [ { "name": "Anticuerpos anti-TPO", "reference_ranges": [] } ] },
+  { "name": "Anticuerpos anti-tiroglobulina", "parameters": [ { "name": "Anticuerpos anti-tiroglobulina", "reference_ranges": [] } ] },
+  { "name": "Tiroglobulina", "parameters": [ { "name": "Tiroglobulina", "reference_ranges": [] } ] },
+  { "name": "TRAb / TSI", "parameters": [ { "name": "TRAb / TSI", "reference_ranges": [] } ] },
+  { "name": "Cortisol matutino", "unit": "µg/dL", "decimal_places": 1, "parameters": [ { "name": "Cortisol matutino", "unit": "µg/dL", "decimal_places": 1, "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 120, "age_min_unit": "años", "lower": 5.0, "upper": 25.0, "notes": "Mañana 06–10 h" } ] } ] },
+  { "name": "Cortisol vespertino", "unit": "µg/dL", "decimal_places": 1, "parameters": [ { "name": "Cortisol vespertino", "unit": "µg/dL", "decimal_places": 1, "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 120, "age_min_unit": "años", "lower": 2.0, "upper": 14.0, "notes": "Tarde 16–20 h" } ] } ] },
+  { "name": "ACTH", "unit": "pg/mL", "decimal_places": 0, "parameters": [ { "name": "ACTH", "unit": "pg/mL", "decimal_places": 0, "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 120, "age_min_unit": "años", "lower": 7, "upper": 63, "notes": "Mañana ~08:00 h" } ] } ] },
+  { "name": "Prolactina", "unit": "ng/mL", "decimal_places": 1, "parameters": [ { "name": "Prolactina", "unit": "ng/mL", "decimal_places": 1, "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 12, "age_min_unit": "años", "lower": 3.0, "upper": 20.0 }, { "sex": "Masculino", "age_min": 13, "age_max": 120, "age_min_unit": "años", "lower": 4.0, "upper": 15.2 }, { "sex": "Femenino", "age_min": 13, "age_max": 120, "age_min_unit": "años", "lower": 4.8, "upper": 23.3 } ] } ] },
+  { "name": "FSH", "unit": "mIU/mL", "decimal_places": 1, "parameters": [ { "name": "FSH", "unit": "mIU/mL", "decimal_places": 1, "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 12, "age_min_unit": "años", "lower": 0.5, "upper": 5.0 }, { "sex": "Masculino", "age_min": 13, "age_max": 120, "age_min_unit": "años", "lower": 1.5, "upper": 12.4 }, { "sex": "Femenino", "age_min": 13, "age_max": 120, "age_min_unit": "años", "lower": 3.5, "upper": 12.5, "notes": "Depende de fase del ciclo" } ] } ] },
+  { "name": "LH", "unit": "mIU/mL", "decimal_places": 1, "parameters": [ { "name": "LH", "unit": "mIU/mL", "decimal_places": 1, "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 12, "age_min_unit": "años", "lower": 0.1, "upper": 4.0 }, { "sex": "Masculino", "age_min": 13, "age_max": 120, "age_min_unit": "años", "lower": 1.7, "upper": 8.6 }, { "sex": "Femenino", "age_min": 13, "age_max": 120, "age_min_unit": "años", "lower": 2.4, "upper": 12.6, "notes": "Depende de fase del ciclo" } ] } ] },
+  { "name": "Estradiol (E2)", "unit": "pg/mL", "decimal_places": 0, "parameters": [ { "name": "Estradiol (E2)", "unit": "pg/mL", "decimal_places": 0, "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 12, "age_min_unit": "años", "lower": 6, "upper": 27 }, { "sex": "Masculino", "age_min": 13, "age_max": 120, "age_min_unit": "años", "lower": 10, "upper": 40 }, { "sex": "Femenino", "age_min": 13, "age_max": 50, "age_min_unit": "años", "lower": 20, "upper": 400, "notes": "Depende de fase del ciclo" }, { "sex": "Femenino", "age_min": 51, "age_max": 120, "age_min_unit": "años", "lower": 0, "upper": 30, "notes": "Postmenopausia" } ] } ] },
+  { "name": "Progesterona", "unit": "ng/mL", "decimal_places": 2, "parameters": [ { "name": "Progesterona", "unit": "ng/mL", "decimal_places": 2, "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 12, "age_min_unit": "años", "lower": 0.10, "upper": 0.80 }, { "sex": "Masculino", "age_min": 13, "age_max": 120, "age_min_unit": "años", "lower": 0.10, "upper": 1.00 }, { "sex": "Femenino", "age_min": 13, "age_max": 50, "age_min_unit": "años", "lower": 0.10, "upper": 20.00, "notes": "Depende de fase del ciclo" }, { "sex": "Femenino", "age_min": 51, "age_max": 120, "age_min_unit": "años", "lower": 0.10, "upper": 1.00, "notes": "Postmenopausia" } ] } ] },
+  { "name": "Testosterona total", "unit": "ng/dL", "decimal_places": 0, "parameters": [ { "name": "Testosterona total", "unit": "ng/dL", "decimal_places": 0, "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 12, "age_min_unit": "años", "lower": 5, "upper": 50 }, { "sex": "Masculino", "age_min": 13, "age_max": 17, "age_min_unit": "años", "lower": 100, "upper": 800 }, { "sex": "Masculino", "age_min": 18, "age_max": 64, "age_min_unit": "años", "lower": 300, "upper": 1000 }, { "sex": "Masculino", "age_min": 65, "age_max": 120, "age_min_unit": "años", "lower": 250, "upper": 900 }, { "sex": "Femenino", "age_min": 13, "age_max": 120, "age_min_unit": "años", "lower": 15, "upper": 70 } ] } ] },
+  { "name": "Testosterona libre", "unit": "pg/mL", "decimal_places": 0, "parameters": [ { "name": "Testosterona libre", "unit": "pg/mL", "decimal_places": 0, "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 12, "age_min_unit": "años", "lower": 0.1, "upper": 5.0 }, { "sex": "Masculino", "age_min": 13, "age_max": 17, "age_min_unit": "años", "lower": 10, "upper": 120 }, { "sex": "Masculino", "age_min": 18, "age_max": 64, "age_min_unit": "años", "lower": 46, "upper": 224 }, { "sex": "Masculino", "age_min": 65, "age_max": 120, "age_min_unit": "años", "lower": 40, "upper": 200 }, { "sex": "Femenino", "age_min": 13, "age_max": 120, "age_min_unit": "años", "lower": 0.5, "upper": 8.5 } ] } ] },
+  { "name": "SHBG", "unit": "nmol/L", "decimal_places": 0, "parameters": [ { "name": "SHBG", "unit": "nmol/L", "decimal_places": 0, "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 12, "age_min_unit": "años", "lower": 20, "upper": 145 }, { "sex": "Masculino", "age_min": 13, "age_max": 120, "age_min_unit": "años", "lower": 10, "upper": 57 }, { "sex": "Femenino", "age_min": 13, "age_max": 120, "age_min_unit": "años", "lower": 18, "upper": 144 } ] } ] },
+  { "name": "DHEA-S", "unit": "µg/dL", "decimal_places": 0, "parameters": [ { "name": "DHEA-S", "unit": "µg/dL", "decimal_places": 0, "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 12, "age_min_unit": "años", "lower": 15, "upper": 120 }, { "sex": "Masculino", "age_min": 13, "age_max": 39, "age_min_unit": "años", "lower": 138, "upper": 475 }, { "sex": "Femenino", "age_min": 13, "age_max": 39, "age_min_unit": "años", "lower": 99, "upper": 340 }, { "sex": "Masculino", "age_min": 40, "age_max": 120, "age_min_unit": "años", "lower": 70, "upper": 310 }, { "sex": "Femenino", "age_min": 40, "age_max": 120, "age_min_unit": "años", "lower": 45, "upper": 270 } ] } ] },
+  { "name": "Androstenediona", "unit": "ng/dL", "decimal_places": 0, "parameters": [ { "name": "Androstenediona", "unit": "ng/dL", "decimal_places": 0, "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 12, "age_min_unit": "años", "lower": 10, "upper": 100 }, { "sex": "Masculino", "age_min": 13, "age_max": 120, "age_min_unit": "años", "lower": 50, "upper": 220 }, { "sex": "Femenino", "age_min": 13, "age_max": 120, "age_min_unit": "años", "lower": 30, "upper": 320 } ] } ] },
+  { "name": "17-OH progesterona", "unit": "ng/dL", "decimal_places": 0, "parameters": [ { "name": "17-OH progesterona", "unit": "ng/dL", "decimal_places": 0, "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 12, "age_min_unit": "años", "lower": 10, "upper": 100 }, { "sex": "Masculino", "age_min": 13, "age_max": 120, "age_min_unit": "años", "lower": 27, "upper": 199 }, { "sex": "Femenino", "age_min": 13, "age_max": 120, "age_min_unit": "años", "lower": 20, "upper": 284, "notes": "Depende de fase del ciclo" } ] } ] },
+  { "name": "IGF-1", "unit": "ng/mL", "decimal_places": 0, "parameters": [ { "name": "IGF-1", "unit": "ng/mL", "decimal_places": 0, "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 5, "age_min_unit": "años", "lower": 30, "upper": 120 }, { "sex": "Ambos", "age_min": 6, "age_max": 12, "age_min_unit": "años", "lower": 60, "upper": 350 }, { "sex": "Ambos", "age_min": 13, "age_max": 17, "age_min_unit": "años", "lower": 170, "upper": 780 }, { "sex": "Ambos", "age_min": 18, "age_max": 24, "age_min_unit": "años", "lower": 182, "upper": 780 }, { "sex": "Ambos", "age_min": 25, "age_max": 39, "age_min_unit": "años", "lower": 114, "upper": 492 }, { "sex": "Ambos", "age_min": 40, "age_max": 59, "age_min_unit": "años", "lower": 90, "upper": 360 }, { "sex": "Ambos", "age_min": 60, "age_max": 120, "age_min_unit": "años", "lower": 60, "upper": 240 } ] } ] },
+  { "name": "GH", "unit": "ng/mL", "decimal_places": 1, "parameters": [ { "name": "GH", "unit": "ng/mL", "decimal_places": 1, "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 120, "age_min_unit": "años", "lower": 0.0, "upper": 3.0, "notes": "Basal; picos con estímulo" } ] } ] },
+  { "name": "PTH intacta", "unit": "pg/mL", "decimal_places": 0, "parameters": [ { "name": "PTH intacta", "unit": "pg/mL", "decimal_places": 0, "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 120, "age_min_unit": "años", "lower": 15, "upper": 65 } ] } ] },
+  { "name": "25-OH Vitamina D", "unit": "ng/mL", "decimal_places": 1, "parameters": [ { "name": "25-OH Vitamina D", "unit": "ng/mL", "decimal_places": 1, "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 120, "age_min_unit": "años", "lower": 30, "upper": 100, "notes": "Suficiencia 30–100; 20–29 insuficiencia; <20 deficiencia" } ] } ] },
+  { "name": "1,25-(OH)₂ Vitamina D", "unit": "pg/mL", "decimal_places": 0, "parameters": [ { "name": "1,25-(OH)₂ Vitamina D", "unit": "pg/mL", "decimal_places": 0, "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 120, "age_min_unit": "años", "lower": 19, "upper": 79 } ] } ] },
+  { "name": "Aldosterona", "unit": "ng/dL", "decimal_places": 1, "parameters": [ { "name": "Aldosterona", "unit": "ng/dL", "decimal_places": 1, "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 17, "age_min_unit": "años", "lower": 2.0, "upper": 35.0 }, { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 3.0, "upper": 30.0, "notes": "Depende de postura/horario/sodio" } ] } ] },
+  { "name": "Renina", "unit": "ng/mL/h", "decimal_places": 1, "parameters": [ { "name": "Renina", "unit": "ng/mL/h", "decimal_places": 1, "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 17, "age_min_unit": "años", "lower": 0.5, "upper": 5.0 }, { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 0.6, "upper": 4.3 } ] } ] },
+  { "name": "Metanefrinas plasmáticas libres", "unit": "pg/mL", "decimal_places": 0, "parameters": [ { "name": "Metanefrinas plasmáticas libres", "unit": "pg/mL", "decimal_places": 0, "reference_ranges": [ { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 0, "upper": 90, "notes": "Metanefrina libre; método depende del laboratorio" }, { "sex": "Ambos", "age_min": 0, "age_max": 17, "age_min_unit": "años", "lower": 0, "upper": 120, "notes": "Pediátrico; orientativo" } ] } ] },
+  { "name": "Normetanefrina plasmática", "unit": "pg/mL", "decimal_places": 0, "parameters": [ { "name": "Normetanefrina plasmática", "unit": "pg/mL", "decimal_places": 0, "reference_ranges": [ { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 0, "upper": 180, "notes": "Normetanefrina libre; método depende del laboratorio" }, { "sex": "Ambos", "age_min": 0, "age_max": 17, "age_min_unit": "años", "lower": 0, "upper": 200, "notes": "Pediátrico; orientativo" } ] } ] },
+  {
+    "name": "Catecolaminas en plasma",
+    "parameters": [
+      {
+        "name": "Epinefrina (plasma)",
+        "unit": "pg/mL",
+        "decimal_places": 0,
+        "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 120, "age_min_unit": "años", "lower": 0, "upper": 50, "notes": "Reposo; método LC-MS/MS o equivalente" } ]
+      },
+      {
+        "name": "Norepinefrina (plasma)",
+        "unit": "pg/mL",
+        "decimal_places": 0,
+        "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 120, "age_min_unit": "años", "lower": 112, "upper": 658, "notes": "Reposo; método dependiente del lab" } ]
+      },
+      {
+        "name": "Dopamina (plasma)",
+        "unit": "pg/mL",
+        "decimal_places": 0,
+        "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 120, "age_min_unit": "años", "lower": 0, "upper": 30 } ]
+      }
+    ]
+  },
+  {
+    "name": "Catecolaminas en orina 24 h",
+    "parameters": [
+      {
+        "name": "Epinefrina (orina 24 h)",
+        "unit": "µg/24 h",
+        "decimal_places": 1,
+        "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 120, "age_min_unit": "años", "lower": 0.0, "upper": 20.0, "notes": "Recolectar 24 h con conservante" } ]
+      },
+      {
+        "name": "Norepinefrina (orina 24 h)",
+        "unit": "µg/24 h",
+        "decimal_places": 1,
+        "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 120, "age_min_unit": "años", "lower": 15.0, "upper": 80.0 } ]
+      },
+      {
+        "name": "Dopamina (orina 24 h)",
+        "unit": "µg/24 h",
+        "decimal_places": 0,
+        "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 120, "age_min_unit": "años", "lower": 65, "upper": 400 } ]
+      }
+    ]
+  },
+  { "name": "5-HIAA en orina 24 h", "unit": "mg/24 h", "decimal_places": 1, "parameters": [ { "name": "5-HIAA en orina 24 h", "unit": "mg/24 h", "decimal_places": 1, "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 120, "age_min_unit": "años", "lower": 2.0, "upper": 8.0, "notes": "Evitar alimentos/meds interferentes 72 h antes" } ] } ] },
+  { "name": "Calcitonina", "unit": "pg/mL", "decimal_places": 1, "parameters": [ { "name": "Calcitonina", "unit": "pg/mL", "decimal_places": 1, "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 17, "age_min_unit": "años", "lower": 0.0, "upper": 10.0 }, { "sex": "Masculino", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 0.0, "upper": 8.4 }, { "sex": "Femenino", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 0.0, "upper": 5.0 } ] } ] },
+  { "name": "AMH", "unit": "ng/mL", "decimal_places": 2, "parameters": [ { "name": "AMH", "unit": "ng/mL", "decimal_places": 2, "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 12, "age_min_unit": "años", "lower": 1.0, "upper": 12.0 }, { "sex": "Femenino", "age_min": 18, "age_max": 35, "age_min_unit": "años", "lower": 1.5, "upper": 4.0 }, { "sex": "Femenino", "age_min": 36, "age_max": 45, "age_min_unit": "años", "lower": 0.5, "upper": 3.5 }, { "sex": "Femenino", "age_min": 46, "age_max": 120, "age_min_unit": "años", "lower": 0.0, "upper": 1.0, "notes": "Postmenopausia" }, { "sex": "Masculino", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 2.0, "upper": 10.0, "notes": "No uso clínico rutinario" } ] } ] },
+  { "name": "Inhibina B", "unit": "pg/mL", "decimal_places": 0, "parameters": [ { "name": "Inhibina B", "unit": "pg/mL", "decimal_places": 0, "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 12, "age_min_unit": "años", "lower": 30, "upper": 250 }, { "sex": "Masculino", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 80, "upper": 400 }, { "sex": "Femenino", "age_min": 18, "age_max": 45, "age_min_unit": "años", "lower": 45, "upper": 300, "notes": "Días 2–5 del ciclo" } ] } ] },
+  { "name": "Oxitocina", "parameters": [ { "name": "Oxitocina", "reference_ranges": [] } ] },
+  { "name": "Vasopresina (ADH)", "parameters": [ { "name": "Vasopresina (ADH)", "reference_ranges": [] } ] },
+  { "name": "BNP", "unit": "pg/mL", "decimal_places": 0, "parameters": [ { "name": "BNP", "unit": "pg/mL", "decimal_places": 0, "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 17, "age_min_unit": "años", "lower": 0, "upper": 100 }, { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 0, "upper": 100 } ] } ] },
+  { "name": "NT-proBNP", "unit": "pg/mL", "decimal_places": 0, "parameters": [ { "name": "NT-proBNP", "unit": "pg/mL", "decimal_places": 0, "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 17, "age_min_unit": "años", "lower": 0, "upper": 125 }, { "sex": "Ambos", "age_min": 18, "age_max": 74, "age_min_unit": "años", "lower": 0, "upper": 125 }, { "sex": "Ambos", "age_min": 75, "age_max": 120, "age_min_unit": "años", "lower": 0, "upper": 450 } ] } ] },
+  { "name": "Leptina", "parameters": [ { "name": "Leptina", "reference_ranges": [] } ] },
+  { "name": "Adiponectina", "parameters": [ { "name": "Adiponectina", "reference_ranges": [] } ] },
+  { "name": "Procalcitonina", "parameters": [ { "name": "Procalcitonina", "reference_ranges": [] } ] },
+  { "name": "CEA", "parameters": [ { "name": "CEA", "reference_ranges": [] } ] },
+  { "name": "PSA total", "parameters": [ { "name": "PSA total", "reference_ranges": [] } ] },
+  { "name": "PSA libre", "parameters": [ { "name": "PSA libre", "reference_ranges": [] } ] },
+  { "name": "% PSA libre (reportado)", "parameters": [ { "name": "% PSA libre (reportado)", "reference_ranges": [] } ] },
+  { "name": "Beta-hCG sérica cuantitativa", "parameters": [ { "name": "Beta-hCG sérica cuantitativa", "reference_ranges": [] } ] },
+  { "name": "Hemoglobina", "unit": "g/dL", "decimal_places": 1, "parameters": [ { "name": "Hemoglobina", "unit": "g/dL", "decimal_places": 1, "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 1, "age_min_unit": "años", "lower": 10.0, "upper": 14.0 }, { "sex": "Ambos", "age_min": 1, "age_max": 5, "age_min_unit": "años", "lower": 11.0, "upper": 13.5 }, { "sex": "Ambos", "age_min": 6, "age_max": 12, "age_min_unit": "años", "lower": 11.5, "upper": 15.5 }, { "sex": "Masculino", "age_min": 13, "age_max": 17, "age_min_unit": "años", "lower": 13.0, "upper": 16.0 }, { "sex": "Femenino", "age_min": 13, "age_max": 17, "age_min_unit": "años", "lower": 12.0, "upper": 15.0 }, { "sex": "Masculino", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 13.5, "upper": 17.5 }, { "sex": "Femenino", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 12.0, "upper": 15.5 } ] } ] },
+  { "name": "Hematocrito", "unit": "%", "decimal_places": 1, "parameters": [ { "name": "Hematocrito", "unit": "%", "decimal_places": 1, "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 1, "age_min_unit": "años", "lower": 31, "upper": 41 }, { "sex": "Ambos", "age_min": 1, "age_max": 5, "age_min_unit": "años", "lower": 33, "upper": 39 }, { "sex": "Ambos", "age_min": 6, "age_max": 12, "age_min_unit": "años", "lower": 35, "upper": 45 }, { "sex": "Masculino", "age_min": 13, "age_max": 17, "age_min_unit": "años", "lower": 38, "upper": 49 }, { "sex": "Femenino", "age_min": 13, "age_max": 17, "age_min_unit": "años", "lower": 36, "upper": 46 }, { "sex": "Masculino", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 41, "upper": 53 }, { "sex": "Femenino", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 36, "upper": 46 } ] } ] },
+  { "name": "Eritrocitos (conteo)", "unit": "10^6/µL", "decimal_places": 2, "parameters": [ { "name": "Eritrocitos", "unit": "10^6/µL", "decimal_places": 2, "reference_ranges": [ { "sex": "Ambos", "age_min": 1, "age_max": 5, "age_min_unit": "años", "lower": 3.9, "upper": 5.3 }, { "sex": "Ambos", "age_min": 6, "age_max": 12, "age_min_unit": "años", "lower": 4.0, "upper": 5.2 }, { "sex": "Masculino", "age_min": 13, "age_max": 17, "age_min_unit": "años", "lower": 4.5, "upper": 5.5 }, { "sex": "Femenino", "age_min": 13, "age_max": 17, "age_min_unit": "años", "lower": 4.1, "upper": 5.1 }, { "sex": "Masculino", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 4.5, "upper": 5.9 }, { "sex": "Femenino", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 4.1, "upper": 5.1 } ] } ] },
+  { "name": "Leucocitos (conteo)", "unit": "10^3/µL", "decimal_places": 1, "parameters": [ { "name": "Leucocitos", "unit": "10^3/µL", "decimal_places": 1, "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 1, "age_min_unit": "años", "lower": 6.0, "upper": 17.5 }, { "sex": "Ambos", "age_min": 1, "age_max": 5, "age_min_unit": "años", "lower": 5.0, "upper": 15.5 }, { "sex": "Ambos", "age_min": 6, "age_max": 12, "age_min_unit": "años", "lower": 4.5, "upper": 13.5 }, { "sex": "Ambos", "age_min": 13, "age_max": 120, "age_min_unit": "años", "lower": 4.0, "upper": 10.0 } ] } ] },
+  { "name": "Plaquetas (conteo)", "unit": "10^3/µL", "decimal_places": 0, "parameters": [ { "name": "Plaquetas", "unit": "10^3/µL", "decimal_places": 0, "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 120, "age_min_unit": "años", "lower": 150, "upper": 450 } ] } ] },
+  { "name": "VCM", "unit": "fL", "decimal_places": 1, "parameters": [ { "name": "VCM", "unit": "fL", "decimal_places": 1, "reference_ranges": [ { "sex": "Ambos", "age_min": 1, "age_max": 5, "age_min_unit": "años", "lower": 73, "upper": 87 }, { "sex": "Ambos", "age_min": 6, "age_max": 12, "age_min_unit": "años", "lower": 77, "upper": 95 }, { "sex": "Ambos", "age_min": 13, "age_max": 17, "age_min_unit": "años", "lower": 78, "upper": 98 }, { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 80, "upper": 100 } ] } ] },
+  { "name": "HCM", "unit": "pg", "decimal_places": 1, "parameters": [ { "name": "HCM", "unit": "pg", "decimal_places": 1, "reference_ranges": [ { "sex": "Ambos", "age_min": 1, "age_max": 5, "age_min_unit": "años", "lower": 24, "upper": 30 }, { "sex": "Ambos", "age_min": 6, "age_max": 12, "age_min_unit": "años", "lower": 26, "upper": 33 }, { "sex": "Ambos", "age_min": 13, "age_max": 17, "age_min_unit": "años", "lower": 26, "upper": 34 }, { "sex": "Ambos", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 27, "upper": 33 } ] } ] },
+  { "name": "CHCM", "unit": "g/dL", "decimal_places": 1, "parameters": [ { "name": "CHCM", "unit": "g/dL", "decimal_places": 1, "reference_ranges": [ { "sex": "Ambos", "age_min": 1, "age_max": 120, "age_min_unit": "años", "lower": 32, "upper": 36 } ] } ] },
+  { "name": "RDW", "unit": "%", "decimal_places": 1, "parameters": [ { "name": "RDW", "unit": "%", "decimal_places": 1, "reference_ranges": [ { "sex": "Ambos", "age_min": 1, "age_max": 120, "age_min_unit": "años", "lower": 11.5, "upper": 14.5 } ] } ] },
+  { "name": "VPM (MPV)", "unit": "fL", "decimal_places": 1, "parameters": [ { "name": "VPM (MPV)", "unit": "fL", "decimal_places": 1, "reference_ranges": [ { "sex": "Ambos", "age_min": 1, "age_max": 120, "age_min_unit": "años", "lower": 7.5, "upper": 11.5 } ] } ] },
+  { "name": "Reticulocitos (%)", "unit": "%", "decimal_places": 2, "parameters": [ { "name": "Reticulocitos (%)", "unit": "%", "decimal_places": 2, "reference_ranges": [ { "sex": "Ambos", "age_min": 1, "age_max": 120, "age_min_unit": "años", "lower": 0.5, "upper": 2.5 } ] } ] },
+  { "name": "Recuento absoluto de reticulocitos", "unit": "10^3/µL", "decimal_places": 0, "parameters": [ { "name": "Reticulocitos (abs)", "unit": "10^3/µL", "decimal_places": 0, "reference_ranges": [ { "sex": "Ambos", "age_min": 1, "age_max": 120, "age_min_unit": "años", "lower": 25, "upper": 125 } ] } ] },
+  { "name": "Velocidad de sedimentación globular (VSG)", "unit": "mm/h", "decimal_places": 0, "parameters": [ { "name": "VSG", "unit": "mm/h", "decimal_places": 0, "reference_ranges": [ { "sex": "Ambos", "age_min": 1, "age_max": 12, "age_min_unit": "años", "lower": 0, "upper": 10 }, { "sex": "Masculino", "age_min": 13, "age_max": 120, "age_min_unit": "años", "lower": 0, "upper": 15 }, { "sex": "Femenino", "age_min": 13, "age_max": 120, "age_min_unit": "años", "lower": 0, "upper": 20 } ] } ] },
+  { "name": "Índice de Heinz", "parameters": [ { "name": "Índice de Heinz", "reference_ranges": [] } ] },
+  { "name": "Hemoglobina fetal (HbF)", "parameters": [ { "name": "Hemoglobina fetal (HbF)", "reference_ranges": [] } ] },
+  { "name": "Hemoglobina A2", "parameters": [ { "name": "Hemoglobina A2", "reference_ranges": [] } ] },
+  { "name": "Metahemoglobina", "parameters": [ { "name": "Metahemoglobina", "reference_ranges": [] } ] },
+  { "name": "Carboxihemoglobina", "parameters": [ { "name": "Carboxihemoglobina", "reference_ranges": [] } ] },
+  { "name": "Haptoglobina", "parameters": [ { "name": "Haptoglobina", "reference_ranges": [] } ] },
+  { "name": "LDH", "parameters": [ { "name": "LDH", "reference_ranges": [] } ] },
+  { "name": "G6PD (actividad enzimática)", "parameters": [ { "name": "G6PD (actividad enzimática)", "reference_ranges": [] } ] },
+  { "name": "Eritropoyetina", "parameters": [ { "name": "Eritropoyetina", "reference_ranges": [] } ] },
+  { "name": "Vitamina B12", "unit": "pg/mL", "decimal_places": 0, "parameters": [ { "name": "Vitamina B12", "unit": "pg/mL", "decimal_places": 0, "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 12, "age_min_unit": "años", "lower": 200, "upper": 900 }, { "sex": "Ambos", "age_min": 13, "age_max": 120, "age_min_unit": "años", "lower": 200, "upper": 900 } ] } ] },
+  { "name": "Folato sérico", "unit": "ng/mL", "decimal_places": 1, "parameters": [ { "name": "Folato sérico", "unit": "ng/mL", "decimal_places": 1, "reference_ranges": [ { "sex": "Ambos", "age_min": 0, "age_max": 120, "age_min_unit": "años", "lower": 4.0, "upper": null, "notes": ">=4.0 suficiente; 2–3.9 límite; <2 deficiencia" } ] } ] },
+  { "name": "Folato eritrocitario", "parameters": [ { "name": "Folato eritrocitario", "reference_ranges": [] } ] },
+  { "name": "Ferritina", "parameters": [ { "name": "Ferritina", "reference_ranges": [] } ] },
+  { "name": "Transferrina", "parameters": [ { "name": "Transferrina", "reference_ranges": [] } ] },
+  { "name": "Receptor soluble de transferrina", "parameters": [ { "name": "Receptor soluble de transferrina", "reference_ranges": [] } ] },
+  { "name": "Índice de saturación de transferrina (reportado)", "parameters": [ { "name": "Índice de saturación de transferrina (reportado)", "reference_ranges": [] } ] },
+  { "name": "Hepcidina", "parameters": [ { "name": "Hepcidina", "reference_ranges": [] } ] },
+  { "name": "TP (tiempo de protrombina)", "parameters": [ { "name": "TP (tiempo de protrombina)", "reference_ranges": [] } ] },
+  { "name": "INR", "parameters": [ { "name": "INR", "reference_ranges": [] } ] },
+  { "name": "TTPa (aPTT)", "parameters": [ { "name": "TTPa (aPTT)", "reference_ranges": [] } ] },
+  { "name": "Fibrinógeno", "parameters": [ { "name": "Fibrinógeno", "reference_ranges": [] } ] },
+  { "name": "Dímero D", "parameters": [ { "name": "Dímero D", "reference_ranges": [] } ] },
+  { "name": "Antitrombina III (actividad)", "parameters": [ { "name": "Antitrombina III (actividad)", "reference_ranges": [] } ] },
+  { "name": "Proteína C (actividad)", "parameters": [ { "name": "Proteína C (actividad)", "reference_ranges": [] } ] },
+  { "name": "Proteína S (actividad o antígeno)", "parameters": [ { "name": "Proteína S (actividad o antígeno)", "reference_ranges": [] } ] },
+  { "name": "Factor VIII (actividad)", "parameters": [ { "name": "Factor VIII (actividad)", "reference_ranges": [] } ] },
+  { "name": "Factor IX (actividad)", "parameters": [ { "name": "Factor IX (actividad)", "reference_ranges": [] } ] },
+  { "name": "Factor XI (actividad)", "parameters": [ { "name": "Factor XI (actividad)", "reference_ranges": [] } ] },
+  { "name": "Factor XII (actividad)", "parameters": [ { "name": "Factor XII (actividad)", "reference_ranges": [] } ] },
+  { "name": "Von Willebrand antígeno", "parameters": [ { "name": "Von Willebrand antígeno", "reference_ranges": [] } ] },
+  { "name": "Von Willebrand actividad (ristocetina)", "parameters": [ { "name": "Von Willebrand actividad (ristocetina)", "reference_ranges": [] } ] },
+  { "name": "Lupus anticoagulante (dRVVT ratio)", "parameters": [ { "name": "Lupus anticoagulante (dRVVT ratio)", "reference_ranges": [] } ] },
+  { "name": "Tiempo de trombina", "parameters": [ { "name": "Tiempo de trombina", "reference_ranges": [] } ] },
+  { "name": "Tiempo de reptilasa", "parameters": [ { "name": "Tiempo de reptilasa", "reference_ranges": [] } ] },
+  { "name": "Resistencia a proteína C activada", "parameters": [ { "name": "Resistencia a proteína C activada", "reference_ranges": [] } ] },
+  { "name": "Plasminógeno", "parameters": [ { "name": "Plasminógeno", "reference_ranges": [] } ] },
+  { "name": "PAI-1", "parameters": [ { "name": "PAI-1", "reference_ranges": [] } ] },
+  { "name": "PSA total", "parameters": [ { "name": "PSA total", "reference_ranges": [] } ] },
+  { "name": "PSA libre", "parameters": [ { "name": "PSA libre", "reference_ranges": [] } ] },
+  { "name": "AFP", "parameters": [ { "name": "AFP", "reference_ranges": [] } ] },
+  { "name": "CEA", "parameters": [ { "name": "CEA", "reference_ranges": [] } ] },
+  { "name": "CA 19-9", "parameters": [ { "name": "CA 19-9", "reference_ranges": [] } ] },
+  { "name": "CA 15-3", "parameters": [ { "name": "CA 15-3", "reference_ranges": [] } ] },
+  { "name": "CA 125", "parameters": [ { "name": "CA 125", "reference_ranges": [] } ] },
+  { "name": "CA 72-4", "parameters": [ { "name": "CA 72-4", "reference_ranges": [] } ] },
+  { "name": "HE4", "parameters": [ { "name": "HE4", "reference_ranges": [] } ] },
+  { "name": "NSE", "parameters": [ { "name": "NSE", "reference_ranges": [] } ] },
+  { "name": "Cyfra 21-1", "parameters": [ { "name": "Cyfra 21-1", "reference_ranges": [] } ] },
+  { "name": "Beta-2 microglobulina", "parameters": [ { "name": "Beta-2 microglobulina", "reference_ranges": [] } ] },
+  { "name": "Tiroglobulina", "parameters": [ { "name": "Tiroglobulina", "reference_ranges": [] } ] },
+  { "name": "Calcitonina", "parameters": [ { "name": "Calcitonina", "reference_ranges": [] } ] },
+  { "name": "SCC", "parameters": [ { "name": "SCC", "reference_ranges": [] } ] },
+  { "name": "ProGRP", "parameters": [ { "name": "ProGRP", "reference_ranges": [] } ] },
+  { "name": "LDH", "parameters": [ { "name": "LDH", "reference_ranges": [] } ] },
+  { "name": "Ferritina", "parameters": [ { "name": "Ferritina", "reference_ranges": [] } ] },
+  { "name": "hCG total", "parameters": [ { "name": "hCG total", "reference_ranges": [] } ] },
+  { "name": "PAP (fosfatasa ácida prostática)", "parameters": [ { "name": "PAP (fosfatasa ácida prostática)", "reference_ranges": [] } ] },
+  { "name": "PCR ultrasensible (hs-CRP)", "parameters": [ { "name": "PCR ultrasensible (hs-CRP)", "reference_ranges": [] } ] },
+  { "name": "PCR", "parameters": [ { "name": "PCR", "reference_ranges": [] } ] },
+  { "name": "Factor reumatoide", "parameters": [ { "name": "Factor reumatoide", "reference_ranges": [] } ] },
+  { "name": "Anti-CCP", "parameters": [ { "name": "Anti-CCP", "reference_ranges": [] } ] },
+  { "name": "ANA (título/patrón)", "parameters": [ { "name": "ANA (título/patrón)", "reference_ranges": [] } ] },
+  { "name": "Anti-dsDNA", "parameters": [ { "name": "Anti-dsDNA", "reference_ranges": [] } ] },
+  { "name": "Anti-ENA Sm", "parameters": [ { "name": "Anti-ENA Sm", "reference_ranges": [] } ] },
+  { "name": "Anti-ENA RNP", "parameters": [ { "name": "Anti-ENA RNP", "reference_ranges": [] } ] },
+  { "name": "Anti-SSA (Ro)", "parameters": [ { "name": "Anti-SSA (Ro)", "reference_ranges": [] } ] },
+  { "name": "Anti-SSB (La)", "parameters": [ { "name": "Anti-SSB (La)", "reference_ranges": [] } ] },
+  { "name": "Anti-Scl-70", "parameters": [ { "name": "Anti-Scl-70", "reference_ranges": [] } ] },
+  { "name": "Anti-Jo-1", "parameters": [ { "name": "Anti-Jo-1", "reference_ranges": [] } ] },
+  { "name": "ANCA p-ANCA (MPO)", "parameters": [ { "name": "ANCA p-ANCA (MPO)", "reference_ranges": [] } ] },
+  { "name": "ANCA c-ANCA (PR3)", "parameters": [ { "name": "ANCA c-ANCA (PR3)", "reference_ranges": [] } ] },
+  { "name": "Complemento C3", "parameters": [ { "name": "Complemento C3", "reference_ranges": [] } ] },
+  { "name": "Complemento C4", "parameters": [ { "name": "Complemento C4", "reference_ranges": [] } ] },
+  { "name": "CH50", "parameters": [ { "name": "CH50", "reference_ranges": [] } ] },
+  { "name": "Anti-GBM", "parameters": [ { "name": "Anti-GBM", "reference_ranges": [] } ] },
+  { "name": "Anticardiolipina IgG", "parameters": [ { "name": "Anticardiolipina IgG", "reference_ranges": [] } ] },
+  { "name": "Anticardiolipina IgM", "parameters": [ { "name": "Anticardiolipina IgM", "reference_ranges": [] } ] },
+  { "name": "Anti-β2 glicoproteína I IgG", "parameters": [ { "name": "Anti-β2 glicoproteína I IgG", "reference_ranges": [] } ] },
+  { "name": "Anti-β2 glicoproteína I IgM", "parameters": [ { "name": "Anti-β2 glicoproteína I IgM", "reference_ranges": [] } ] },
+  { "name": "IgA sérica", "parameters": [ { "name": "IgA sérica", "reference_ranges": [] } ] },
+  { "name": "IgG sérica", "parameters": [ { "name": "IgG sérica", "reference_ranges": [] } ] },
+  { "name": "IgM sérica", "parameters": [ { "name": "IgM sérica", "reference_ranges": [] } ] },
+  { "name": "VIH Ag/Ac combo", "parameters": [ { "name": "VIH Ag/Ac combo", "reference_ranges": [] } ] },
+  { "name": "Carga viral VIH (RNA)", "parameters": [ { "name": "Carga viral VIH (RNA)", "reference_ranges": [] } ] },
+  { "name": "HBsAg", "parameters": [ { "name": "HBsAg", "reference_ranges": [] } ] },
+  { "name": "Anti-HBs", "parameters": [ { "name": "Anti-HBs", "reference_ranges": [] } ] },
+  { "name": "Anti-HBc total", "parameters": [ { "name": "Anti-HBc total", "reference_ranges": [] } ] },
+  { "name": "Anti-HBc IgM", "parameters": [ { "name": "Anti-HBc IgM", "reference_ranges": [] } ] },
+  { "name": "HBeAg", "parameters": [ { "name": "HBeAg", "reference_ranges": [] } ] },
+  { "name": "Anti-HBe", "parameters": [ { "name": "Anti-HBe", "reference_ranges": [] } ] },
+  { "name": "HBV DNA (carga viral)", "parameters": [ { "name": "HBV DNA (carga viral)", "reference_ranges": [] } ] },
+  { "name": "Anti-VHC (HCV Ab)", "parameters": [ { "name": "Anti-VHC (HCV Ab)", "reference_ranges": [] } ] },
+  { "name": "HCV RNA (carga viral)", "parameters": [ { "name": "HCV RNA (carga viral)", "reference_ranges": [] } ] },
+  { "name": "VDRL", "parameters": [ { "name": "VDRL", "reference_ranges": [] } ] },
+  { "name": "RPR", "parameters": [ { "name": "RPR", "reference_ranges": [] } ] },
+  { "name": "TP-PA / FTA-ABS", "parameters": [ { "name": "TP-PA / FTA-ABS", "reference_ranges": [] } ] },
+  { "name": "Dengue NS1", "parameters": [ { "name": "Dengue NS1", "reference_ranges": [] } ] },
+  { "name": "Dengue IgM", "parameters": [ { "name": "Dengue IgM", "reference_ranges": [] } ] },
+  { "name": "Dengue IgG", "parameters": [ { "name": "Dengue IgG", "reference_ranges": [] } ] },
+  { "name": "Zika IgM", "parameters": [ { "name": "Zika IgM", "reference_ranges": [] } ] },
+  { "name": "Chikungunya IgM", "parameters": [ { "name": "Chikungunya IgM", "reference_ranges": [] } ] },
+  { "name": "Toxoplasma IgG", "parameters": [ { "name": "Toxoplasma IgG", "reference_ranges": [] } ] },
+  { "name": "Toxoplasma IgM", "parameters": [ { "name": "Toxoplasma IgM", "reference_ranges": [] } ] },
+  { "name": "Rubéola IgG", "parameters": [ { "name": "Rubéola IgG", "reference_ranges": [] } ] },
+  { "name": "Rubéola IgM", "parameters": [ { "name": "Rubéola IgM", "reference_ranges": [] } ] },
+  { "name": "CMV IgG", "parameters": [ { "name": "CMV IgG", "reference_ranges": [] } ] },
+  { "name": "CMV IgM", "parameters": [ { "name": "CMV IgM", "reference_ranges": [] } ] },
+  { "name": "EBV VCA IgM", "parameters": [ { "name": "EBV VCA IgM", "reference_ranges": [] } ] },
+  { "name": "EBV VCA IgG", "parameters": [ { "name": "EBV VCA IgG", "reference_ranges": [] } ] },
+  { "name": "Monotest (heterófilos)", "parameters": [ { "name": "Monotest (heterófilos)", "reference_ranges": [] } ] },
+  { "name": "ASO (antiestreptolisina O)", "parameters": [ { "name": "ASO (antiestreptolisina O)", "reference_ranges": [] } ] },
+  { "name": "Helicobacter pylori antígeno en heces", "parameters": [ { "name": "Helicobacter pylori antígeno en heces", "reference_ranges": [] } ] },
+  { "name": "Helicobacter pylori IgG", "parameters": [ { "name": "Helicobacter pylori IgG", "reference_ranges": [] } ] },
+  { "name": "Prueba de aliento con urea", "parameters": [ { "name": "Prueba de aliento con urea", "reference_ranges": [] } ] },
+  { "name": "SARS-CoV-2 antígeno", "parameters": [ { "name": "SARS-CoV-2 antígeno", "reference_ranges": [] } ] },
+  { "name": "SARS-CoV-2 PCR", "parameters": [ { "name": "SARS-CoV-2 PCR", "reference_ranges": [] } ] },
+  { "name": "Influenza A antígeno", "parameters": [ { "name": "Influenza A antígeno", "reference_ranges": [] } ] },
+  { "name": "Influenza B antígeno", "parameters": [ { "name": "Influenza B antígeno", "reference_ranges": [] } ] },
+  { "name": "RSV antígeno/PCR", "parameters": [ { "name": "RSV antígeno/PCR", "reference_ranges": [] } ] },
+  { "name": "Chlamydia trachomatis NAAT", "parameters": [ { "name": "Chlamydia trachomatis NAAT", "reference_ranges": [] } ] },
+  { "name": "Neisseria gonorrhoeae NAAT", "parameters": [ { "name": "Neisseria gonorrhoeae NAAT", "reference_ranges": [] } ] },
+  { "name": "Treponema pallidum PCR", "parameters": [ { "name": "Treponema pallidum PCR", "reference_ranges": [] } ] },
+  { "name": "Microalbúmina urinaria", "parameters": [ { "name": "Microalbúmina urinaria", "reference_ranges": [] } ] },
+  { "name": "Índice albúmina/creatinina urinaria", "parameters": [ { "name": "Índice albúmina/creatinina urinaria", "reference_ranges": [] } ] },
+  { "name": "Creatinina urinaria", "parameters": [ { "name": "Creatinina urinaria", "reference_ranges": [] } ] },
+  { "name": "Proteinuria 24 h", "parameters": [ { "name": "Proteinuria 24 h", "reference_ranges": [] } ] },
+  { "name": "Creatinina 24 h", "parameters": [ { "name": "Creatinina 24 h", "reference_ranges": [] } ] },
+  { "name": "Calcio urinario 24 h", "parameters": [ { "name": "Calcio urinario 24 h", "reference_ranges": [] } ] },
+  { "name": "Citrato urinario 24 h", "parameters": [ { "name": "Citrato urinario 24 h", "reference_ranges": [] } ] },
+  { "name": "Oxalato urinario 24 h", "parameters": [ { "name": "Oxalato urinario 24 h", "reference_ranges": [] } ] },
+  { "name": "Ácido úrico urinario 24 h", "parameters": [ { "name": "Ácido úrico urinario 24 h", "reference_ranges": [] } ] },
+  { "name": "Sodio urinario 24 h", "parameters": [ { "name": "Sodio urinario 24 h", "reference_ranges": [] } ] },
+  { "name": "Potasio urinario 24 h", "parameters": [ { "name": "Potasio urinario 24 h", "reference_ranges": [] } ] },
+  { "name": "Cloro urinario 24 h", "parameters": [ { "name": "Cloro urinario 24 h", "reference_ranges": [] } ] },
+  { "name": "Fosfato urinario 24 h", "parameters": [ { "name": "Fosfato urinario 24 h", "reference_ranges": [] } ] },
+  { "name": "Magnesio urinario 24 h", "parameters": [ { "name": "Magnesio urinario 24 h", "reference_ranges": [] } ] },
+  { "name": "Nitrógeno ureico urinario 24 h", "parameters": [ { "name": "Nitrógeno ureico urinario 24 h", "reference_ranges": [] } ] },
+  { "name": "β-hCG urinaria (cualitativa)", "parameters": [ { "name": "β-hCG urinaria (cualitativa)", "reference_ranges": [] } ] },
+  { "name": "Cloro urinario puntual", "parameters": [ { "name": "Cloro urinario puntual", "reference_ranges": [] } ] },
+  { "name": "Sodio urinario puntual", "parameters": [ { "name": "Sodio urinario puntual", "reference_ranges": [] } ] },
+  { "name": "Osmolalidad urinaria", "parameters": [ { "name": "Osmolalidad urinaria", "reference_ranges": [] } ] },
+  { "name": "Cetonas urinarias (cualitativo)", "parameters": [ { "name": "Cetonas urinarias (cualitativo)", "reference_ranges": [] } ] },
+  { "name": "Proteína urinaria puntual", "parameters": [ { "name": "Proteína urinaria puntual", "reference_ranges": [] } ] },
+  { "name": "Eritrocitos urinarios (conteo)", "parameters": [ { "name": "Eritrocitos urinarios (conteo)", "reference_ranges": [] } ] },
+  { "name": "Leucocitos urinarios (conteo)", "parameters": [ { "name": "Leucocitos urinarios (conteo)", "reference_ranges": [] } ] },
+  { "name": "Cilindros hialinos urinarios", "parameters": [ { "name": "Cilindros hialinos urinarios", "reference_ranges": [] } ] },
+  { "name": "Sangre oculta en heces (FIT)", "parameters": [ { "name": "Sangre oculta en heces (FIT)", "reference_ranges": [] } ] },
+  { "name": "Sangre oculta en heces (guayaco)", "parameters": [ { "name": "Sangre oculta en heces (guayaco)", "reference_ranges": [] } ] },
+  { "name": "Calprotectina fecal", "parameters": [ { "name": "Calprotectina fecal", "reference_ranges": [] } ] },
+  { "name": "Lactoferrina fecal", "parameters": [ { "name": "Lactoferrina fecal", "reference_ranges": [] } ] },
+  { "name": "Elastasa pancreática fecal", "parameters": [ { "name": "Elastasa pancreática fecal", "reference_ranges": [] } ] },
+  { "name": "Grasas en heces (cuantitativa)", "parameters": [ { "name": "Grasas en heces (cuantitativa)", "reference_ranges": [] } ] },
+  { "name": "pH fecal", "parameters": [ { "name": "pH fecal", "reference_ranges": [] } ] },
+  { "name": "Antígeno de rotavirus", "parameters": [ { "name": "Antígeno de rotavirus", "reference_ranges": [] } ] },
+  { "name": "Antígeno de adenovirus entérico", "parameters": [ { "name": "Antígeno de adenovirus entérico", "reference_ranges": [] } ] },
+  { "name": "Antígeno de norovirus", "parameters": [ { "name": "Antígeno de norovirus", "reference_ranges": [] } ] },
+  { "name": "Antígeno de Giardia", "parameters": [ { "name": "Antígeno de Giardia", "reference_ranges": [] } ] },
+  { "name": "Antígeno de Cryptosporidium", "parameters": [ { "name": "Antígeno de Cryptosporidium", "reference_ranges": [] } ] },
+  { "name": "Helicobacter pylori antígeno en heces", "parameters": [ { "name": "Helicobacter pylori antígeno en heces", "reference_ranges": [] } ] },
+  { "name": "Reductores en heces", "parameters": [ { "name": "Reductores en heces", "reference_ranges": [] } ] },
+  { "name": "Sangre visible en heces (cualitativa)", "parameters": [ { "name": "Sangre visible en heces (cualitativa)", "reference_ranges": [] } ] },
+  { "name": "pH arterial", "parameters": [ { "name": "pH arterial", "reference_ranges": [] } ] },
+  { "name": "pCO₂", "parameters": [ { "name": "pCO₂", "reference_ranges": [] } ] },
+  { "name": "pO₂", "parameters": [ { "name": "pO₂", "reference_ranges": [] } ] },
+  { "name": "HCO₃⁻", "parameters": [ { "name": "HCO₃⁻", "reference_ranges": [] } ] },
+  { "name": "Exceso de base (BE)", "parameters": [ { "name": "Exceso de base (BE)", "reference_ranges": [] } ] },
+  { "name": "Saturación de O₂", "parameters": [ { "name": "Saturación de O₂", "reference_ranges": [] } ] },
+  { "name": "Lactato", "parameters": [ { "name": "Lactato", "reference_ranges": [] } ] },
+  { "name": "Carboxihemoglobina", "parameters": [ { "name": "Carboxihemoglobina", "reference_ranges": [] } ] },
+  { "name": "Metahemoglobina", "parameters": [ { "name": "Metahemoglobina", "reference_ranges": [] } ] },
+  { "name": "Potasio en gasometría", "parameters": [ { "name": "Potasio en gasometría", "reference_ranges": [] } ] },
+  { "name": "Vitamina B1 (tiamina)", "parameters": [ { "name": "Vitamina B1 (tiamina)", "reference_ranges": [] } ] },
+  { "name": "Vitamina B2 (riboflavina)", "parameters": [ { "name": "Vitamina B2 (riboflavina)", "reference_ranges": [] } ] },
+  { "name": "Vitamina B6 (piridoxal 5-fosfato)", "parameters": [ { "name": "Vitamina B6 (piridoxal 5-fosfato)", "reference_ranges": [] } ] },
+  { "name": "Vitamina B12", "parameters": [ { "name": "Vitamina B12", "reference_ranges": [] } ] },
+  { "name": "Ácido fólico", "parameters": [ { "name": "Ácido fólico", "reference_ranges": [] } ] },
+  { "name": "Vitamina A (retinol)", "unit": "µg/dL", "decimal_places": 1, "parameters": [ { "name": "Vitamina A (retinol)", "unit": "µg/dL", "decimal_places": 1, "reference_ranges": [ { "sex": "Ambos", "age_min": 1, "age_max": 120, "age_min_unit": "años", "lower": 20.0, "upper": 60.0 }, { "sex": "Ambos", "age_min": 0, "age_max": 1, "age_min_unit": "años", "lower": 15.0, "upper": 45.0, "notes": "Lactantes" } ] } ] },
+  { "name": "Vitamina E (alfa-tocoferol)", "unit": "mg/L", "decimal_places": 1, "parameters": [ { "name": "Vitamina E (alfa-tocoferol)", "unit": "mg/L", "decimal_places": 1, "reference_ranges": [ { "sex": "Ambos", "age_min": 1, "age_max": 120, "age_min_unit": "años", "lower": 5.5, "upper": 17.0 }, { "sex": "Ambos", "age_min": 0, "age_max": 1, "age_min_unit": "años", "lower": 3.0, "upper": 18.0, "notes": "Lactantes" } ] } ] },
+  { "name": "Vitamina K1 (filoquinona)", "unit": "ng/mL", "decimal_places": 2, "parameters": [ { "name": "Vitamina K1 (filoquinona)", "unit": "ng/mL", "decimal_places": 2, "reference_ranges": [ { "sex": "Ambos", "age_min": 1, "age_max": 120, "age_min_unit": "años", "lower": 0.15, "upper": 1.50, "notes": "Ayuno recomendado" }, { "sex": "Ambos", "age_min": 0, "age_max": 1, "age_min_unit": "años", "lower": 0.10, "upper": 2.00, "notes": "Lactantes" } ] } ] },
+  
+  { "name": "Prealbúmina", "parameters": [ { "name": "Prealbúmina", "reference_ranges": [] } ] },
+  
+  { "name": "Zinc", "parameters": [ { "name": "Zinc", "reference_ranges": [] } ] },
+  { "name": "Selenio", "parameters": [ { "name": "Selenio", "reference_ranges": [] } ] },
+  { "name": "Cobre", "parameters": [ { "name": "Cobre", "reference_ranges": [] } ] },
+  { "name": "Carotenoides totales", "parameters": [ { "name": "Carotenoides totales", "reference_ranges": [] } ] },
+  { "name": "Retinol-binding protein", "parameters": [ { "name": "Retinol-binding protein", "reference_ranges": [] } ] },
+  { "name": "Yodo urinario", "parameters": [ { "name": "Yodo urinario", "reference_ranges": [] } ] },
+  { "name": "IGF-1", "parameters": [ { "name": "IGF-1", "reference_ranges": [] } ] },
+  { "name": "Valproato (ácido valproico)", "parameters": [ { "name": "Valproato (ácido valproico)", "reference_ranges": [] } ] },
+  { "name": "Carbamazepina", "parameters": [ { "name": "Carbamazepina", "reference_ranges": [] } ] },
+  { "name": "Fenitoína", "parameters": [ { "name": "Fenitoína", "reference_ranges": [] } ] },
+  { "name": "Fenobarbital", "parameters": [ { "name": "Fenobarbital", "reference_ranges": [] } ] },
+  { "name": "Levetiracetam", "parameters": [ { "name": "Levetiracetam", "reference_ranges": [] } ] },
+  { "name": "Litio", "parameters": [ { "name": "Litio", "reference_ranges": [] } ] },
+  { "name": "Digoxina", "parameters": [ { "name": "Digoxina", "reference_ranges": [] } ] },
+  { "name": "Teofilina", "parameters": [ { "name": "Teofilina", "reference_ranges": [] } ] },
+  { "name": "Amikacina (pico/valle)", "parameters": [ { "name": "Amikacina (pico/valle)", "reference_ranges": [] } ] },
+  { "name": "Gentamicina (pico/valle)", "parameters": [ { "name": "Gentamicina (pico/valle)", "reference_ranges": [] } ] },
+  { "name": "Tobramicina", "parameters": [ { "name": "Tobramicina", "reference_ranges": [] } ] },
+  { "name": "Vancomicina (pico/valle)", "parameters": [ { "name": "Vancomicina (pico/valle)", "reference_ranges": [] } ] },
+  { "name": "Ciclosporina", "parameters": [ { "name": "Ciclosporina", "reference_ranges": [] } ] },
+  { "name": "Tacrolimus", "parameters": [ { "name": "Tacrolimus", "reference_ranges": [] } ] },
+  { "name": "Everolimus", "parameters": [ { "name": "Everolimus", "reference_ranges": [] } ] },
+  { "name": "Sirolimus", "parameters": [ { "name": "Sirolimus", "reference_ranges": [] } ] },
+  { "name": "Metotrexato", "parameters": [ { "name": "Metotrexato", "reference_ranges": [] } ] },
+  { "name": "Salicilatos", "parameters": [ { "name": "Salicilatos", "reference_ranges": [] } ] },
+  { "name": "Paracetamol (acetaminofén)", "parameters": [ { "name": "Paracetamol (acetaminofén)", "reference_ranges": [] } ] },
+  { "name": "Etanol", "parameters": [ { "name": "Etanol", "reference_ranges": [] } ] },
+  { "name": "Metanol", "parameters": [ { "name": "Metanol", "reference_ranges": [] } ] },
+  { "name": "Etilenglicol", "parameters": [ { "name": "Etilenglicol", "reference_ranges": [] } ] },
+  { "name": "Cocaína (confirmatorio cuantitativo)", "parameters": [ { "name": "Cocaína (confirmatorio cuantitativo)", "reference_ranges": [] } ] },
+  { "name": "Benzodiacepinas (confirmatorio)", "parameters": [ { "name": "Benzodiacepinas (confirmatorio)", "reference_ranges": [] } ] },
+  { "name": "Opiáceos (confirmatorio)", "parameters": [ { "name": "Opiáceos (confirmatorio)", "reference_ranges": [] } ] },
+  { "name": "Anfetaminas (confirmatorio)", "parameters": [ { "name": "Anfetaminas (confirmatorio)", "reference_ranges": [] } ] },
+  { "name": "Cannabis (THC, confirmatorio)", "parameters": [ { "name": "Cannabis (THC, confirmatorio)", "reference_ranges": [] } ] },
+  { "name": "Nicotina / Cotinina", "parameters": [ { "name": "Nicotina / Cotinina", "reference_ranges": [] } ] },
+  { "name": "Plomo", "parameters": [ { "name": "Plomo", "reference_ranges": [] } ] },
+  { "name": "Mercurio", "parameters": [ { "name": "Mercurio", "reference_ranges": [] } ] },
+  { "name": "Arsénico", "parameters": [ { "name": "Arsénico", "reference_ranges": [] } ] },
+  { "name": "Cianuro", "parameters": [ { "name": "Cianuro", "reference_ranges": [] } ] },
+  { "name": "Carboxihemoglobina venosa", "parameters": [ { "name": "Carboxihemoglobina venosa", "reference_ranges": [] } ] },
+  { "name": "Methemoglobina", "parameters": [ { "name": "Methemoglobina", "reference_ranges": [] } ] },
+  { "name": "COHb venoso", "parameters": [ { "name": "COHb venoso", "reference_ranges": [] } ] },
+  { "name": "Volátiles (etanol)", "parameters": [ { "name": "Volátiles (etanol)", "reference_ranges": [] } ] },
+  { "name": "Cloroquina", "parameters": [ { "name": "Cloroquina", "reference_ranges": [] } ] },
+  { "name": "Amiodarona", "parameters": [ { "name": "Amiodarona", "reference_ranges": [] } ] },
+  { "name": "Procainamida / NAPA", "parameters": [ { "name": "Procainamida / NAPA", "reference_ranges": [] } ] },
+  { "name": "Clozapina", "parameters": [ { "name": "Clozapina", "reference_ranges": [] } ] },
+  { "name": "IgE total", "parameters": [ { "name": "IgE total", "reference_ranges": [] } ] },
+  { "name": "IgE específica (un alérgeno)", "parameters": [ { "name": "IgE específica (un alérgeno)", "reference_ranges": [] } ] },
+  { "name": "Triptasa sérica", "parameters": [ { "name": "Triptasa sérica", "reference_ranges": [] } ] },
+  { "name": "Eosinófilos (recuento absoluto)", "parameters": [ { "name": "Eosinófilos (recuento absoluto)", "reference_ranges": [] } ] },
+  { "name": "Complemento C1q", "parameters": [ { "name": "Complemento C1q", "reference_ranges": [] } ] },
+  { "name": "C1 inhibidor (cantidad)", "parameters": [ { "name": "C1 inhibidor (cantidad)", "reference_ranges": [] } ] },
+  { "name": "C1 inhibidor (función)", "parameters": [ { "name": "C1 inhibidor (función)", "reference_ranges": [] } ] },
+  { "name": "IgG4 total", "parameters": [ { "name": "IgG4 total", "reference_ranges": [] } ] },
+  { "name": "IgG específica (un antígeno)", "parameters": [ { "name": "IgG específica (un antígeno)", "reference_ranges": [] } ] },
+  { "name": "Anticuerpos anti-gliadina desamidada IgA", "parameters": [ { "name": "Anticuerpos anti-gliadina desamidada IgA", "reference_ranges": [] } ] },
+  { "name": "PSA total", "parameters": [ { "name": "PSA total", "reference_ranges": [] } ] },
+  { "name": "PSA libre", "parameters": [ { "name": "PSA libre", "reference_ranges": [] } ] },
+  { "name": "Antígeno prostático complejo", "parameters": [ { "name": "Antígeno prostático complejo", "reference_ranges": [] } ] },
+  { "name": "Fosfatasa ácida prostática", "parameters": [ { "name": "Fosfatasa ácida prostática", "reference_ranges": [] } ] },
+  { "name": "Ácido cítrico seminal", "parameters": [ { "name": "Ácido cítrico seminal", "reference_ranges": [] } ] },
+  { "name": "Zinc seminal", "parameters": [ { "name": "Zinc seminal", "reference_ranges": [] } ] },
+  { "name": "Fructosa seminal", "parameters": [ { "name": "Fructosa seminal", "reference_ranges": [] } ] },
+  { "name": "β-glucuronidasa seminal", "parameters": [ { "name": "β-glucuronidasa seminal", "reference_ranges": [] } ] },
+  { "name": "Alpha-glucosidasa neutral seminal", "parameters": [ { "name": "Alpha-glucosidasa neutral seminal", "reference_ranges": [] } ] },
+  { "name": "Inhibina B", "parameters": [ { "name": "Inhibina B", "reference_ranges": [] } ] },
+  { "name": "AMH", "parameters": [ { "name": "AMH", "reference_ranges": [] } ] },
+  { "name": "Progesterona", "parameters": [ { "name": "Progesterona", "reference_ranges": [] } ] },
+  { "name": "Estradiol", "parameters": [ { "name": "Estradiol", "reference_ranges": [] } ] },
+  { "name": "Testosterona total", "parameters": [ { "name": "Testosterona total", "reference_ranges": [] } ] },
+  { "name": "Prolactina", "parameters": [ { "name": "Prolactina", "reference_ranges": [] } ] },
+  { "name": "FSH", "parameters": [ { "name": "FSH", "reference_ranges": [] } ] },
+  { "name": "LH", "parameters": [ { "name": "LH", "reference_ranges": [] } ] },
+  { "name": "17-OH progesterona", "parameters": [ { "name": "17-OH progesterona", "reference_ranges": [] } ] },
+  { "name": "DHEA-S", "parameters": [ { "name": "DHEA-S", "reference_ranges": [] } ] },
+  { "name": "hCG cualitativa en orina", "parameters": [ { "name": "hCG cualitativa en orina", "reference_ranges": [] } ] },
+  { "name": "Procalcitonina", "parameters": [ { "name": "Procalcitonina", "reference_ranges": [] } ] },
+  { "name": "PCR", "parameters": [ { "name": "PCR", "reference_ranges": [] } ] },
+  { "name": "VSG", "parameters": [ { "name": "VSG", "reference_ranges": [] } ] },
+  { "name": "ASO", "parameters": [ { "name": "ASO", "reference_ranges": [] } ] },
+  { "name": "Factor reumatoide", "parameters": [ { "name": "Factor reumatoide", "reference_ranges": [] } ] },
+  { "name": "Anti-CCP", "parameters": [ { "name": "Anti-CCP", "reference_ranges": [] } ] },
+  { "name": "Calcio urinario puntual", "parameters": [ { "name": "Calcio urinario puntual", "reference_ranges": [] } ] },
+  { "name": "Magnesio eritrocitario", "parameters": [ { "name": "Magnesio eritrocitario", "reference_ranges": [] } ] },
+  { "name": "Ácidos biliares séricos", "parameters": [ { "name": "Ácidos biliares séricos", "reference_ranges": [] } ] },
+  {
+    "name": "Beta-hidroxibutirato",
+    "unit": "mmol/L",
+    "decimal_places": 2,
+    "description": "El beta-hidroxibutirato es un cuerpo cetónico útil para evaluar cetosis y cetoacidosis.",
+    "indications": "Cetoacidosis diabética, ayuno prolongado, dietas cetogénicas, evaluación metabólica.",
+    "sample_type": "Plasma",
+    "sample_container": "Tubo de heparina",
+    "processing_time_hours": 24,
+    "parameters": [
+      {
+        "name": "Beta-hidroxibutirato",
+        "unit": "mmol/L",
+        "decimal_places": 2,
+        "reference_ranges": [
+          { "sex": "Ambos", "age_min": 0, "age_max": 120, "age_min_unit": "años", "lower": 0.02, "upper": 0.50, "notes": "No ayuno requerido" }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Volumen Corpuscular Medio",
+    "category": "Biometría Hemática",
+    "unit": "fL",
+    "decimal_places": 1,
+    "parameters": [
+      {
+        "name": "Volumen Corpuscular Medio",
+        "unit": "fL",
+        "decimal_places": 1,
+        "reference_ranges": [
+          { "sex": "Ambos", "age_min": 0,  "age_max": 1,   "age_min_unit": "años", "lower": 84,   "upper": 106,  "notes": "Seed catálogo" },
+          { "sex": "Ambos", "age_min": 1,  "age_max": 2,   "age_min_unit": "años", "lower": 72,   "upper": 84,   "notes": "Seed catálogo" },
+          { "sex": "Ambos", "age_min": 2,  "age_max": 12,  "age_min_unit": "años", "lower": 76,   "upper": 90,   "notes": "Seed catálogo" },
+          { "sex": "Ambos", "age_min": 12, "age_max": 18,  "age_min_unit": "años", "lower": 78,   "upper": 95,   "notes": "Seed catálogo" },
+          { "sex": "Femenino", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 80, "upper": 96,   "notes": "Seed catálogo" },
+          { "sex": "Masculino", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 80, "upper": 96,   "notes": "Seed catálogo" }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Hemoglobina Corpuscular Media",
+    "category": "Biometría Hemática",
+    "unit": "pg",
+    "decimal_places": 1,
+    "parameters": [
+      {
+        "name": "Hemoglobina Corpuscular Media",
+        "unit": "pg",
+        "decimal_places": 1,
+        "reference_ranges": [
+          { "sex": "Ambos", "age_min": 0,  "age_max": 1,   "age_min_unit": "años", "lower": 28,   "upper": 40,   "notes": "Seed catálogo" },
+          { "sex": "Ambos", "age_min": 1,  "age_max": 2,   "age_min_unit": "años", "lower": 23,   "upper": 31,   "notes": "Seed catálogo" },
+          { "sex": "Ambos", "age_min": 2,  "age_max": 12,  "age_min_unit": "años", "lower": 25,   "upper": 33,   "notes": "Seed catálogo" },
+          { "sex": "Ambos", "age_min": 12, "age_max": 18,  "age_min_unit": "años", "lower": 26,   "upper": 34,   "notes": "Seed catálogo" },
+          { "sex": "Femenino", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 27, "upper": 33,   "notes": "Seed catálogo" },
+          { "sex": "Masculino", "age_min": 18, "age_max": 120, "age_min_unit": "años", "lower": 27, "upper": 33,   "notes": "Seed catálogo" }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Amplitud de Distribución Eritrocitaria",
+    "category": "Biometría Hemática",
+    "unit": "%",
+    "decimal_places": 1,
+    "parameters": [
+      {
+        "name": "Amplitud de Distribución Eritrocitaria",
+        "unit": "%",
+        "decimal_places": 1,
+        "reference_ranges": [
+          { "sex": "Ambos", "age_min": 0,  "age_max": 1,   "age_min_unit": "años", "lower": 14,    "upper": 18,   "notes": "Seed catálogo" },
+          { "sex": "Ambos", "age_min": 1,  "age_max": 2,   "age_min_unit": "años", "lower": 12.5,  "upper": 15.5, "notes": "Seed catálogo" },
+          { "sex": "Ambos", "age_min": 2,  "age_max": 12,  "age_min_unit": "años", "lower": 11.5,  "upper": 14.5, "notes": "Seed catálogo" },
+          { "sex": "Ambos", "age_min": 12, "age_max": 120, "age_min_unit": "años", "lower": 11,    "upper": 14.5, "notes": "Seed catálogo" }
+        ]
+      }
+    ]
+  }
+]

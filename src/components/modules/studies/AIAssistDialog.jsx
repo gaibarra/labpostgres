@@ -76,6 +76,44 @@ const AIAssistDialog = ({ isOpen, onOpenChange, onGenerationSuccess }) => {
       return consolidated;
     }
 
+    // Asegura cobertura canónica 0-120 con reglas: pediátrico Ambos; si hay sexos en adultos, completar por sexo
+    function ensureCoverage(ranges) {
+      const CANON = [ [0,1], [1,2], [2,12], [12,18], [18,65], [65,120] ];
+      const hasSexSpecific = ranges.some(r => (r.sexo||'Ambos') !== 'Ambos');
+      const existsCover = (sex, a, b) => ranges.some(r => {
+        const rs = r.sexo || 'Ambos';
+        const min = r.edadMin == null ? -Infinity : r.edadMin;
+        const max = r.edadMax == null ? Infinity : r.edadMax;
+        const sexOk = (sex === 'Ambos') ? (rs === 'Ambos') : (rs === sex);
+        return sexOk && min <= a && max >= b;
+      }) || (!hasSexSpecific && sex !== 'Ambos' && existsCover('Ambos', a, b));
+      const out = [...ranges];
+      // 1) Pediátricos: siempre Ambos si faltan
+      CANON.slice(0,3).forEach(([a,b]) => {
+        if (!existsCover('Ambos', a, b) && !existsCover('Masculino', a, b) && !existsCover('Femenino', a, b)) {
+          out.push({ sexo:'Ambos', edadMin:a, edadMax:b, unidadEdad:'años', valorMin:null, valorMax:null, tipoValor:'numerico', textoPermitido:'', textoLibre:'', notas:'Sin referencia establecida' });
+        }
+      });
+      // 2) Adolescente/Adulto: si hay sexos específicos en algún tramo, completar por sexo; si no, completar Ambos
+      CANON.slice(3).forEach(([a,b]) => {
+        if (hasSexSpecific) {
+          if (!existsCover('Masculino', a, b)) {
+            out.push({ sexo:'Masculino', edadMin:a, edadMax:b, unidadEdad:'años', valorMin:null, valorMax:null, tipoValor:'numerico', textoPermitido:'', textoLibre:'', notas:'Sin referencia establecida' });
+          }
+          if (!existsCover('Femenino', a, b)) {
+            out.push({ sexo:'Femenino', edadMin:a, edadMax:b, unidadEdad:'años', valorMin:null, valorMax:null, tipoValor:'numerico', textoPermitido:'', textoLibre:'', notas:'Sin referencia establecida' });
+          }
+        } else {
+          if (!existsCover('Ambos', a, b)) {
+            out.push({ sexo:'Ambos', edadMin:a, edadMax:b, unidadEdad:'años', valorMin:null, valorMax:null, tipoValor:'numerico', textoPermitido:'', textoLibre:'', notas:'Sin referencia establecida' });
+          }
+        }
+      });
+      // Ordenar por edad y sexo para consistencia visual
+      out.sort((x,y)=> (x.edadMin??-Infinity)-(y.edadMin??-Infinity) || (x.edadMax??Infinity)-(y.edadMax??Infinity) || (x.sexo||'Ambos').localeCompare(y.sexo||'Ambos'));
+      return out;
+    }
+
     const formattedParameters = (generatedData.parameters || []).map(param => {
       const name = param.name || param.nombre || '';
       // Ampliar alias de unidad
@@ -83,11 +121,8 @@ const AIAssistDialog = ({ isOpen, onOpenChange, onGenerationSuccess }) => {
       const decimal_places = param.decimal_places || param.decimalPlaces || param.decimals || 0;
       const rawRanges = (param.valorReferencia || param.reference_values || param.reference_ranges || param.rangos || []);
       let valorReferencia = consolidateRanges(rawRanges);
-      // Filtro: si existe al menos un rango con valores numéricos definidos, removemos aquellos donde ambos son null
-      const hasAnyFilled = valorReferencia.some(r => r.valorMin != null || r.valorMax != null);
-      if (hasAnyFilled) {
-        valorReferencia = valorReferencia.filter(r => !(r.valorMin == null && r.valorMax == null));
-      }
+      // Completar cobertura canónica 0-120 según reglas
+      valorReferencia = ensureCoverage(valorReferencia);
       if (!valorReferencia.length) {
         // Generar placeholders por etapas de vida con nota para edición
         const segments = [
@@ -351,7 +386,7 @@ const AIAssistDialog = ({ isOpen, onOpenChange, onGenerationSuccess }) => {
         )}
         <div className="grid grid-cols-4 items-center gap-4">
           <Label htmlFor="study-name" className="text-right">Estudio</Label>
-          <Input id="study-name" value={studyName} onChange={(e)=>setStudyName(e.target.value)} className="col-span-3" placeholder="Ej: Perfil hormonal" disabled={isGenerating} />
+          <Input id="study-name" value={studyName} onChange={(e)=>setStudyName(e.target.value)} className="col-span-3" placeholder="Ej: Perfil tiroideo" disabled={isGenerating} />
         </div>
       </div>
     );

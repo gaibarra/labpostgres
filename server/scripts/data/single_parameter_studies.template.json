@@ -1,0 +1,24 @@
+[
+  {
+    "code": "GLU",
+    "name": "Glucosa",
+    "category": "Bioquímica",
+    "description": "Determinación de glucosa en suero.",
+    "indications": "Tamizaje de diabetes y control metabólico.",
+    "sample_type": "Suero",
+    "sample_container": "Tubo rojo o amarillo (SST)",
+    "processing_time_hours": 4,
+    "unit": "mg/dL",
+    "decimal_places": 0,
+    "parameters": [
+      {
+        "name": "Glucosa",
+        "unit": "mg/dL",
+        "decimal_places": 0,
+        "reference_ranges": [
+          { "sex": "Ambos", "age_min": 0, "age_max": 120, "age_min_unit": "años", "lower": 70, "upper": 100, "notes": "Ayuno" }
+        ]
+      }
+    ]
+  }
+]

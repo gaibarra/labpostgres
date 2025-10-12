@@ -1,0 +1,1 @@
+-- Archivo archivado intencionalmente. Sin operación.

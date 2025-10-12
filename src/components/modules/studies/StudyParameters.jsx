@@ -34,11 +34,12 @@ function mapReferenceValues(values) {
       age_min: v.age_min ?? v.edadMin ?? null,
       age_max: v.age_max ?? v.edadMax ?? null,
       age_unit: v.age_unit ?? v.unidadEdad ?? 'años',
-      tipoValor: v.tipoValor || (v.textoLibre ? 'textoLibre' : (v.textoPermitido ? 'alfanumerico' : 'numerico')),
-      normal_min: v.normal_min ?? v.valorMin ?? null,
-      normal_max: v.normal_max ?? v.valorMax ?? null,
-      textoPermitido: v.textoPermitido ?? '',
-      textoLibre: v.textoLibre ?? '',
+  // Mapear claves modernas y legadas
+  tipoValor: v.tipoValor || (v.textoLibre || v.text_value ? 'textoLibre' : (v.textoPermitido ? 'alfanumerico' : (v.normal_min != null || v.normal_max != null || v.lower != null || v.upper != null ? 'numerico' : 'textoLibre'))),
+  normal_min: v.normal_min ?? v.valorMin ?? v.lower ?? null,
+  normal_max: v.normal_max ?? v.valorMax ?? v.upper ?? null,
+  textoPermitido: v.textoPermitido ?? '',
+  textoLibre: v.textoLibre ?? v.text_value ?? '',
       notas: v.notas ?? '',
     };
   });
@@ -87,10 +88,14 @@ const StudyParameters = forwardRef(
     useEffect(() => {
       let withIds = (parameters || []).map(p => {
         if (!p) return p;
-        if (!p.id && !p.tempId) {
-          return { ...p, tempId: uuidv4() };
+        const base = { ...p };
+        // Asegurar id temporal si falta
+        if (!base.id && !base.tempId) base.tempId = uuidv4();
+        // Normalizar ranges para la UI: mapear reference_ranges -> valorReferencia
+        if (Array.isArray(base.reference_ranges) && (!Array.isArray(base.valorReferencia) || base.valorReferencia.length === 0)) {
+          base.valorReferencia = mapReferenceValues(base.reference_ranges);
         }
-        return p;
+        return base;
       });
       // Si existen posiciones numéricas, ordenar por ellas
       const hasPositions = withIds.some(p => typeof p?.position === 'number');
@@ -400,11 +405,28 @@ const StudyParameters = forwardRef(
     }, [editingGroupId, editingGroupValue, localParameters, onParametersChange, studyId, onImmediateSave, cancelGroupEdit]);
 
     // ---- Inline tipoValor editing (batch for all reference ranges) ----
-    const unifiedTipo = (param) => {
+    // Infiera el tipo del parámetro para mostrar la etiqueta compacta.
+    // Corrección: si no hay valores de referencia o todos son placeholders sin límites/textos,
+    // mostrarmos 'textoLibre' en lugar de 'numérico' (evita el letrero incorrecto).
+  const unifiedTipo = (param) => {
       const list = Array.isArray(param.valorReferencia) ? param.valorReferencia : [];
-      if (list.length === 0) return 'numerico';
-      const first = list[0]?.tipoValor || 'numerico';
-      const allSame = list.every(v => (v.tipoValor || 'numerico') === first);
+      // Si no hay filas aún, asumimos Texto Libre (edición libre del resultado)
+      if (list.length === 0) return 'textoLibre';
+      const infer = (v) => {
+    const tipo = v?.tipoValor;
+    const hasNum = (v?.normal_min != null || v?.normal_max != null || v?.lower != null || v?.upper != null);
+    const hasPermitido = !!v?.textoPermitido;
+    const hasLibre = !!(v?.textoLibre || v?.text_value);
+        if (tipo) return tipo;
+        if (hasLibre) return 'textoLibre';
+        if (hasPermitido) return 'alfanumerico';
+        if (hasNum) return 'numerico';
+        // placeholder sin datos: tratar como texto libre para la UI
+        return 'textoLibre';
+      };
+      const inferred = list.map(infer);
+      const first = inferred[0];
+      const allSame = inferred.every(t => t === first);
       return allSame ? first : 'mixto';
     };
 

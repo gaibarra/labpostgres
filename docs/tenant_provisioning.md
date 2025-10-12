@@ -79,7 +79,7 @@ Una vez creado el tenant (ejemplo `hematos` → DB `lab_hematos`):
 psql lab_hematos -c "SELECT COUNT(*) AS estudios FROM studies;"
 psql lab_hematos -c "SELECT name, category FROM studies ORDER BY name LIMIT 10;"
 ```
-Deberías ver los estudios como: Biometría Hemática, Perfil Tiroideo, Perfil Hepático, Perfil Hormonal, etc.
+Deberías ver los estudios como: Biometría Hemática, Perfil Tiroideo, Perfil Hepático, etc.
 
 Verifica también que existen las tablas de dominio:
 ```bash

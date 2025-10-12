@@ -1,5 +1,4 @@
 // ai.js - Endpoints AI (study + single parameter) con enriquecimiento de rangos
-/* eslint-disable */
 const express = require('express');
 const router = express.Router();
 const { requireAuth } = require('../middleware/auth');

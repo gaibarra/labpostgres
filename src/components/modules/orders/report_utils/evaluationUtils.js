@@ -82,13 +82,13 @@ import { useCallback } from 'react';
               count: exactCandidates.length,
               ranges: exactCandidates.map(r => ({ id: r.id, age_min: r.age_min, age_max: r.age_max, unit: r.age_min_unit }))
             });
-          } catch(_) {}
+          } catch(_) { /* noop */ void 0; }
         }
         if (exactCandidates.length) return exactCandidates[0];
         return candidates[0];
       }, [calculateAgeInUnits]);
 
-      const getReferenceRangeText = useCallback((param, patientData, patientAgeDataHook, returnObject = false) => {
+  const getReferenceRangeText = useCallback((param, patientData, patientAgeDataHook, returnObject = false) => {
         const applicableRef = getApplicableReference(param, patientData, patientAgeDataHook);
         if (!applicableRef) {
           return returnObject ? { valueText: 'N/A', demographics: '' } : 'N/A';
@@ -110,7 +110,9 @@ import { useCallback } from 'react';
           ageText = `${applicableRef.age_min}-${applicableRef.age_max} ${vrUnidadEdad}`;
         }
 
-        const demographics = `(${applicableRef.sex || 'Ambos'}, ${ageText})`;
+  // Include method tag if available
+  const methodTag = applicableRef.method ? `, Método: ${applicableRef.method}` : '';
+  const demographics = `(${applicableRef.sex || 'Ambos'}, ${ageText}${methodTag})`;
         
         let valueText = '';
         if (applicableRef.text_value) {

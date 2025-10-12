@@ -42,16 +42,17 @@ const PANELS = [
     indications:'Daño hepático, colestasis, seguimiento de hepatopatías.',
     sample_type:'Suero', sample_container:'Tubo rojo o amarillo (SST)', processing_time_hours: 8,
     params:[ 'ALT (TGP)','AST (TGO)','Fosfatasa Alcalina','Bilirrubina Total','Bilirrubina Directa','Bilirrubina Indirecta','GGT','Albúmina','Proteínas Totales' ] },
-  { code:'PHOR', name:'Perfil Hormonal', category:'Hormonas',
-    description:'Panel básico de hormonas para evaluación endocrina.',
-    indications:'Trastornos hormonales, fertilidad, seguimiento terapéutico.',
-    sample_type:'Suero', sample_container:'Tubo rojo o amarillo (SST)', processing_time_hours: 24,
-    params:[ 'FSH','LH','Prolactina','Estradiol','Progesterona','Testosterona Total','Testosterona Libre','DHEA-S','Cortisol Matutino','Cortisol Vespertino' ] },
+  
   { code:'PGIN', name:'Perfil Ginecológico', category:'Hormonas',
     description:'Hormonas y marcadores asociados a salud ginecológica.',
     indications:'Trastornos menstruales, fertilidad, SOP, seguimiento.',
     sample_type:'Suero', sample_container:'Tubo rojo o amarillo (SST)', processing_time_hours: 24,
     params:[ 'FSH','LH','Prolactina','Estradiol','Progesterona','Androstenediona','AMH','CA-125' ] },
+  { code:'PHG', name:'Perfil Hormonal General', category:'Hormonas',
+    description:'Perfil hormonal integral con eje gonadal y adrenal con rangos por tramos de edad (0–120) y diferenciación por sexo en adultos.',
+    indications:'Evaluación endocrina general (pubertad, hipogonadismo, SOP, disfunción adrenal/hipofisaria).',
+    sample_type:'Suero (preferible 8–10 am para cortisol)', sample_container:'Tubo rojo o amarillo (SST)', processing_time_hours: 24,
+  params:[ 'FSH','LH','Prolactina','Estrona (E1)','Estradiol','Estriol (E3)','Progesterona','Testosterona Total','Testosterona Libre','DHEA-S','Androstenediona','AMH','SHBG','IGF-1','GH','DHT','Cortisol Matutino','Cortisol Vespertino','ACTH' ] },
   { code:'EGO', name:'Examen General de Orina', category:'Orina',
     description:'Análisis físico-químico y microscópico de orina.',
     indications:'Evaluación renal/urinaria, infecciones urinarias, tamizaje.',
@@ -115,6 +116,7 @@ const PANELS = [
 ];
 
 const { buildParameterTemplate } = require('../utils/referenceTemplates');
+const { enforceAdultSexPairs } = require('./enforceAdultSexPairs');
 
 async function seed(pool){
   // Detectar solo uso del catálogo moderno si existe 'analysis'; si no, fallback legacy
@@ -330,6 +332,16 @@ async function seed(pool){
         console.log('[SEED] Insertado estudio %s con %d parámetros (legacy)', panel.name, panel.params.length);
       } catch(e){ await pool.query('ROLLBACK'); console.warn('[SEED] Panel legacy %s abortado: %s', panel.name, e.message); }
     }
+  }
+  // Enforce sex pairs for adult hormonal parameters after seeding all panels (modern path)
+  try {
+    const { rows: hasModern } = await pool.query("SELECT to_regclass('public.analysis_reference_ranges') AS t");
+    if (hasModern[0]?.t) {
+      const res = await enforceAdultSexPairs(pool, { like: 'hormona|hormonal|ginecol', write: true });
+      console.log('[SEED] Enforcer M/F adultos aplicado:', JSON.stringify({ matched: res.matchedParameters, inserted: res.inserted }));
+    }
+  } catch (e) {
+    console.warn('[SEED] Enforcer M/F adultos: aviso %s', e.message);
   }
 }
 

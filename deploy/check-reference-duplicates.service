@@ -1,0 +1,24 @@
+[Unit]
+Description=Check duplicate reference ranges (legacy and modern)
+After=network.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/labg40
+EnvironmentFile=/opt/labg40/.env
+ExecStart=/usr/bin/node server/tools/check-range-duplicates.js
+User=labg40
+Group=labg40
+Nice=10
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=read-only
+PrivateTmp=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

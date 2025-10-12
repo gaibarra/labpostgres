@@ -4,22 +4,44 @@ import React from 'react';
 // Normaliza un objeto de valor de referencia a la nueva convención camel_case inglesa
 function normalizeRef(v) {
   if (!v) return {};
+  // Campos base normalizados
+  const gender = (() => {
+    const g = (v.gender || v.sexo || 'Ambos').toString().trim().toLowerCase();
+    if (g.startsWith('masc')) return 'Masculino';
+    if (g.startsWith('fem')) return 'Femenino';
+    return 'Ambos';
+  })();
+  const age_min = v.age_min ?? v.edadMin ?? null;
+  const age_max = v.age_max ?? v.edadMax ?? null;
+  const age_unit = v.age_unit || v.unidadEdad || 'años';
+  const normal_min = v.normal_min ?? v.valorMin ?? v.lower ?? null;
+  const normal_max = v.normal_max ?? v.valorMax ?? v.upper ?? null;
+  const textoPermitido = v.textoPermitido || '';
+  const textoLibre = v.textoLibre || v.text_value || '';
+  const notas = v.notas || '';
+
+  // Determinar tipoValor con los campos ya normalizados (ANTES se hacía con el objeto crudo y fallaba)
+  const tipoValor = v.tipoValor || (
+    textoLibre
+      ? 'textoLibre'
+      : (textoPermitido
+          ? 'alfanumerico'
+          : ((normal_min != null || normal_max != null)
+              ? 'numerico'
+              : 'textoLibre'))
+  );
+
   return {
-    gender: (() => {
-      const g = (v.gender || v.sexo || 'Ambos').toString().trim().toLowerCase();
-      if (g.startsWith('masc')) return 'Masculino';
-      if (g.startsWith('fem')) return 'Femenino';
-      return 'Ambos';
-    })(),
-    age_min: v.age_min ?? v.edadMin ?? null,
-    age_max: v.age_max ?? v.edadMax ?? null,
-    age_unit: v.age_unit || v.unidadEdad || 'años',
-    normal_min: v.normal_min ?? v.valorMin ?? null,
-    normal_max: v.normal_max ?? v.valorMax ?? null,
-    tipoValor: v.tipoValor || (v.textoLibre ? 'textoLibre' : (v.textoPermitido ? 'alfanumerico' : 'numerico')),
-    textoPermitido: v.textoPermitido || '',
-    textoLibre: v.textoLibre || '',
-    notas: v.notas || '',
+    gender,
+    age_min,
+    age_max,
+    age_unit,
+    normal_min,
+    normal_max,
+    tipoValor,
+    textoPermitido,
+    textoLibre,
+    notas,
   };
 }
 
@@ -50,7 +72,18 @@ const ReferenceValueSummary = ({ values, decimalPlaces }) => {
           .every(k => a[k] === b[k]);
         if (same) out.push({ ...a, gender:'Ambos' }); else out.push(...list);
       } else {
-        out.push(...list);
+        // Si todos son del mismo sexo pero duplicados exactos, conservar sólo el primero
+        if (list.length > 1) {
+          const g = list[0].gender;
+          const allSameGender = list.every(l => l.gender === g);
+          if (allSameGender) {
+            out.push(list[0]);
+          } else {
+            out.push(...list);
+          }
+        } else {
+          out.push(...list);
+        }
       }
     });
     // Orden por edad y luego sexo
@@ -121,7 +154,7 @@ const ReferenceValueSummary = ({ values, decimalPlaces }) => {
     if (valueText == null) {
       if (isCanonicalPlaceholderSet) {
         // Mostrar el tramo placeholder vacío
-        let sexText = 'A';
+        let sexText = 'Ambos';
         if (gender === 'Masculino' || gender === 'masculino' || gender === 'M') sexText = 'M';
         if (gender === 'Femenino' || gender === 'femenino' || gender === 'F') sexText = 'F';
         const ageText = age_min != null && age_max != null ? `${age_min}-${age_max} ${age_unit}` : '';

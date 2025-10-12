@@ -76,6 +76,28 @@ Hace: pull, install, build, restart backend.
 - Backend: https://labg40.com/api/health
 - Métricas: https://labg40.com/api/metrics (proteger si es necesario)
 
+### Chequeo diario de duplicados en rangos de referencia
+Instala servicio y timer para validar diariamente que no existan duplicados en `reference_ranges`/`analysis_reference_ranges`.
+
+Instalación:
+```
+sudo cp deploy/check-reference-duplicates.service /etc/systemd/system/
+sudo cp deploy/check-reference-duplicates.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now check-reference-duplicates.timer
+```
+
+Ejecución manual y revisión de logs:
+```
+sudo systemctl start check-reference-duplicates.service
+journalctl -u check-reference-duplicates -n 100 -f
+```
+
+Semántica de salida del script:
+- Exit 0: sin duplicados. Imprime JSON con conteos.
+- Exit 2: se detectaron duplicados (stderr incluye resumen).
+- Exit 1: error al ejecutar (con detalle en logs).
+
 ## 8. Restaurar / Rollback
 Mantener etiqueta git previa a actualización. Para rollback:
 ```

@@ -38,7 +38,8 @@ describe('Biometría Hemática seed consistency', () => {
       .get('/api/analysis/detailed?limit=200')
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
-    const items = res.body.data.filter(a => a.category === 'Biometría Hemática');
+  // Aceptamos alias profesionalizado: 'Hematología' reemplaza a 'Biometría Hemática'
+  const items = res.body.data.filter(a => ['Biometría Hemática','Hematología'].includes(a.category));
     // Esperamos 3 estudios (cada uno actúa como parámetro principal bajo este modelo simplificado)
     expect(items.length).toBeGreaterThanOrEqual(3);
     // Para cada uno, obtener parámetros vía endpoint parameters

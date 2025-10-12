@@ -9,8 +9,9 @@
     "preview": "vite preview",
     "test": "npm --prefix server run test && vitest",
     "dev:all": "concurrently \"npm --prefix server run dev\" \"vite\"",
-    "lint": "eslint server src",
-  "verify:sex": "npm --prefix server run migrate && npm --prefix server run test -- tests/referenceRanges.sexVariants.test.js && npm --prefix server run test -- tests/analysis.sexAudit.test.js && npm --prefix server run diagnose:sex"
+    "lint": "npm --prefix server run lint && eslint src",
+    "verify:sex": "npm --prefix server run migrate && npm --prefix server run test -- tests/referenceRanges.sexVariants.test.js && npm --prefix server run test -- tests/analysis.sexAudit.test.js && npm --prefix server run diagnose:sex",
+    "smoke:reference-ranges": "npm --prefix server run smoke:reference-ranges:all"
   },
   "dependencies": {
     "@emotion/is-prop-valid": "^1.2.1",

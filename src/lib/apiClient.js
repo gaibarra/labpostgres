@@ -61,60 +61,51 @@ async function request(path, { method = 'GET', body, headers = {}, auth = true, 
     console.debug('[apiClient] ->', method, url, { auth, hasToken: !!token });
   }
   const ac = new AbortController();
-  const t = setTimeout(()=>{
-    // Provide reason (ignored by some browsers but improves readability in modern ones)
-    try { ac.abort('timeout'); } catch { ac.abort(); }
+  const t = setTimeout(() => {
+    try { ac.abort('timeout'); }
+    catch (e) {
+      try { ac.abort(); } catch (e2) { /* noop: abort fallback */ }
+    }
   }, timeoutMs);
   let res;
-  let attemptedAlternate = false;
-  while (true) {
-    try {
-      res = await fetch(url, {
+  try {
+    res = await fetch(url, {
+      method,
+      headers: finalHeaders,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal: ac.signal
+    });
+  } catch (netErr) {
+    clearTimeout(t);
+    const isAbort = netErr?.name === 'AbortError';
+    const msg = netErr?.message || '';
+    const isConnRefused = /Failed to fetch|NetworkError|ECONNREFUSED/i.test(msg);
+    if (isAbort) {
+      const abortErr = new Error('Timeout de solicitud (' + timeoutMs + 'ms).');
+      abortErr.name = 'TimeoutError';
+      abortErr.cause = netErr;
+      throw abortErr;
+    }
+    if (isConnRefused && /localhost:4100/.test(url)) {
+      const ac2 = new AbortController();
+      const altUrl = url.replace('localhost:4100','127.0.0.1:4100');
+      if (import.meta.env.DEV) console.warn('[apiClient] Reintentando con 127.0.0.1:', altUrl);
+      setTimeout(() => {
+        try { ac2.abort('timeout'); } catch (e) { /* noop: abort fallback */ }
+      }, timeoutMs / 2);
+      res = await fetch(altUrl, {
         method,
         headers: finalHeaders,
         body: body !== undefined ? JSON.stringify(body) : undefined,
-        signal: ac.signal
+        signal: ac2.signal
       });
-      break; // success
-    } catch (netErr) {
-      clearTimeout(t);
-      const isAbort = netErr?.name === 'AbortError';
-      const msg = netErr?.message || '';
-      const isConnRefused = /Failed to fetch|NetworkError|ECONNREFUSED/i.test(msg);
-      if (isAbort) {
-        const abortErr = new Error('Timeout de solicitud (' + timeoutMs + 'ms).');
-        abortErr.name = 'TimeoutError';
-        abortErr.cause = netErr;
-        throw abortErr;
-      }
-      if (!attemptedAlternate && isConnRefused && /localhost:4100/.test(url)) {
-        attemptedAlternate = true;
-        const altUrl = url.replace('localhost:4100','127.0.0.1:4100');
-        if (import.meta.env.DEV) console.warn('[apiClient] Reintentando con 127.0.0.1:', altUrl);
-        // reiniciar timeout para el intento alterno
-        try { ac.abort(); } catch {}
-        const ac2 = new AbortController();
-        setTimeout(()=>{ try { ac2.abort('timeout'); } catch {} }, timeoutMs/2);
-        try {
-          res = await fetch(altUrl, {
-            method,
-            headers: finalHeaders,
-            body: body !== undefined ? JSON.stringify(body) : undefined,
-            signal: ac2.signal
-          });
-          break; // succeeded alternate
-        } catch (altErr) {
-          if (import.meta.env.DEV) console.error('[apiClient] Falla intento alterno 127.0.0.1', altErr.message);
-          throw altErr;
-        }
-      }
-      if (isConnRefused) {
-        console.error(`[apiClient] No se pudo conectar a ${url}. Backend caído o puerto incorrecto.`);
-      }
+    } else {
+      if (isConnRefused) console.error(`[apiClient] No se pudo conectar a ${url}. Backend cado o puerto incorrecto.`);
       throw netErr;
     }
+  } finally {
+    clearTimeout(t);
   }
-  clearTimeout(t);
   if (res.status === 204) return null;
   let data;
   try { data = await res.json(); } catch { data = null; }
@@ -155,7 +146,8 @@ export const apiClient = {
       try { return await apiClient.get('/auth/me'); } catch (e) { if (e.status === 401) clearToken(); throw e; }
     },
     async logout() {
-      try { await apiClient.post('/auth/logout', {}); } catch (_) {}
+      try { await apiClient.post('/auth/logout', {}); }
+      catch (e) { /* noop: ignore network errors on logout */ }
       clearToken();
     }
   }

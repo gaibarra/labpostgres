@@ -5,13 +5,17 @@ import { useEvaluationUtils } from './evaluationUtils.js';
 // Fixed 'today' for deterministic age calculations (mock Date)
 const REAL_DATE = Date;
 function mockToday(iso){
-  global.Date = class extends REAL_DATE {
+  const Fixed = class extends REAL_DATE {
     constructor(arg){
-      if (arg) return super(arg);
-      return new REAL_DATE(iso);
+      if (arg) {
+        super(arg);
+      } else {
+        super(iso);
+      }
     }
     static now(){ return new REAL_DATE(iso).getTime(); }
   };
+  global.Date = Fixed;
 }
 
 describe('evaluationUtils - getApplicableReference', () => {

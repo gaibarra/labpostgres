@@ -1,0 +1,31 @@
+{
+  "female": [
+    "hcg",
+    "β-hcg",
+    "beta-hcg",
+    "prueba de embarazo",
+    "papp-a",
+    "estriol no conjugado",
+    "ue3",
+    "inhibina a",
+    "afp materna",
+    "tamizaje prenatal",
+    "triple marcador",
+    "cuádruple marcador"
+  ],
+  "male": [
+    "psa",
+    "antígeno prostático",
+    "propsa",
+    "p2psa",
+    "phi",
+    "índice de salud prostática",
+    "semen",
+    "espermiograma",
+    "seminograma",
+    "espermatobioscop",
+    "fructosa seminal",
+    "zinc seminal",
+    "ph seminal"
+  ]
+}

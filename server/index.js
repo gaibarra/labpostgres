@@ -215,7 +215,6 @@ app.get('/api/metrics', metricsEndpoint);
 app.use((req, res, next) => next(new AppError(404,'Ruta no encontrada','NOT_FOUND')));
 
 // Error handler
-// eslint-disable-next-line no-unused-vars
 app.use((err, _req, res, _next) => {
   if (res.headersSent) return;
   if (err instanceof AppError) {
