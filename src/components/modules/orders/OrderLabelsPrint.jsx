@@ -31,7 +31,7 @@ import { Loader2, ServerCrash } from 'lucide-react';
 
                     const studiesResp = await apiClient.get('/analysis?limit=1000');
                     const allStudies = { data: studiesResp.data || [] };
-                    const packagesResp = await apiClient.get('/packages/detailed?limit=500');
+                    const packagesResp = await apiClient.get('/packages/detailed?limit=5000');
                     const allPackages = { data: packagesResp.data || [] };
                     
                     const studiesMap = new Map((allStudies.data||[]).map(s => [s.id, s]));

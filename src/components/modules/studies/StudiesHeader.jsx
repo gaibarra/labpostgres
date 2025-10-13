@@ -2,9 +2,28 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { CardHeader, CardTitle } from '@/components/ui/card';
-import { Beaker, PlusCircle, Sparkles, Search, HelpCircle } from 'lucide-react';
+import { Beaker, PlusCircle, Sparkles, Search, HelpCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 
-const StudiesHeader = ({ searchTerm, setSearchTerm, onNewStudyClick, onAIAssist, onHelpClick }) => {
+// Props extended to support pagination controls
+const StudiesHeader = ({
+  searchTerm,
+  setSearchTerm,
+  onNewStudyClick,
+  onAIAssist,
+  onHelpClick,
+  onSearch,
+  currentPage = 0,
+  totalCount = 0,
+  pageSize = 50,
+  totalStudiesPages = 0,
+  onPageChange,
+  onPageSizeChange
+}) => {
+  const canPrev = currentPage > 0;
+  const canNext = totalStudiesPages ? (currentPage < totalStudiesPages - 1) : ((currentPage + 1) * pageSize < totalCount);
+  const showingFrom = totalCount === 0 ? 0 : (currentPage * pageSize + 1);
+  const showingTo = Math.min((currentPage + 1) * pageSize, totalCount || 0);
+
   return (
     <CardHeader className="p-4 md:p-6">
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
@@ -32,9 +51,55 @@ const StudiesHeader = ({ searchTerm, setSearchTerm, onNewStudyClick, onAIAssist,
           type="search"
           placeholder="Buscar estudio..."
           value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
+          onChange={(e) => {
+            const v = e.target.value;
+            setSearchTerm(v);
+            // Reset to first page on new search and optionally trigger external search handler
+            if (onPageChange) onPageChange(0);
+            if (onSearch) onSearch(v);
+          }}
           className="pl-8 bg-white/80 dark:bg-slate-800/80"
         />
+      </div>
+      <div className="mt-3 flex items-center justify-between text-sm text-slate-600 dark:text-slate-300">
+        <div className="flex items-center gap-3">
+          {totalCount > 0 ? (
+            <span>Mostrando {showingFrom} - {showingTo} de {totalCount}</span>
+          ) : (
+            <span>No hay estudios</span>
+          )}
+          <div className="flex items-center gap-1">
+            <span className="whitespace-nowrap">por página:</span>
+            <select
+              className="border rounded px-2 py-1 bg-white/80 dark:bg-slate-800/80"
+              value={pageSize}
+              onChange={(e)=>{ const v = parseInt(e.target.value,10)||50; onPageSizeChange && onPageSizeChange(v); if (onPageChange) onPageChange(0);} }
+            >
+              {[50,100,200,500].map(opt => (<option key={opt} value={opt}>{opt}</option>))}
+            </select>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onPageChange && onPageChange(currentPage - 1)}
+            disabled={!canPrev}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <span className="min-w-[120px] text-center">
+            Página {totalStudiesPages ? (currentPage + 1) : (Math.floor(showingTo / (pageSize || 1)) || 1)} de {totalStudiesPages || Math.max(1, Math.ceil((totalCount || 0) / (pageSize || 1)))}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onPageChange && onPageChange(currentPage + 1)}
+            disabled={!canNext}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
     </CardHeader>
   );

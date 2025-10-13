@@ -60,8 +60,9 @@ const ReportHeader = ({ labInfo, order, patient, patientAgeData, isWorksheet = f
   };
 
   const FullHeader = () => (
-    <div className="flex justify-between items-start mb-2">
-      <div className="w-1/3">
+    <div className="flex items-center mb-2">
+      {/* Left: Logo (fixed width) */}
+      <div className="w-32 flex-shrink-0">
         {labInfo?.logoUrl ? (
           <img-replace src={labInfo.logoUrl} alt="Logo del Laboratorio" className="max-h-16" />
         ) : (
@@ -70,9 +71,9 @@ const ReportHeader = ({ labInfo, order, patient, patientAgeData, isWorksheet = f
           </div>
         )}
       </div>
-      <div className="w-2/3 text-center">
+      {/* Center: Name + Contact fully centered */}
+      <div className="flex-1 text-center">
         <h2 className="font-bold text-lg">{labInfo?.name || 'Nombre del Laboratorio'}</h2>
-        <h3 className="font-semibold text-base">Laboratorio Clínico</h3>
         <p>{formatAddress(labInfo?.address ?? {
           calle: labInfo?.calle,
           numeroExterior: labInfo?.numeroExterior,
@@ -85,6 +86,8 @@ const ReportHeader = ({ labInfo, order, patient, patientAgeData, isWorksheet = f
         })}</p>
         <p>Tel: {labInfo?.phone || 'Teléfono'} | Email: {labInfo?.email || 'Email'}</p>
       </div>
+      {/* Right: spacer to keep center alignment when logo occupies left */}
+      <div className="w-32 flex-shrink-0" />
     </div>
   );
 

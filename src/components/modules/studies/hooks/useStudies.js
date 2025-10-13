@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import useSWR from 'swr';
 import { toast } from 'sonner';
 import { logAuditEvent } from '@/lib/auditUtils';
@@ -6,7 +6,7 @@ import apiClient from '@/lib/apiClient';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAppData } from '@/contexts/AppDataContext';
 
-const PAGE_SIZE = 50;
+const DEFAULT_PAGE_SIZE = 50;
 
 const cleanReferenceValueForStorage = (value) => {
   if (value === '' || value === undefined || value === null) return null;
@@ -35,12 +35,12 @@ export const initialStudyFormState = {
   particularPrice: '',
 };
 
-const studiesFetcher = async ({ page, searchTerm }) => {
-  const limit = PAGE_SIZE;
-  const offset = page * PAGE_SIZE;
+const studiesFetcher = async ({ page, searchTerm, pageSize }) => {
+  const limit = pageSize || DEFAULT_PAGE_SIZE;
+  const pageNumber = (page || 0) + 1; // server expects 1-based page
   const params = new URLSearchParams();
   params.set('limit', String(limit));
-  params.set('offset', String(offset));
+  params.set('page', String(pageNumber));
   params.set('sort', 'param_count_desc');
   if (searchTerm) params.set('search', searchTerm);
   // Use detailed endpoint to fetch nested parameters + ranges
@@ -90,8 +90,22 @@ export const useStudies = (searchTerm) => {
   const { referrers = [], loadData } = useAppData();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [studiesPage, setStudiesPage] = useState(0);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
 
-  const swrKey = user ? { page: studiesPage, searchTerm } : null;
+  // Load preferred page size from localStorage and persist on change
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('studies.pageSize');
+      const n = stored ? parseInt(stored, 10) : null;
+      if (n && [50,100,200,500].includes(n)) setPageSize(n);
+    } catch(_) { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    try { localStorage.setItem('studies.pageSize', String(pageSize || DEFAULT_PAGE_SIZE)); } catch(_) { /* ignore */ }
+  }, [pageSize]);
+
+  const swrKey = user ? { page: studiesPage, searchTerm, pageSize } : null;
   const { data, error, mutate } = useSWR(swrKey, studiesFetcher, {
     onError: (err) =>
       toast.error('Error al cargar estudios', { description: err.message }),
@@ -486,6 +500,8 @@ export const useStudies = (searchTerm) => {
     studiesCount: data?.count || 0,
     loadingStudies: !data && !error,
     isSubmitting,
+  pageSize,
+  setPageSize: (n) => { setStudiesPage(0); setPageSize(n); },
     getParticularPrice,
     handleSubmit,
     persistParameterOrder: async (studyId, orderedParams) => {
@@ -537,7 +553,7 @@ export const useStudies = (searchTerm) => {
     updateStudyPrices,
     studiesPage,
     setStudiesPage,
-    PAGE_SIZE,
-    totalStudiesPages: data?.count ? Math.ceil(data.count / PAGE_SIZE) : 0,
+  PAGE_SIZE: pageSize,
+  totalStudiesPages: data?.count ? Math.ceil(data.count / (pageSize || DEFAULT_PAGE_SIZE)) : 0,
   };
 };

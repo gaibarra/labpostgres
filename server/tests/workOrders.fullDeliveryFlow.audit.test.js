@@ -9,6 +9,8 @@ async function countAudit(action){
   return rows[0].c;
 }
 
+function sleep(ms){ return new Promise(res => setTimeout(res, ms)); }
+
 describe('Flujo entrega + auditoría + results_finalized', () => {
   let adminToken, labToken, recepToken, orderId;
   const unique = Date.now();
@@ -31,7 +33,12 @@ describe('Flujo entrega + auditoría + results_finalized', () => {
     const create = await request(app).post('/api/work-orders').set(auth(adminToken)).send({ folio, status: 'Pendiente', selected_items: [] });
     expect(create.status).toBe(201);
     orderId = create.body.id;
-  const auditAfterCreate = await countAudit('create');
+  // Auditoría de 'create' se escribe async en res.finish; esperar/pollear brevemente
+  let auditAfterCreate = await countAudit('create');
+  for (let i = 0; i < 10 && auditAfterCreate < auditBeforeCreate + 1; i++) {
+    await sleep(50);
+    auditAfterCreate = await countAudit('create');
+  }
   // Toleramos que el endpoint dispare más de un registro 'create' (p.ej., orden + historial inicial)
   expect(auditAfterCreate).toBeGreaterThanOrEqual(auditBeforeCreate + 1);
 

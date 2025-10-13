@@ -41,7 +41,7 @@ export const useOrderModals = ({
   }, [patients, referrers]);
 
   const openModal = useCallback((type, order, extraData = {}) => {
-    const { patient, referrer } = getDetails(order);
+    const { patient } = getDetails(order);
 
     if (!patient && ['preview', 'worksheet', 'results', 'report', 'labels-preview', 'form', 'ai-recommendations', 'ai-preview'].includes(type) && order?.id) {
        toast({
@@ -52,13 +52,32 @@ export const useOrderModals = ({
       return;
     }
 
-    setModalState({ 
-      isOpen: true, 
-      type, 
+    // Fortalecer 'report': si aún no tenemos catálogo (studies/packages),
+    // dispara una carga rápida antes de abrir para evitar vista vacía.
+    if (type === 'report' && (Array.isArray(studiesDetails) ? studiesDetails.length === 0 : true)) {
+      try {
+        // No bloquear la UI si falla; abrimos igual como fallback.
+        Promise.resolve(loadData?.()).finally(() => {
+          setModalState({
+            isOpen: true,
+            type,
+            order: order || { id: null, selected_items: [], status: 'Pendiente' },
+            aiRecommendations: extraData.recommendations || null,
+          });
+        });
+        return;
+      } catch(_) {
+        // Si algo lanza sincrónicamente, continuamos apertura normal
+      }
+    }
+
+    setModalState({
+      isOpen: true,
+      type,
       order: order || { id: null, selected_items: [], status: 'Pendiente' },
       aiRecommendations: extraData.recommendations || null,
     });
-  }, [getDetails, toast]);
+  }, [getDetails, toast, loadData, studiesDetails]);
 
   const closeModal = useCallback(() => {
     setModalState(prev => ({ ...prev, isOpen: false, type: null }));
@@ -72,7 +91,7 @@ export const useOrderModals = ({
     }
   }, [modalState.isOpen, modalState.type, modalState.order, referrerRef]);
 
-  const handleFormSubmit = async (orderData) => {
+  const handleFormSubmit = useCallback(async (orderData) => {
     setIsSubmitting(true);
     const savedOrder = await onSubmit(orderData);
     setIsSubmitting(false);
@@ -80,7 +99,7 @@ export const useOrderModals = ({
       closeModal();
       await loadData();
     }
-  };
+  }, [onSubmit, closeModal, loadData]);
 
   const handleValidateAndPreview = useCallback(async (orderId, results, status, notes) => {
     await handleSaveResults(orderId, results, status, notes, (updatedOrder) => {
@@ -198,7 +217,7 @@ export const useOrderModals = ({
         />
       </>
     );
-  }, [modalState, getDetails, isType, closeModal, handleFormSubmit, patients, referrers, studiesDetails, packagesDetails, isSubmitting, openModal, handleSaveResults, handleValidateAndPreview, getStudiesAndParametersForOrder, openAIPreviewModal]);
+  }, [modalState, getDetails, isType, closeModal, handleFormSubmit, patients, referrers, studiesDetails, packagesDetails, isSubmitting, openModal, handleSaveResults, handleValidateAndPreview, getStudiesAndParametersForOrder, openAIPreviewModal, referrerRef]);
 
   return {
     modalState,

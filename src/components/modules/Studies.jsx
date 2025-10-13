@@ -33,8 +33,7 @@ const StudiesInner = () => {
     studies, studiesCount, loadingStudies, isSubmitting,
     getParticularPrice, handleSubmit, handleImmediateParameterSave,
     handleDeleteStudy, handleImmediateParameterDelete, persistParameterOrder,
-    updateStudyPrices, studiesPage, setStudiesPage, PAGE_SIZE, totalStudiesPages,
-    loadStudies
+  updateStudyPrices, studiesPage, setStudiesPage, PAGE_SIZE, totalStudiesPages, pageSize, setPageSize
   } = useStudies(searchTerm);
   const isMobile = useMediaQuery('(max-width: 768px)');
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -166,10 +165,10 @@ const StudiesInner = () => {
           onHelpClick={()=> setIsHelpDialogOpen(true)}
           currentPage={studiesPage}
           totalCount={studiesCount}
-          pageSize={PAGE_SIZE}
+          pageSize={pageSize ?? PAGE_SIZE}
           onPageChange={setStudiesPage}
-          onSearch={(term)=> loadStudies(0, term)}
           totalStudiesPages={totalStudiesPages}
+          onPageSizeChange={setPageSize}
         />
         <CardContent className="flex-grow p-2 md:p-6 pt-0">
           {loadingStudies ? (

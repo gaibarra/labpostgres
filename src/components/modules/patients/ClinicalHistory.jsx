@@ -26,6 +26,37 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
       return null;
     };
 
+    // Helper to normalize names (study/parameter):
+    // - map unicode sub/superscript digits to ASCII
+    // - unify dash variants
+    // - strip diacritics, collapse punctuation, lowercase
+    // - tokenize and sort tokens for tolerant matching
+    const normalizeParamName = (s) => {
+      if (!s) return '';
+      try {
+        const str = String(s)
+          // Normalize common dash variants to '-'
+          .replace(/[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/g, '-')
+          // Map micro sign and Greek mu to 'u'
+          .replace(/[\u00B5\u03BC]/g, 'u')
+          // Map subscript digits ₀-₉ to 0-9
+          .replace(/[\u2080-\u2089]/g, (m) => String('0123456789'[m.charCodeAt(0) - 0x2080]))
+          // Map superscript digits ⁰¹²³⁴⁵⁶⁷⁸⁹ to 0-9
+          .replace(/[\u2070\u00B9\u00B2\u00B3\u2074-\u2079]/g, (m) => {
+            const map = { '⁰': '0', '¹': '1', '²': '2', '³': '3', '⁴': '4', '⁵': '5', '⁶': '6', '⁷': '7', '⁸': '8', '⁹': '9' };
+            return map[m] || m;
+          })
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '') // strip accents
+          .toLowerCase();
+        const base = str.replace(/[^a-z0-9]+/gi, ' ').trim();
+        if (!base) return '';
+        return base.split(/\s+/).sort().join(' ');
+      } catch (_) {
+        return String(s).toLowerCase();
+      }
+    };
+
     const ClinicalHistory = () => {
       const { patientId } = useParams();
       const { toast } = useToast();
@@ -47,13 +78,19 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
         const map = new Map();
         (allStudiesData || []).forEach(study => {
           const parametersMap = new Map();
+          const parametersNameIndex = new Map();
           if (Array.isArray(study.parameters)) {
             study.parameters.forEach(param => {
-              parametersMap.set(param.id, param);
-              // no indexamos por nombre aquí para evitar colisiones; el fallback lo hará con búsqueda lineal
+              // Indexar SIEMPRE por String(id) para evitar desajustes number/uuid/strings
+              parametersMap.set(String(param.id), param);
+              // índice por nombre normalizado para tolerar variantes (espacios, signos, orden de tokens)
+              const norm = normalizeParamName(param.name);
+              if (norm && !parametersNameIndex.has(norm)) {
+                parametersNameIndex.set(norm, param);
+              }
             });
           }
-          const enriched = { ...study, parametersMap };
+          const enriched = { ...study, parametersMap, parametersNameIndex };
           map.set(String(study.id), enriched);
           // Fallbacks opcionales: code/clave/name si existen
           if (study.code) map.set(String(study.code), enriched);
@@ -61,6 +98,18 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
           if (study.name) map.set(String(study.name), enriched);
         });
         return map;
+      }, [allStudiesData]);
+
+      // Índice por nombre de estudio normalizado para compatibilidad con variantes tipográficas
+      const studiesNameIndex = useMemo(() => {
+        const idx = new Map();
+        (allStudiesData || []).forEach(study => {
+          if (study?.name) {
+            const norm = normalizeParamName(study.name);
+            if (norm && !idx.has(norm)) idx.set(norm, { ...study, parametersMap: new Map((study.parameters||[]).map(p => [String(p.id), p])), parametersNameIndex: new Map((study.parameters||[]).map(p => [normalizeParamName(p.name), p])) });
+          }
+        });
+        return idx;
       }, [allStudiesData]);
 
       const processOrderResults = useCallback((order, patientData) => {
@@ -78,6 +127,13 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
               });
             }
             if (!studyInfo) {
+              // Intentar por nombre normalizado si el studyId es un nombre con variantes
+              const normKey = normalizeParamName(String(studyId));
+              if (normKey && studiesNameIndex.has(normKey)) {
+                studyInfo = studiesNameIndex.get(normKey);
+              }
+            }
+            if (!studyInfo) {
               return;
             }
 
@@ -91,35 +147,45 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
             studyResultsArray.forEach(paramResult => {
                 if (typeof paramResult !== 'object' || paramResult === null) return;
                 
-        const paramId = paramResult.parametroId;
+  const paramId = paramResult.parametroId;
                 if (!paramId) return;
 
                 // First, try to look up by ID (good practice)
-                let paramInfo = studyInfo.parametersMap.get(paramId); 
+    let paramInfo = studyInfo.parametersMap.get(String(paramId)); 
                 
                 // If not found, fall back to looking up by name (for legacy data)
                 if (!paramInfo) {
                   paramInfo = Array.from(studyInfo.parametersMap.values()).find(p => p.name === paramId);
                 }
 
+                // Finally, try normalized-name index (tolerant to punctuation/word order)
+                if (!paramInfo) {
+                  const norm = normalizeParamName(paramId);
+                  if (norm && studyInfo.parametersNameIndex?.has(norm)) {
+                    paramInfo = studyInfo.parametersNameIndex.get(norm);
+                  }
+                }
+
                 if (paramInfo) {
           // Parseo numérico robusto (soporta coma decimal)
           const raw = paramResult.valor;
           const parsedNum = (typeof raw === 'string') ? parseFloat(raw.replace(',', '.')) : (raw == null ? NaN : Number(raw));
+          // Asegurar unidad para referencia y presentación
+          const paramForRef = { ...paramInfo, unit: paramInfo.unit || studyInfo.general_units };
                     processed.push({
                         date: order.order_date,
                         folio: order.folio,
                         studyName: studyInfo.name,
                         parameterName: paramInfo.name,
             result: isNaN(parsedNum) ? raw : String(parsedNum),
-                        unit: paramInfo.unit || studyInfo.general_units || 'N/A',
-                        refRange: getReferenceRangeText(paramInfo, patientData)
+                        unit: paramForRef.unit || 'N/A',
+                        refRange: getReferenceRangeText(paramForRef, patientData)
                     });
                 }
             });
         });
         return processed;
-      }, [studiesMap, getReferenceRangeText]);
+  }, [studiesMap, studiesNameIndex, getReferenceRangeText]);
 
       const fetchPatientHistory = useCallback(async () => {
         if (!patientId || !studiesMap || studiesMap.size === 0) {
@@ -133,15 +199,62 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
             const payload = await apiClient.get(`/patients/${patientId}/history`);
             if (!payload) throw new Error('Respuesta vacía');
             setPatient(payload.patient);
-            const normalized = (payload.results || []).map(r => ({
-              date: r.date,
-              folio: r.folio,
-              studyName: r.studyName,
-              parameterName: r.parameterName,
-              result: r.result,
-              unit: r.unit,
-              refRange: ''
-            }));
+            // Enriquecer con texto de referencia usando el catálogo local de estudios/parámetros
+            const normalized = (payload.results || []).map(r => {
+              // Resolver estudio por múltiples claves conocidas o por nombre
+              const studyKeyCandidates = [r.studyId, r.studyCode, r.studyClave, r.studyName]
+                .filter(v => v !== undefined && v !== null)
+                .map(v => String(v));
+              let studyInfo = null;
+              for (const key of studyKeyCandidates) {
+                const found = studiesMap.get(key);
+                if (found) { studyInfo = found; break; }
+              }
+              if (!studyInfo && r.studyName) {
+                // fallback búsqueda lineal por nombre
+                studyInfo = Array.from(new Set(Array.from(studiesMap.values()))).find(s => s.name === r.studyName);
+              }
+              if (!studyInfo && r.studyName) {
+                // Intentar por nombre normalizado
+                const norm = normalizeParamName(r.studyName);
+                if (norm && studiesNameIndex.has(norm)) {
+                  studyInfo = studiesNameIndex.get(norm);
+                }
+              }
+
+              // Resolver parámetro por id o nombre
+              let paramInfo = null;
+              if (studyInfo) {
+                if (r.parameterId) {
+                  paramInfo = studyInfo.parametersMap.get(String(r.parameterId));
+                }
+                if (!paramInfo && r.parameterName) {
+                  paramInfo = Array.from(studyInfo.parametersMap.values()).find(p => p.name === r.parameterName);
+                }
+                if (!paramInfo && r.parameterName) {
+                  const norm = normalizeParamName(r.parameterName);
+                  if (norm && studyInfo.parametersNameIndex?.has(norm)) {
+                    paramInfo = studyInfo.parametersNameIndex.get(norm);
+                  }
+                }
+              }
+
+              // Asegurar unidad en el param para que el texto de referencia incluya unidades correctas
+              const paramForRef = paramInfo ? { ...paramInfo, unit: paramInfo.unit || studyInfo?.general_units } : null;
+              // Preferir SIEMPRE la referencia calculada cuando esté disponible; sólo caer al valor del backend si no podemos calcular o es N/A
+              const refRangeText = paramForRef ? getReferenceRangeText(paramForRef, payload.patient) : null;
+              const finalRefRange = (refRangeText && refRangeText !== 'N/A') ? refRangeText : (r.refRange || 'N/A');
+
+              return {
+                date: r.date,
+                folio: r.folio,
+                studyName: r.studyName,
+                parameterName: r.parameterName,
+                result: r.result,
+                unit: r.unit || paramForRef?.unit || 'N/A',
+                refRange: finalRefRange
+              };
+            });
             setHistoricalResults(normalized);
             setAllParametersForChart(payload.chartableParameters || []);
             return; // listo
@@ -175,7 +288,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
         } finally {
           setIsComponentLoading(false);
         }
-      }, [patientId, toast, studiesMap, processOrderResults]);
+  }, [patientId, toast, studiesMap, studiesNameIndex, processOrderResults, getReferenceRangeText]);
 
       useEffect(() => {
         if (!isAppDataLoading && studiesMap.size > 0) {

@@ -37,9 +37,45 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
         return { ageYears: 0, unit: 'años', fullMonths: 0, fullDays: 0, fullWeeks: 0, fullHours: 0 };
       }, [patient?.date_of_birth, calculateAgeInUnits]);
 
+      // Infer studies to display. Prefer selected_items; if absent (e.g., after a PUT/GET race),
+      // fallback to detecting studies from order.results by matching study ids or parameter ids.
       const studiesToDisplayInReport = useMemo(() => {
-        if (!order || !studiesDetails || !packagesData) return [];
-        return getStudiesAndParametersForOrder(order.selected_items, studiesDetails, packagesData);
+        if (!order || !studiesDetails) return [];
+
+        const byOrderItems = (order.selected_items && order.selected_items.length && packagesData)
+          ? getStudiesAndParametersForOrder(order.selected_items, studiesDetails, packagesData)
+          : [];
+
+        if (byOrderItems.length > 0) return byOrderItems;
+
+        // Fallback: build from results
+        const results = order.results || {};
+        const studyIdSet = new Set();
+        const studiesById = new Map((studiesDetails || []).map(s => [String(s.id), s]));
+
+        const allKeys = Object.keys(results);
+        // 1) Direct study-id keys
+        for (const key of allKeys) {
+          if (studiesById.has(String(key))) studyIdSet.add(String(key));
+        }
+        // 2) Parameter-id matching across any bucket
+        const allEntries = allKeys.flatMap(k => Array.isArray(results[k]) ? results[k] : []);
+        if (allEntries.length) {
+          // Build paramId->studyId map once
+          const paramToStudyId = new Map();
+          for (const s of (studiesDetails || [])) {
+            for (const p of (s.parameters || [])) {
+              paramToStudyId.set(String(p.id), String(s.id));
+            }
+          }
+          for (const r of allEntries) {
+            const sid = paramToStudyId.get(String(r?.parametroId));
+            if (sid && studiesById.has(sid)) studyIdSet.add(sid);
+          }
+        }
+
+        const inferredStudies = Array.from(studyIdSet).map(id => studiesById.get(id)).filter(Boolean);
+        return inferredStudies;
       }, [order, studiesDetails, packagesData, getStudiesAndParametersForOrder]);
 
           // (debug eliminado: consola de resultados del reporte)
@@ -209,7 +245,7 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
                   if (typeof window !== 'undefined') {
                     try { console.debug('[REPORT][STUDY]', { id: studyDetail.id, name: studyDetail.name, finalCount: directResults.length, usedFallback }); } catch (e) { /* ignore log error */ }
                   }
-                  const currentOrderResults = directResults;
+                  const currentOrderResults = Array.isArray(directResults) ? directResults : [];
 
                   return (
                     <ReportStudySection

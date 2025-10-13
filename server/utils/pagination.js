@@ -1,6 +1,11 @@
 function parsePagination(query) {
   const page = Math.max(parseInt(query.page || '1', 10), 1);
-  const pageSize = Math.min(Math.max(parseInt(query.pageSize || query.limit || '25', 10), 1), 200);
+  // Increase global max page size to support large selection lists (Estudios/Paquetes)
+  const MAX_CAP = 5000;
+  const pageSize = Math.min(
+    Math.max(parseInt(query.pageSize || query.limit || '25', 10), 1),
+    MAX_CAP
+  );
   const offset = (page - 1) * pageSize;
   return { page, pageSize, offset, limit: pageSize };
 }

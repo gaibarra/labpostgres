@@ -47,9 +47,9 @@ const Packages = () => {
     setIsLoading(true);
     try {
       // Get detailed packages with items aggregated
-      const pkgResp = await apiClient.get('/packages/detailed?limit=500');
+  const pkgResp = await apiClient.get('/packages/detailed?limit=5000');
       setPackages(pkgResp.data || []);
-      const studiesResp = await apiClient.get('/analysis?limit=500');
+  const studiesResp = await apiClient.get('/analysis?limit=5000');
       setAvailableStudies(studiesResp.data || []);
       // Find 'Particular' referrer
       const refResp = await apiClient.get('/referrers?search=Particular&limit=1');
@@ -93,12 +93,22 @@ const Packages = () => {
       setIsSubmitting(false);
       return;
     }
-    const { id, particularPrice, items, ...dataToSave } = packageData;
+    const { id, particularPrice, items, ...rest } = packageData;
+    // Normalizar/validar antes de enviar
+    const name = (rest.name || '').trim();
+    const description = rest.description != null ? String(rest.description).trim() : undefined;
+    const price = particularPrice != null && String(particularPrice).trim() !== '' ? Number(particularPrice) : undefined;
+    if (name.length < 2) {
+      toast({ title: 'Validación', description: 'El nombre del paquete debe tener al menos 2 caracteres.', variant: 'destructive' });
+      setIsSubmitting(false);
+      return;
+    }
+    const dataToSave = { name, description, price };
 
     try {
       let savedPackage;
 
-      if (id) {
+  if (id) {
         // Update package core fields
         await apiClient.put(`/packages/${id}`, dataToSave);
         // Replace items: delete all existing then re-add
@@ -130,12 +140,12 @@ const Packages = () => {
         }
       }
 
-      const price = parseFloat(particularPrice);
-      if (!isNaN(price) && particularReferrer) {
+      const priceNum = parseFloat(particularPrice);
+      if (!isNaN(priceNum) && particularReferrer) {
         const priceList = { ...(particularReferrer.listaprecios || { studies: [], packages: [] }) };
         if (!Array.isArray(priceList.packages)) priceList.packages = [];
         const existingPriceIndex = priceList.packages.findIndex(p => p.itemId === savedPackage.id);
-        if (existingPriceIndex > -1) priceList.packages[existingPriceIndex].price = price; else priceList.packages.push({ itemId: savedPackage.id, price, itemType: 'package' });
+        if (existingPriceIndex > -1) priceList.packages[existingPriceIndex].price = priceNum; else priceList.packages.push({ itemId: savedPackage.id, price: priceNum, itemType: 'package' });
         await apiClient.put(`/referrers/${particularReferrer.id}`, { listaprecios: priceList });
       }
 
@@ -144,7 +154,18 @@ const Packages = () => {
       setCurrentPackage(initialPackageForm);
 
     } catch(error) {
-      toast({ title: "Error al guardar el paquete", description: error.message, variant: "destructive" });
+      // Mejorar mensajes de validación Zod desde backend
+      if (error?.code === 'VALIDATION_ERROR' && error?.details?.details) {
+        try {
+          const issues = error.details.details;
+          const msg = issues.map(i => `${i.path?.join('.') || 'campo'}: ${i.message}`).join(' | ');
+          toast({ title: 'Validación fallida', description: msg, variant: 'destructive' });
+        } catch {
+          toast({ title: 'Validación fallida', description: error.message, variant: 'destructive' });
+        }
+      } else {
+        toast({ title: "Error al guardar el paquete", description: error.message, variant: "destructive" });
+      }
     } finally {
       setIsSubmitting(false);
     }

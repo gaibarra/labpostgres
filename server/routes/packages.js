@@ -13,13 +13,24 @@ const { sanitizeBody } = require('../middleware/sanitize');
 function activePool(req){ return req.tenantPool || pool; }
 
 router.get('/', auth, requirePermission('packages','read'), async (req,res,next)=>{ try {
-  const { limit, offset } = parsePagination(req.query); const { clause, params } = buildSearchFilter(req.query.search,['name']); let base='FROM analysis_packages'; if(clause) base+=' WHERE '+clause; const rowsQ=`SELECT * ${base} ORDER BY created_at DESC LIMIT $${params.length+1} OFFSET $${params.length+2}`; const cntQ=`SELECT COUNT(*)::int AS total ${base}`; const [r,c]=await Promise.all([activePool(req).query(rowsQ.replace(/\$SEARCH/g,'$'),[...params,limit,offset]), activePool(req).query(cntQ.replace(/\$SEARCH/g,'$'),params)]); res.json({ data:r.rows, page:{ limit, offset, total:c.rows[0].total }}); } catch(e){ console.error(e); next(new AppError(500,'Error listando paquetes','PACKAGE_LIST_FAIL'));} });
+  const { limit, offset } = parsePagination(req.query);
+  // Buscar por nombre y descripción para soporte de selección amplia
+  const { clause, params } = buildSearchFilter(req.query.search,['name','description']);
+  let base='FROM analysis_packages'; if(clause) base+=' WHERE '+clause;
+  const rowsQ=`SELECT * ${base} ORDER BY created_at DESC LIMIT $${params.length+1} OFFSET $${params.length+2}`;
+  const cntQ=`SELECT COUNT(*)::int AS total ${base}`;
+  const [r,c]=await Promise.all([
+    activePool(req).query(rowsQ.replace(/\$SEARCH/g,'$'),[...params,limit,offset]),
+    activePool(req).query(cntQ.replace(/\$SEARCH/g,'$'),params)
+  ]);
+  res.json({ data:r.rows, page:{ limit, offset, total:c.rows[0].total }});
+} catch(e){ console.error(e); next(new AppError(500,'Error listando paquetes','PACKAGE_LIST_FAIL'));} });
 
 // Detailed packages including items aggregated
 router.get('/detailed', auth, requirePermission('packages','read'), async (req,res,next)=>{
   try {
-    const { limit, offset } = parsePagination(req.query);
-    const { clause, params } = buildSearchFilter(req.query.search,['name']);
+  const { limit, offset } = parsePagination(req.query);
+  const { clause, params } = buildSearchFilter(req.query.search,['name','description']);
     const where = clause ? ` WHERE ${clause}` : '';
     // Detect if analysis_package_items table exists in tenant
     const { rows: existsRows } = await activePool(req).query(`SELECT 1 FROM information_schema.tables WHERE table_name='analysis_package_items' LIMIT 1`);

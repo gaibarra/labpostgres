@@ -77,36 +77,90 @@ import autoTable from 'jspdf-autotable';
         patientInfoGrid.push(row);
       }
 
-      const studiesToRenderInPdf = getStudiesAndParametersForOrder(order.selected_items, studiesDetails, packagesData);
+      // Build studies to render with robust inference (same as preview):
+      // 1) Prefer selected_items via getStudiesAndParametersForOrder
+      // 2) If missing/empty, infer studies from order.results by studyId or parameterId mapping
+      const computeStudiesToRender = () => {
+        const fromSelected = (order.selected_items && order.selected_items.length && packagesData)
+          ? getStudiesAndParametersForOrder(order.selected_items, studiesDetails, packagesData)
+          : [];
+        if (fromSelected && fromSelected.length) return fromSelected;
+
+        const results = order.results || {};
+        const studiesById = new Map((studiesDetails || []).map(s => [String(s.id), s]));
+        const studyIdSet = new Set();
+        const allKeys = Object.keys(results);
+        // Direct study-id keys
+        for (const k of allKeys) {
+          if (studiesById.has(String(k))) studyIdSet.add(String(k));
+        }
+        // Parameter-id to study mapping
+        const paramToStudyId = new Map();
+        for (const s of (studiesDetails || [])) {
+          for (const p of (s.parameters || [])) {
+            paramToStudyId.set(String(p.id), String(s.id));
+          }
+        }
+        const allEntries = allKeys.flatMap(k => Array.isArray(results[k]) ? results[k] : []);
+        for (const r of allEntries) {
+          const sid = paramToStudyId.get(String(r?.parametroId));
+          if (sid && studiesById.has(sid)) studyIdSet.add(sid);
+        }
+        return Array.from(studyIdSet).map(id => studiesById.get(id)).filter(Boolean);
+      };
+
+      const studiesToRenderInPdf = computeStudiesToRender();
+
       let mainContent = [];
       
       studiesToRenderInPdf.forEach(studyDetail => {
+        if (!studyDetail) return;
         mainContent.push([{ content: studyDetail.name, colSpan: 4, styles: { fillColor: [241, 245, 249], textColor: [14, 116, 144], fontStyle: 'bold', fontSize: 11, cellPadding: 2.5 } }]);
-        
-        const resultsForStudy = order.results?.[studyDetail.id] || [];
-        const parameters = studyDetail.parameters || [];
+
+        // Clean numeric fields in reference ranges to match preview behavior
+        const parameters = (studyDetail.parameters || []).map(p => ({
+          ...p,
+          valorReferencia: (p.valorReferencia || []).map(vr => ({
+            ...vr,
+            edadMin: cleanNumericValueForStorage(vr.edadMin),
+            edadMax: cleanNumericValueForStorage(vr.edadMax),
+            valorMin: cleanNumericValueForStorage(vr.valorMin),
+            valorMax: cleanNumericValueForStorage(vr.valorMax),
+            unidadEdad: vr.unidadEdad || 'años',
+          }))
+        }));
+
+        // Prefer results bucketed under the study id; fallback: search across all buckets by parametroId
+        let directResults = order.results?.[studyDetail.id] || order.results?.[String(studyDetail.id)] || [];
+        const allResultKeys = Object.keys(order.results || {});
+        if ((!directResults || directResults.length === 0) && allResultKeys.length > 0) {
+          const flat = allResultKeys.flatMap(k => Array.isArray(order.results[k]) ? order.results[k] : []);
+          const paramIdsSet = new Set(parameters.map(p => String(p.id)));
+          const matched = flat.filter(r => paramIdsSet.has(String(r.parametroId)));
+          if (matched.length) directResults = matched;
+        }
 
         if (parameters.length > 0) {
           parameters.forEach(param => {
-            const resultEntry = resultsForStudy.find(r => r.parametroId === param.id);
+            const resultEntry = (Array.isArray(directResults) ? directResults : []).find(r => String(r.parametroId) === String(param.id));
             let resultValueToDisplay = "PENDIENTE";
             if (resultEntry && resultEntry.valor !== undefined && resultEntry.valor !== null && String(resultEntry.valor).trim() !== '') {
-                resultValueToDisplay = String(resultEntry.valor);
+              resultValueToDisplay = String(resultEntry.valor);
             }
 
             const refData = getReferenceRangeText(param, patient, patientAgeData, true);
             const refRangeText = refData.valueText === 'N/A' ? 'N/A' : `${refData.valueText}\n${refData.demographics}`;
-            
+
             mainContent.push([
-                param.name,
-                resultValueToDisplay,
-                param.unit || studyDetail.general_units || '',
-                refRangeText,
-                param,
+              param.name,
+              resultValueToDisplay,
+              param.unit || studyDetail.general_units || '',
+              refRangeText,
+              param,
             ]);
           });
         } else {
-            mainContent.push([{ content: "Este estudio no tiene parámetros definidos.", colSpan: 4, styles: { fontStyle: 'italic', textColor: [100, 116, 139], halign: 'center', cellPadding: 3 } }]);
+          mainContent.push([{ content: "Este estudio no tiene parámetros definidos.", colSpan: 4, styles: { fontStyle: 'italic', textColor: [100, 116, 139], halign: 'center', cellPadding: 3 } }]);
         }
       });
 

@@ -21,8 +21,8 @@ import React, { useState, useEffect } from 'react';
     }) => {
       const embedded = typeof isOpen === 'undefined'; // embedded mode when wrapped by external dialog
       const [currentPackage, setCurrentPackage] = useState(initialCurrentPackage || initialPackageForm);
-      const [studySearchTerm, setStudySearchTerm] = useState('');
-      const [packageSearchTerm, setPackageSearchTerm] = useState('');
+  const [studySearchTerm, setStudySearchTerm] = useState('');
+  const [packageSearchTerm, setPackageSearchTerm] = useState('');
 
       useEffect(() => {
         const pkg = initialCurrentPackage || initialPackageForm;
@@ -63,19 +63,44 @@ import React, { useState, useEffect } from 'react';
         onSubmit(currentPackage);
       };
 
-      const filteredAvailableStudies = availableStudies.filter(study => 
-        study && study.name && study.name.toLowerCase().includes(studySearchTerm.toLowerCase())
-      );
+      // Helpers: búsqueda amplia y tolerante a acentos/espacios
+      const normalize = (s) => (s || '')
+        .toString()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '') // quita acentos
+        .toLowerCase();
 
-      const filteredAvailablePackagesForSelection = availablePackagesForSelection.filter(pkg =>
-        pkg && pkg.name && pkg.name.toLowerCase().includes(packageSearchTerm.toLowerCase())
-      );
+      const matchesSearch = (text, term) => {
+        const nTerm = normalize(term).trim();
+        if (!nTerm) return true; // sin término => no filtra
+        const tokens = nTerm.split(/\s+/g);
+        const haystack = normalize(text || '');
+        return tokens.every(t => haystack.includes(t));
+      };
+
+      const filteredAvailableStudies = availableStudies.filter(study => {
+        if (!study) return false;
+        const combined = [
+          study.name,
+          study.clave,
+          study.code,
+          study.category,
+          study.description,
+        ].filter(Boolean).join(' | ');
+        return matchesSearch(combined, studySearchTerm);
+      });
+
+      const filteredAvailablePackagesForSelection = availablePackagesForSelection.filter(pkg => {
+        if (!pkg) return false;
+        const combined = [pkg.name, pkg.description].filter(Boolean).join(' | ');
+        return matchesSearch(combined, packageSearchTerm);
+      });
 
   const formCore = (
     <form onSubmit={handleSubmitForm} className="grid gap-4 py-4 px-2">
               <div>
                 <Label htmlFor="name" className="text-slate-700 dark:text-slate-300">Nombre del Paquete</Label>
-                <Input id="name" name="name" value={currentPackage.name} onChange={handleInputChange} placeholder="Ej: Perfil Básico, Checkup Completo" className="bg-white/80 dark:bg-slate-800/80" required />
+                <Input id="name" name="name" value={currentPackage.name} onChange={handleInputChange} placeholder="Ej: Perfil Básico, Checkup Completo" className="bg-white/80 dark:bg-slate-800/80" required minLength={2} />
               </div>
               <div>
                 <Label htmlFor="description" className="text-slate-700 dark:text-slate-300">Descripción</Label>
@@ -107,7 +132,7 @@ import React, { useState, useEffect } from 'react';
                       <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                       <Input 
                         type="search" 
-                        placeholder="Buscar estudios..." 
+                        placeholder="Buscar estudios por nombre, clave o categoría..." 
                         value={studySearchTerm}
                         onChange={(e) => setStudySearchTerm(e.target.value)}
                         className="pl-8 bg-white/80 dark:bg-slate-800/80"
@@ -141,7 +166,7 @@ import React, { useState, useEffect } from 'react';
                       <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                       <Input 
                         type="search" 
-                        placeholder="Buscar paquetes..." 
+                        placeholder="Buscar paquetes por nombre o descripción..." 
                         value={packageSearchTerm}
                         onChange={(e) => setPackageSearchTerm(e.target.value)}
                         className="pl-8 bg-white/80 dark:bg-slate-800/80"
@@ -218,7 +243,7 @@ import React, { useState, useEffect } from 'react';
                   <Sparkles className="mr-2 h-4 w-4" /> Asistente IA
                 </Button>
               </DialogTitle>
-              <DialogDescription>Define los detalles del paquete, su precio base para "Particular", y los estudios o paquetes que incluye.</DialogDescription>
+              <DialogDescription>Define los detalles del paquete, su precio base para &quot;Particular&quot;, y los estudios o paquetes que incluye.</DialogDescription>
             </DialogHeader>
             {formCore}
           </DialogContent>

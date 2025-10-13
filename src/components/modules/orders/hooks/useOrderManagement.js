@@ -61,8 +61,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
                 apiClient.get('/work-orders'),
                 apiClient.get('/patients'),
                 apiClient.get('/referrers?limit=200'),
-                apiClient.get('/analysis/detailed?limit=500'),
-                apiClient.get('/packages/detailed?limit=500')
+                apiClient.get('/analysis/detailed?limit=5000'),
+                apiClient.get('/packages/detailed?limit=5000')
               ]);
 
               const safePatients = (patientsData || []).map(p => ({
@@ -282,7 +282,11 @@ import { useState, useEffect, useCallback, useRef } from 'react';
             // Prefer refetched authoritative values si contienen resultados
             results: (refetched.results && Object.keys(refetched.results).length) ? refetched.results : mergedUpdatedOrder.results,
             status: refetched.status || mergedUpdatedOrder.status,
-            validation_notes: refetched.validation_notes ?? mergedUpdatedOrder.validation_notes
+            validation_notes: refetched.validation_notes ?? mergedUpdatedOrder.validation_notes,
+            // Preserve selected_items from local state if backend omits/filters them to avoid empty preview
+            selected_items: Array.isArray(refetched.selected_items) && refetched.selected_items.length
+              ? refetched.selected_items
+              : (mergedUpdatedOrder.selected_items || [])
           } : mergedUpdatedOrder;
 
           console.groupCollapsed('%c[RESULTS][PREVIEW_OPEN]','color:#0ea5e9;font-weight:bold;', orderId);

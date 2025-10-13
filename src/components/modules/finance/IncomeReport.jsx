@@ -53,29 +53,32 @@ import React, { useState, useMemo } from 'react';
         
         const { totalIncome, chartData } = useMemo(() => {
             if (!reportData) return { totalIncome: 0, chartData: [] };
-
-            const total = reportData.reduce((acc, order) => acc + (order.total_price || 0), 0);
+            const toNumber = (v) => {
+                const n = typeof v === 'number' ? v : parseFloat(String(v ?? '0').replace(/[,\s]/g, ''));
+                return Number.isFinite(n) ? n : 0;
+            };
+            const total = reportData.reduce((acc, order) => acc + toNumber(order.total_price), 0);
 
             let groupedData = {};
             if (groupBy === 'all') {
-                groupedData = { 'Todas las Órdenes': reportData.reduce((acc, order) => acc + (order.total_price || 0), 0) };
+                groupedData = { 'Todas las Órdenes': reportData.reduce((acc, order) => acc + toNumber(order.total_price), 0) };
             } else if (groupBy === 'day') {
                 reportData.forEach(order => {
                     const day = format(new Date(order.order_date), 'yyyy-MM-dd');
                     if (!groupedData[day]) groupedData[day] = 0;
-                    groupedData[day] += order.total_price || 0;
+                    groupedData[day] += toNumber(order.total_price);
                 });
             } else if (groupBy === 'referrer') {
                 reportData.forEach(order => {
                     const referrerName = order.referrer_name || order.referrer?.name || 'Sin Referente';
                     if (!groupedData[referrerName]) groupedData[referrerName] = 0;
-                    groupedData[referrerName] += order.total_price || 0;
+                    groupedData[referrerName] += toNumber(order.total_price);
                 });
             } else if (groupBy === 'patient') {
                 reportData.forEach(order => {
                     const patientName = order.patient_name || order.patient?.full_name || 'Paciente Anónimo';
                     if (!groupedData[patientName]) groupedData[patientName] = 0;
-                    groupedData[patientName] += order.total_price || 0;
+                    groupedData[patientName] += toNumber(order.total_price);
                 });
             }
             
@@ -231,7 +234,7 @@ import React, { useState, useMemo } from 'react';
                                                         <TableCell>{format(new Date(order.order_date), 'dd/MM/yyyy')}</TableCell>
                                                         <TableCell>{order.patient_name || order.patient?.full_name || 'N/A'}</TableCell>
                                                         <TableCell>{order.referrer_name || order.referrer?.name || 'N/A'}</TableCell>
-                                                        <TableCell className="text-right">${(order.total_price || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</TableCell>
+                                                        <TableCell className="text-right">${(typeof order.total_price === 'number' ? order.total_price : parseFloat(String(order.total_price ?? '0').replace(/[,\s]/g, '')) || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
                                                     </TableRow>
                                                 ))}
                                             </TableBody>

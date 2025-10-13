@@ -5,6 +5,14 @@ import { formatInTimeZone } from '@/lib/dateUtils';
 export const OrderReceipt = React.forwardRef(({ order, patient, referrer, studiesDetails, packagesData }, ref) => {
   const { settings } = useSettings();
   const labInfo = settings.labInfo || {};
+  const reportSettings = settings.reportSettings || {};
+
+  // Normalized lab fields (support both modern and legacy keys)
+  const labName = labInfo.name || labInfo.nombreComercial || 'Laboratorio Clínico';
+  const labRFC = labInfo.taxId || labInfo.rfc || '';
+  const labPhone = labInfo.phone || labInfo.telefonoPrincipal || labInfo.secondaryPhone || labInfo.telefono || '';
+  const labEmail = labInfo.email || '';
+  const labWebsite = labInfo.website || '';
 
   // Helper: convierte a número de forma segura (strings, null, undefined)
   const num = (v) => {
@@ -103,13 +111,13 @@ export const OrderReceipt = React.forwardRef(({ order, patient, referrer, studie
   return (
     <div ref={ref} className="p-8 font-sans text-sm text-black bg-white">
       <header className="flex justify-between items-center mb-8 border-b pb-4">
-        {labInfo.logoUrl && (
+        {reportSettings.showLogo !== false && labInfo.logoUrl && (
           <div>
             <img src={labInfo.logoUrl} alt="Logo del Laboratorio" className="h-16 object-contain" />
           </div>
         )}
         <div className="text-right">
-          <h1 className="text-2xl font-bold">{labInfo.nombreComercial || 'Laboratorio Clínico'}</h1>
+          <h1 className="text-2xl font-bold">{labName}</h1>
           <p>{formatAddress(labInfo.address ?? {
             calle: labInfo.calle,
             numeroExterior: labInfo.numeroExterior,
@@ -120,7 +128,13 @@ export const OrderReceipt = React.forwardRef(({ order, patient, referrer, studie
             estado: labInfo.estado,
             pais: labInfo.pais,
           })}</p>
-          <p>Tel: {labInfo.telefonoPrincipal || labInfo.phone || ''}</p>
+          {(labPhone || labEmail || labWebsite) && (
+            <p>
+              {labPhone ? `Tel: ${labPhone}` : ''}
+              {labEmail ? `${labPhone ? ' · ' : ''}${labEmail}` : ''}
+              {labWebsite ? `${labPhone || labEmail ? ' · ' : ''}${labWebsite}` : ''}
+            </p>
+          )}
         </div>
       </header>
 
@@ -188,8 +202,9 @@ export const OrderReceipt = React.forwardRef(({ order, patient, referrer, studie
 
       <footer className="text-center text-xs text-gray-500 mt-12 pt-4 border-t">
         <p>Gracias por su preferencia.</p>
-        <p>{labInfo.nombreComercial} - {labInfo.razonSocial} - RFC: {labInfo.rfc}</p>
+  <p>{labName}{labInfo.razonSocial ? ` - ${labInfo.razonSocial}` : ''}{labRFC ? ` - RFC: ${labRFC}` : ''}</p>
       </footer>
     </div>
   );
 });
+OrderReceipt.displayName = 'OrderReceipt';

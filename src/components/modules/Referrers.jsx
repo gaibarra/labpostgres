@@ -52,15 +52,15 @@ const Referrers = () => {
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
-      const refResp = await apiClient.get('/referrers?limit=500');
+  const refResp = await apiClient.get('/referrers?limit=5000');
       const referrersData = (refResp?.data || []).map(r => ({ ...r, listaprecios: ensurePriceListStructure(r.listaprecios) }));
       setReferrers(referrersData);
       setParticularReferrer(referrersData.find(r => r.name === 'Particular') || null);
 
-      const studiesResp = await apiClient.get('/analysis?limit=500');
+  const studiesResp = await apiClient.get('/analysis?limit=5000');
       setStudies((studiesResp?.data || []).map(s => ({ id: s.id, name: s.name, clave: s.clave })));
 
-      const packagesResp = await apiClient.get('/packages?limit=500');
+  const packagesResp = await apiClient.get('/packages?limit=5000');
       setPackagesData((packagesResp?.data || []).map(p => ({ id: p.id, name: p.name })));
 
     } catch (error) {

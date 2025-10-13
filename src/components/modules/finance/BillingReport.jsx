@@ -23,7 +23,7 @@ const BillingReport = () => {
   const fetchInstitutions = useCallback(async () => {
     setIsFetchingInstitutions(true);
     try {
-      const res = await apiClient.get('/referrers?limit=500&search=');
+  const res = await apiClient.get('/referrers?limit=5000&search=');
       const data = (res?.data||[]).filter(r=>r.entity_type==='Institución');
       setInstitutions(data.map(i => ({ value: i.id, label: i.name })));
     } catch (e) {

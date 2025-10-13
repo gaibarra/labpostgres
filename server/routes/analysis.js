@@ -493,7 +493,7 @@ router.get('/', auth, requirePermission('studies','read'), async (req, res, next
     const schema = await loadAnalysisSchema(req);
     const { limit, offset } = parsePagination(req.query);
     const sort = String(req.query.sort || '').toLowerCase();
-    const searchFields = ['name'];
+  const searchFields = ['name','description'];
     if (schema.aCols.has('clave')) searchFields.push('clave');
     if (schema.aCols.has('code')) searchFields.push('code');
     if (schema.aCols.has('category')) searchFields.push('category');
@@ -530,7 +530,7 @@ router.get('/detailed', auth, requirePermission('studies','read'), async (req,re
     const schema = await loadAnalysisSchema(req);
     const { limit, offset } = parsePagination(req.query);
     const sort = String(req.query.sort || '').toLowerCase();
-    const searchFields = ['name'];
+  const searchFields = ['name','description'];
     if (schema.aCols.has('clave')) searchFields.push('clave');
     if (schema.aCols.has('code')) searchFields.push('code');
     if (schema.aCols.has('category')) searchFields.push('category');

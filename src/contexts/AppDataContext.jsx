@@ -53,7 +53,9 @@ export const AppDataProvider = ({ children }) => {
       await loadPatients();
       const [referrersData, studiesData, packagesData, rolesData] = await Promise.all([
         apiClient.get('/referrers'),
-        apiClient.get('/analysis'),
+        // Usar versión detallada para incluir parámetros y rangos de referencia
+        // IMPORTANTE: pedir página grande para cargar TODO el catálogo (evita quedarnos sólo con los primeros 25)
+        apiClient.get('/analysis/detailed?pageSize=5000'),
         apiClient.get('/packages'),
         apiClient.get('/roles')
       ]);
