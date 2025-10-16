@@ -78,6 +78,13 @@ import React, { useState, useEffect } from 'react';
         return tokens.every(t => haystack.includes(t));
       };
 
+      // Build a quick lookup of selected items for fast checks
+      // Normalize backend 'analysis' to 'study' so matching works
+      const selectedKeySet = new Set(
+        (Array.isArray(currentPackage.items) ? currentPackage.items : [])
+          .map(it => `${it.item_type === 'analysis' ? 'study' : it.item_type}:${it.item_id}`)
+      );
+
       const filteredAvailableStudies = availableStudies.filter(study => {
         if (!study) return false;
         const combined = [
@@ -88,12 +95,27 @@ import React, { useState, useEffect } from 'react';
           study.description,
         ].filter(Boolean).join(' | ');
         return matchesSearch(combined, studySearchTerm);
+      })
+      // Selected first, then by name asc
+      .sort((a, b) => {
+        const aSel = selectedKeySet.has(`study:${a.id}`) ? 1 : 0;
+        const bSel = selectedKeySet.has(`study:${b.id}`) ? 1 : 0;
+        if (aSel !== bSel) return bSel - aSel; // selected first
+        const an = (a.name || '').localeCompare(b.name || undefined, 'es', { sensitivity: 'base' });
+        return an;
       });
 
       const filteredAvailablePackagesForSelection = availablePackagesForSelection.filter(pkg => {
         if (!pkg) return false;
         const combined = [pkg.name, pkg.description].filter(Boolean).join(' | ');
         return matchesSearch(combined, packageSearchTerm);
+      })
+      // Selected first, then by name asc
+      .sort((a, b) => {
+        const aSel = selectedKeySet.has(`package:${a.id}`) ? 1 : 0;
+        const bSel = selectedKeySet.has(`package:${b.id}`) ? 1 : 0;
+        if (aSel !== bSel) return bSel - aSel; // selected first
+        return (a.name || '').localeCompare(b.name || undefined, 'es', { sensitivity: 'base' });
       });
 
   const formCore = (
@@ -145,7 +167,7 @@ import React, { useState, useEffect } from 'react';
                           <div key={`study-${study.id}`} className="flex items-center space-x-2 p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700">
                             <Checkbox
                               id={`item-${study.id}-study`}
-                              checked={currentPackage.items.some(item => item.item_id === study.id && item.item_type === 'study')}
+                              checked={currentPackage.items.some(item => item.item_id === study.id && (item.item_type === 'study' || item.item_type === 'analysis'))}
                               onCheckedChange={() => handleItemSelectionChange(study.id, 'study')}
                             />
                             <label
