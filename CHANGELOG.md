@@ -2,6 +2,11 @@
 
 Todas las notas relevantes de cambios de la app. Sigue el formato YYYY-MM-DD.
 
+## 2025-10-18
+
+- Fix UX: en el formulario de Orden, los selects de "Paciente" y "Referente" ahora muestran correctamente el valor seleccionado. El componente `SearchableSelect` normaliza la comparación string/number y fuerza clases de texto legibles en modo oscuro/claro.
+ - Reporte: se añadió “Modo compacto” para previsualización y PDF, y queda ACTIVADO por defecto (ahorra papel reduciendo márgenes/paddings y tamaños en encabezado/tabla sin perder legibilidad).
+
 ## 2025-10-12
 
 - Remoción completa de Perfil Hormonal:

@@ -29,7 +29,9 @@ const defaultSettings = {
   reportSettings: {
     header: "Encabezado por defecto",
     footer: "Pie de página por defecto",
-    showLogo: true
+    showLogo: true,
+    showLogoInReport: true,
+    compactByDefault: true
   },
   uiSettings: {
     theme: "system",

@@ -18,7 +18,9 @@ const SearchableSelect = forwardRef(({
 }, ref) => {
   const [open, setOpen] = useState(false);
 
-  const selectedOption = options.find(option => option.value === value);
+  // Normalizar comparación para soportar ids numéricos/cadena (evita que no se muestre el valor seleccionado)
+  const valueKey = value != null ? String(value) : '';
+  const selectedOption = options.find(option => String(option.value) === valueKey);
 
   const handleSelect = (currentValue) => {
     const option = options.find(o => o.label.toLowerCase() === currentValue.toLowerCase());
@@ -38,10 +40,13 @@ const SearchableSelect = forwardRef(({
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          className={cn("w-full justify-between bg-white/80 dark:bg-slate-800/80", className)}
+          className={cn("w-full justify-between bg-white/80 dark:bg-slate-800/80 text-slate-900 dark:text-slate-100", className)}
           disabled={disabled}
+          title={selectedOption ? selectedOption.label : placeholder}
         >
-          {selectedOption ? selectedOption.label : placeholder}
+          <span className="truncate">
+            {selectedOption ? selectedOption.label : placeholder}
+          </span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
@@ -60,7 +65,7 @@ const SearchableSelect = forwardRef(({
                   <Check
                     className={cn(
                       "mr-2 h-4 w-4",
-                      value === option.value ? "opacity-100" : "opacity-0"
+                      String(value) === String(option.value) ? "opacity-100" : "opacity-0"
                     )}
                   />
                   {option.label}

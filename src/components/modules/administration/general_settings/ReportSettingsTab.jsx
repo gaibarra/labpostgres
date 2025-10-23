@@ -51,6 +51,14 @@ const ReportSettingsTab = ({ settings, handleInputChange, handleCheckboxChange }
           />
           <Label htmlFor="showLogoInReport" className="cursor-pointer">Mostrar logo en reportes</Label>
         </div>
+        <div className="flex items-center space-x-2 pt-2">
+          <Switch 
+            id="compactByDefault" 
+            checked={reportSettings.compactByDefault !== false} 
+            onCheckedChange={(checked) => handleCheckboxChange('reportSettings', 'compactByDefault', checked)}
+          />
+          <Label htmlFor="compactByDefault" className="cursor-pointer">Activar modo compacto por defecto (ahorra papel)</Label>
+        </div>
       </CardContent>
     </Card>
   );

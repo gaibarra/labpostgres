@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
-import { apiClient, setToken, clearToken, getToken } from '@/lib/apiClient';
+import { apiClient, clearToken, getToken } from '@/lib/apiClient';
 import { useToast } from '@/components/ui/use-toast';
 
     const AuthContext = createContext(undefined);
@@ -45,7 +45,8 @@ export const AuthProvider = ({ children, initialUser = null }) => {
           const data = await apiClient.auth.me();
       setUser(normalizeUser(data.user));
         } catch (e) {
-          if (e.status === 401) {
+          const isInvalid = e.status === 401 || (e.status === 404 && (e.code === 'USER_NOT_FOUND' || e.details?.error === 'Usuario no encontrado'));
+          if (isInvalid) {
             clearToken();
             setUser(null);
           } else {
@@ -89,7 +90,7 @@ export const AuthProvider = ({ children, initialUser = null }) => {
 
       const signOut = useCallback(async () => {
         setLoading(true);
-        try { await apiClient.auth.logout(); } catch (_) {}
+  try { await apiClient.auth.logout(); } catch (_) { /* ignore logout network errors */ }
         clearToken();
         setUser(null);
         toast({ title: 'Sesión cerrada', description: 'Has cerrado sesión.' });

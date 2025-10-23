@@ -28,11 +28,11 @@ const LabInfoSettings = ({ settings, handleInputChange }) => {
     setIsUploading(true);
     try {
       // Placeholder: backend upload endpoint to implement
-      const formData = new FormData();
-      formData.append('file', file);
-      const response = await fetch('/api/uploads/logo', { method: 'POST', body: formData });
-      if (!response.ok) throw new Error('Error subiendo logo');
-      const { url } = await response.json();
+  const formData = new FormData();
+  formData.append('file', file);
+  // Usar apiClient para adjuntar Authorization si aplica y respetar base URL
+  const data = await apiClient.post('/uploads/logo', formData);
+  const { url } = data || {};
       handleInputChange('labInfo', 'logoUrl', url);
       toast({ title: '¡Logo subido!', description: 'El logo se ha actualizado correctamente.' });
     } catch (error) {

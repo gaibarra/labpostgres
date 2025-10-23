@@ -3,8 +3,9 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { FlaskConical, ArrowUp, ArrowDown, Check, AlertTriangle, Minus, Clock } from 'lucide-react';
 import { cn } from "@/lib/utils";
+import CBCReportLayout from './CBCReportLayout.jsx';
 
-const ReportStudySection = ({ studyDetail, orderResults, patient, getReferenceRangeText, evaluateResult, patientAgeData }) => {
+const ReportStudySection = ({ studyDetail, orderResults, patient, getReferenceRangeText, evaluateResult, patientAgeData, compact = false }) => {
   
   const getResultDisplay = (resultValue, paramDetail) => {
     if (resultValue === "PENDIENTE" || resultValue === undefined || resultValue === null || String(resultValue).trim() === '') {
@@ -88,21 +89,38 @@ const ReportStudySection = ({ studyDetail, orderResults, patient, getReferenceRa
     );
   };
 
+  // Render especial para Biometría Hemática (dos columnas Serie Roja/Plaquetaria/Blanca)
+  const isCBC = /biometr[ií]a hem[aá]tica/i.test(studyDetail?.name || '');
+  if (isCBC) {
+    const renderResultCell = (value, resultForDisplay) => getResultDisplay(value, resultForDisplay);
+    return (
+      <CBCReportLayout
+        studyDetail={studyDetail}
+        orderResults={orderResults}
+        compact={false}
+        renderResultCell={renderResultCell}
+        getReferenceRangeText={getReferenceRangeText}
+        patient={patient}
+        patientAgeData={patientAgeData}
+      />
+    );
+  }
+
   return (
     <Card className="bg-white dark:bg-slate-800/50 shadow-md border dark:border-slate-700/40 overflow-hidden">
-      <CardHeader className="bg-slate-100 dark:bg-slate-800 py-2 px-4 rounded-t-lg border-b dark:border-slate-700">
-        <CardTitle className="text-base font-semibold text-sky-800 dark:text-sky-300 flex items-center">
+      <CardHeader className={cn("bg-slate-100 dark:bg-slate-800 rounded-t-lg border-b dark:border-slate-700", compact ? "py-1.5 px-3" : "py-2 px-4") }>
+        <CardTitle className={cn("font-semibold text-sky-800 dark:text-sky-300 flex items-center", compact ? "text-sm" : "text-base") }>
           <FlaskConical className="h-4 w-4 mr-2"/> {studyDetail.name}
         </CardTitle>
       </CardHeader>
       <CardContent className="p-0">
-        <Table className="text-xs">
+        <Table className={cn("text-xs", compact ? "[&_*]:leading-[1.1]" : "")}>
           <TableHeader>
             <TableRow className="bg-slate-50/50 dark:bg-slate-700/30 hover:bg-slate-100/70 dark:hover:bg-slate-700/40">
-              <TableHead className="w-[30%] pl-4 py-2 text-slate-600 dark:text-slate-300 font-semibold">Parámetro</TableHead>
-              <TableHead className="w-[20%] py-2 text-center text-slate-600 dark:text-slate-300 font-semibold">Resultado</TableHead>
-              <TableHead className="w-[15%] py-2 text-center text-slate-600 dark:text-slate-300 font-semibold">Unidades</TableHead>
-              <TableHead className="w-[35%] pr-4 py-2 text-slate-600 dark:text-slate-300 font-semibold">Valores de Referencia</TableHead>
+              <TableHead className={cn("w-[30%] pl-4 text-slate-600 dark:text-slate-300 font-semibold", compact ? "py-1.5" : "py-2")}>Parámetro</TableHead>
+              <TableHead className={cn("w-[20%] text-center text-slate-600 dark:text-slate-300 font-semibold", compact ? "py-1.5" : "py-2")}>Resultado</TableHead>
+              <TableHead className={cn("w-[15%] text-center text-slate-600 dark:text-slate-300 font-semibold", compact ? "py-1.5" : "py-2")}>Unidades</TableHead>
+              <TableHead className={cn("w-[35%] pr-4 text-slate-600 dark:text-slate-300 font-semibold", compact ? "py-1.5" : "py-2")}>Valores de Referencia</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -128,12 +146,12 @@ const ReportStudySection = ({ studyDetail, orderResults, patient, getReferenceRa
               
               return (
                 <TableRow key={param.id || param.name} className="even:bg-slate-50/40 dark:even:bg-slate-800/20 hover:bg-sky-50/30 dark:hover:bg-sky-800/10 border-b dark:border-slate-700/50 last:border-b-0">
-                  <TableCell className="pl-4 py-2.5 font-medium text-slate-700 dark:text-slate-200">{param.name}</TableCell>
-                  <TableCell className="py-2.5 text-center">
+                  <TableCell className={cn("pl-4 font-medium text-slate-700 dark:text-slate-200", compact ? "py-1.5" : "py-2.5")}>{param.name}</TableCell>
+                  <TableCell className={cn("text-center", compact ? "py-1.5" : "py-2.5") }>
                     {getResultDisplay(resultForDisplay.valor, resultForDisplay)}
                   </TableCell>
-                  <TableCell className="py-2.5 text-center text-slate-500 dark:text-slate-400">{param.unit || studyDetail.general_units || ''}</TableCell>
-                  <TableCell className="pr-4 py-2.5 text-slate-500 dark:text-slate-400 leading-snug">
+                  <TableCell className={cn("text-center text-slate-500 dark:text-slate-400", compact ? "py-1.5" : "py-2.5")}>{param.unit || studyDetail.general_units || ''}</TableCell>
+                  <TableCell className={cn("pr-4 text-slate-500 dark:text-slate-400 leading-snug", compact ? "py-1.5" : "py-2.5") }>
                     {getReferenceRangeDisplay(param, patient, patientAgeData)}
                   </TableCell>
                 </TableRow>

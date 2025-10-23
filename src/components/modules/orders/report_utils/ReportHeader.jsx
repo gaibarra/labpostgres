@@ -2,7 +2,7 @@ import React from 'react';
 import { format } from 'date-fns-tz';
 import { es } from 'date-fns/locale';
 
-const ReportHeader = ({ labInfo, order, patient, patientAgeData, isWorksheet = false }) => {
+const ReportHeader = ({ labInfo, order, patient, patientAgeData, isWorksheet = false, compact = false }) => {
   if (!order || !patient) return null;
 
   const formatDate = (dateString) => {
@@ -60,21 +60,21 @@ const ReportHeader = ({ labInfo, order, patient, patientAgeData, isWorksheet = f
   };
 
   const FullHeader = () => (
-    <div className="flex items-center mb-2">
+    <div className={"flex items-center " + (compact ? "mb-1" : "mb-2") }>
       {/* Left: Logo (fixed width) */}
-      <div className="w-32 flex-shrink-0">
+      <div className={compact ? "w-28 flex-shrink-0" : "w-32 flex-shrink-0"}>
         {labInfo?.logoUrl ? (
-          <img-replace src={labInfo.logoUrl} alt="Logo del Laboratorio" className="max-h-16" />
+          <img-replace src={labInfo.logoUrl} alt="Logo del Laboratorio" className={compact ? "max-h-12" : "max-h-16"} />
         ) : (
-          <div className="h-16 w-32 bg-slate-200 flex items-center justify-center">
+          <div className={compact ? "h-12 w-28" : "h-16 w-32" + " bg-slate-200 flex items-center justify-center"}>
             <span className="text-slate-500">Logo</span>
           </div>
         )}
       </div>
       {/* Center: Name + Contact fully centered */}
       <div className="flex-1 text-center">
-        <h2 className="font-bold text-lg">{labInfo?.name || 'Nombre del Laboratorio'}</h2>
-        <p>{formatAddress(labInfo?.address ?? {
+        <h2 className={compact ? "font-bold text-base" : "font-bold text-lg"}>{labInfo?.name || 'Nombre del Laboratorio'}</h2>
+        <p className={compact ? "text-[10px]" : undefined}>{formatAddress(labInfo?.address ?? {
           calle: labInfo?.calle,
           numeroExterior: labInfo?.numeroExterior,
           numeroInterior: labInfo?.numeroInterior,
@@ -84,7 +84,7 @@ const ReportHeader = ({ labInfo, order, patient, patientAgeData, isWorksheet = f
           estado: labInfo?.estado,
           pais: labInfo?.pais,
         })}</p>
-        <p>Tel: {labInfo?.phone || 'Teléfono'} | Email: {labInfo?.email || 'Email'}</p>
+        <p className={compact ? "text-[10px]" : undefined}>Tel: {labInfo?.phone || 'Teléfono'} | Email: {labInfo?.email || 'Email'}</p>
       </div>
       {/* Right: spacer to keep center alignment when logo occupies left */}
       <div className="w-32 flex-shrink-0" />
@@ -92,8 +92,8 @@ const ReportHeader = ({ labInfo, order, patient, patientAgeData, isWorksheet = f
   );
 
   const WorksheetHeader = () => (
-    <div className="text-center mb-2">
-      <h2 className="font-bold text-xl">Hoja de Trabajo</h2>
+    <div className={"text-center " + (compact ? "mb-1" : "mb-2") }>
+      <h2 className={compact ? "font-bold text-lg" : "font-bold text-xl"}>Hoja de Trabajo</h2>
     </div>
   );
 
@@ -101,7 +101,7 @@ const ReportHeader = ({ labInfo, order, patient, patientAgeData, isWorksheet = f
     <div className="text-xs text-slate-800 dark:text-slate-200">
       {isWorksheet ? <WorksheetHeader /> : <FullHeader />}
 
-      <div className="border-t border-b border-slate-400 dark:border-slate-600 grid grid-cols-2 py-1">
+      <div className={"border-t border-b border-slate-400 dark:border-slate-600 grid grid-cols-2 " + (compact ? "py-0.5" : "py-1") }>
         <div className="pr-2">
           <div className="flex">
             <span className="font-bold w-24">PACIENTE:</span>
@@ -120,7 +120,7 @@ const ReportHeader = ({ labInfo, order, patient, patientAgeData, isWorksheet = f
             <span>{order.referring_entity_name || 'N/A'}</span>
           </div>
         </div>
-        <div className="pl-2 border-l border-slate-400 dark:border-slate-600">
+        <div className={"pl-2 border-l border-slate-400 dark:border-slate-600 " + (compact ? "text-[11px]" : "") }>
           <div className="flex">
             <span className="font-bold w-32">FECHA DE TOMA:</span>
             <span>{formatDate(order.order_date)}</span>

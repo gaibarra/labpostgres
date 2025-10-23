@@ -28,6 +28,12 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
       const { calculateAgeInUnits, getReferenceRangeText, evaluateResult } = useEvaluationUtils();
       const { getStudiesAndParametersForOrder } = useOrderManagement();
       const [isAIModalOpen, setIsAIModalOpen] = useState(false);
+      // Modo compacto para ahorro de papel (predeterminado según settings, o true si no está configurado)
+      const [isCompact, setIsCompact] = useState(() => {
+        try {
+          return Boolean(labSettings?.reportSettings?.compactByDefault ?? true);
+        } catch { return true; }
+      });
 
 
       const patientAgeData = useMemo(() => {
@@ -104,7 +110,8 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
             getReferenceRangeText,
             evaluateResult,
             cleanNumericValueForStorage,
-            getStudiesAndParametersForOrder
+            getStudiesAndParametersForOrder,
+            isCompact
           );
           toast({ title: "Reporte Generado", description: "El PDF del reporte se está abriendo en una nueva pestaña." });
           logAuditEvent('ReportePDFGenerado', { orderId: order.id, patientId: patient.id }, order.createdBy || 'Sistema');
@@ -190,9 +197,15 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
               Previsualización del PDF generado para el paciente. Revisa el contenido antes de descargar.
             </DialogDescription>
             <DialogHeader className="p-6 pb-0 shrink-0">
-              <DialogTitle className="text-sky-700 dark:text-sky-400 flex items-center">
+              <DialogTitle className="text-sky-700 dark:text-sky-400 flex items-center justify-between">
                 <CheckSquare className="h-7 w-7 mr-2 text-sky-500" />
-                Reporte: {order.folio} {order.status && <span className="ml-3 text-xs font-medium px-2 py-0.5 rounded bg-sky-100 dark:bg-sky-800/40 text-sky-700 dark:text-sky-300">{order.status}{order.results_finalized ? ' ✓' : ''}</span>}
+                <span>
+                  Reporte: {order.folio} {order.status && <span className="ml-3 text-xs font-medium px-2 py-0.5 rounded bg-sky-100 dark:bg-sky-800/40 text-sky-700 dark:text-sky-300">{order.status}{order.results_finalized ? ' ✓' : ''}</span>}
+                </span>
+                <label className="ml-3 inline-flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+                  <input type="checkbox" className="accent-sky-600" checked={isCompact} onChange={(e)=>setIsCompact(e.target.checked)} />
+                  Modo compacto
+                </label>
               </DialogTitle>
               <DialogDescription>
                 Revise cuidadosamente los resultados finales antes de generar o enviar el reporte.
@@ -200,13 +213,14 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
             </DialogHeader>
             
             <div className="flex-1 min-h-0 overflow-y-auto px-6">
-              <div className="p-4 md:p-6 space-y-6 printable-content bg-white dark:bg-slate-800/30 rounded-lg shadow-xl border dark:border-slate-700 my-4">
+              <div className={(isCompact ? "p-3 md:p-4 space-y-3" : "p-4 md:p-6 space-y-6") + " printable-content bg-white dark:bg-slate-800/30 rounded-lg shadow-xl border dark:border-slate-700 my-4"}>
                 <ReportHeader 
                   labInfo={labSettings.labInfo}
                   order={order}
                   patient={patient}
                   referrer={referrer}
                   patientAgeData={patientAgeData}
+                  compact={isCompact}
                 />
 
                 {studiesToDisplayInReport.map(studyDetail => {
@@ -256,6 +270,7 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
                       getReferenceRangeText={getReferenceRangeText}
                       evaluateResult={evaluateResult}
                       patientAgeData={patientAgeData}
+                      compact={isCompact}
                     />
                   );
                 })}

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { apiClient } from '@/lib/apiClient';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -51,9 +52,7 @@ export default function AIAssistParameterDialog({ isOpen, onOpenChange, studyId,
         return;
       }
       try {
-        const resp = await fetch(`/api/ai/generate-parameter/job/${jobId}`);
-        if (resp.ok) {
-          const data = await resp.json();
+        const data = await apiClient.get(`/ai/generate-parameter/job/${jobId}`, { signal: ac.signal });
           const serverPct = parseInt(data.progress || 0, 10);
           setProgress(prev => Math.max(prev, MIN_PROGRESS, isNaN(serverPct)?MIN_PROGRESS:serverPct));
           setProgressMsg(data.message || '');
@@ -74,7 +73,6 @@ export default function AIAssistParameterDialog({ isOpen, onOpenChange, studyId,
             if (progressTimerRef.current) { clearInterval(progressTimerRef.current); progressTimerRef.current = null; }
             return;
           }
-        }
       } catch(e){ /* silencio */ }
       setTimeout(tick, pollInterval);
     };
@@ -104,17 +102,7 @@ export default function AIAssistParameterDialog({ isOpen, onOpenChange, studyId,
     try {
       // Generamos prompt local e incluimos en la petición para que el backend (si lo soporta en el futuro) pueda usarlo
       const richPrompt = buildParameterPrompt({ studyName, desiredName: name, existingParameters });
-      const resp = await fetch('/api/ai/generate-parameter/async', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studyName, desiredParameterName: name, existingParameters, prompt: richPrompt }),
-        signal: controller.signal
-      });
-      if (!resp.ok) {
-        const txt = await resp.text();
-        throw new Error(`HTTP ${resp.status} - ${txt}`);
-      }
-      const data = await resp.json();
+      const data = await apiClient.post('/ai/generate-parameter/async', { studyName, desiredParameterName: name, existingParameters, prompt: richPrompt }, { signal: controller.signal });
       if (data?.jobId) {
         setProgress(prev => Math.max(prev+2, MIN_PROGRESS+2));
         setProgressMsg('En cola');
@@ -131,7 +119,10 @@ export default function AIAssistParameterDialog({ isOpen, onOpenChange, studyId,
         setError('Respuesta IA sin datos de rangos.');
       }
     } catch(e){
-      if (e.name !== 'AbortError') setError(e.message || 'Fallo en generación');
+      if (e.name !== 'AbortError') {
+        const statusPart = e?.status ? `HTTP ${e.status} - ` : '';
+        setError(`${statusPart}${e?.message || 'Fallo en generación'}`);
+      }
     } finally {
       if (!pollAbortRef.current) setLoading(false);
     }

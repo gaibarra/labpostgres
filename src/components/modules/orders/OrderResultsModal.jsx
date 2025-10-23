@@ -8,7 +8,7 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
     import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
     import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
   import { useToast } from "@/components/ui/use-toast";
-  import { FileEdit, Beaker, AlertTriangle, Info } from 'lucide-react';
+  import { FileEdit, Beaker, AlertTriangle, Info, Package } from 'lucide-react';
     import { cn } from "@/lib/utils";
     import { useEvaluationUtils } from './report_utils/evaluationUtils.js';
     import { useOrderManagement } from './hooks/useOrderManagement.js';
@@ -35,6 +35,127 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
         if (!order || !studiesDetails || !packagesData) return [];
         return getStudiesAndParametersForOrder(order.selected_items, studiesDetails, packagesData);
       }, [order, studiesDetails, packagesData, getStudiesAndParametersForOrder]);
+
+  // Mapea cada estudio a los nombres de paquete(s) desde los que proviene en esta orden
+  const studyToPackages = useMemo(() => {
+    const map = new Map();
+    try {
+      const items = Array.isArray(order?.selected_items) ? order.selected_items : [];
+      const pkgIds = items
+        .filter(it => (it.type || it.item_type) === 'package')
+        .map(it => it.id || it.item_id)
+        .filter(Boolean);
+      if (!pkgIds.length) return map;
+      const pkgsById = new Map((packagesData || []).map(p => [p.id, p]));
+      const allStudies = new Set((studiesToDisplay || []).map(s => s.id));
+      pkgIds.forEach(pid => {
+        const pkg = pkgsById.get(pid);
+        if (!pkg || !Array.isArray(pkg.items)) return;
+        const pkgName = pkg.name || 'Paquete';
+        pkg.items.forEach(sub => {
+          const sid = sub?.item_id;
+          if (!sid || !allStudies.has(sid)) return;
+          const prev = map.get(sid) || [];
+          if (!prev.includes(pkgName)) prev.push(pkgName);
+          map.set(sid, prev);
+        });
+      });
+    } catch (e) { /* ignore mapping errors */ }
+    return map;
+  }, [order?.selected_items, packagesData, studiesToDisplay]);
+
+  // Estilos de chip por paquete (determinista por nombre)
+  const pkgChipVariants = useMemo(() => ([
+    {
+      light: 'bg-sky-50/80 border-sky-200 text-sky-800',
+      dark: 'dark:bg-sky-900/30 dark:border-sky-800 dark:text-sky-200',
+    },
+    {
+      light: 'bg-indigo-50/80 border-indigo-200 text-indigo-800',
+      dark: 'dark:bg-indigo-900/30 dark:border-indigo-800 dark:text-indigo-200',
+    },
+    {
+      light: 'bg-violet-50/80 border-violet-200 text-violet-800',
+      dark: 'dark:bg-violet-900/30 dark:border-violet-800 dark:text-violet-200',
+    },
+    {
+      light: 'bg-emerald-50/80 border-emerald-200 text-emerald-800',
+      dark: 'dark:bg-emerald-900/30 dark:border-emerald-800 dark:text-emerald-200',
+    },
+    {
+      light: 'bg-teal-50/80 border-teal-200 text-teal-800',
+      dark: 'dark:bg-teal-900/30 dark:border-teal-800 dark:text-teal-200',
+    },
+    {
+      light: 'bg-amber-50/80 border-amber-200 text-amber-800',
+      dark: 'dark:bg-amber-900/30 dark:border-amber-800 dark:text-amber-200',
+    },
+    {
+      light: 'bg-rose-50/80 border-rose-200 text-rose-800',
+      dark: 'dark:bg-rose-900/30 dark:border-rose-800 dark:text-rose-200',
+    },
+    {
+      light: 'bg-fuchsia-50/80 border-fuchsia-200 text-fuchsia-800',
+      dark: 'dark:bg-fuchsia-900/30 dark:border-fuchsia-800 dark:text-fuchsia-200',
+    },
+  ]), []);
+
+  const pkgChipClassFor = (name) => {
+    const s = String(name || 'pkg');
+    let hash = 0;
+    for (let i = 0; i < s.length; i++) {
+      hash = ((hash << 5) - hash) + s.charCodeAt(i);
+      hash |= 0;
+    }
+    const idx = Math.abs(hash) % pkgChipVariants.length;
+    const variant = pkgChipVariants[idx];
+    return cn('sticky top-0 z-10 w-fit backdrop-blur px-3 py-1.5 rounded-md border font-semibold text-sm md:text-base flex items-center', variant.light, variant.dark);
+  };
+
+  // Agrupa los estudios de la orden por paquete (encabezados visibles) y lista estudios sueltos
+  const packageGroups = useMemo(() => {
+    const groups = { orderedPkgIds: [], byId: new Map(), assigned: new Set(), orphans: [] };
+    try {
+      const selected = Array.isArray(order?.selected_items) ? order.selected_items : [];
+      const pkgsById = new Map((packagesData || []).map(p => [p.id, p]));
+      const orderedPkgIds = selected
+        .filter(it => (it.type || it.item_type) === 'package')
+        .map(it => it.id || it.item_id)
+        .filter(Boolean);
+      groups.orderedPkgIds = orderedPkgIds;
+
+      // Inicializa grupos
+      orderedPkgIds.forEach(pid => {
+        const pkg = pkgsById.get(pid);
+        if (pkg && !groups.byId.has(pid)) {
+          groups.byId.set(pid, { id: pid, name: pkg.name || 'Paquete', studyIds: new Set() });
+        }
+      });
+
+      // Asignar estudios al primer paquete en el que aparezcan
+      orderedPkgIds.forEach(pid => {
+        const pkg = pkgsById.get(pid);
+        const group = groups.byId.get(pid);
+        if (!pkg || !Array.isArray(pkg.items) || !group) return;
+        pkg.items.forEach(sub => {
+          const sid = sub?.item_id;
+          if (!sid) return;
+          // Sólo considerar estudios que están efectivamente en la vista (expandidos)
+          if (!(studiesToDisplay || []).some(s => s.id === sid)) return;
+          if (!groups.assigned.has(sid)) {
+            group.studyIds.add(sid);
+            groups.assigned.add(sid);
+          }
+        });
+      });
+
+      // Orphans: estudios seleccionados que no pertenecen a paquetes (o añadidos individualmente)
+      (studiesToDisplay || []).forEach(s => {
+        if (!groups.assigned.has(s.id)) groups.orphans.push(s.id);
+      });
+  } catch (_) { /* no-op grouping error */ }
+    return groups;
+  }, [order?.selected_items, packagesData, studiesToDisplay]);
 
   const [abgOpen, setAbgOpen] = useState(false);
   const abgStudy = useMemo(()=> (studiesToDisplay||[]).find(s => s?.name === 'Antibiograma' || String(s?.clave||'').toUpperCase() === 'ABG'), [studiesToDisplay]);
@@ -161,7 +282,7 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
                 Paciente: {patient?.full_name || 'N/A'} | Fecha Orden: {formatInTimeZone(order.order_date, "dd/MM/yyyy")}
               </DialogDescription>
             </DialogHeader>
-            <div className="py-4 space-y-6">
+            <div className="py-3 space-y-3">
               {studiesToDisplay.length === 0 && (
                 <Card className="bg-yellow-50 dark:bg-yellow-900/30 border-yellow-300 dark:border-yellow-700">
                   <CardContent className="pt-6">
@@ -173,60 +294,146 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
                 </Card>
               )}
 
-              {studiesToDisplay.map(studyItem => (
-                <Card key={studyItem.id} className="bg-white dark:bg-slate-800/50">
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-lg text-sky-600 dark:text-sky-400 flex items-center">
-                        <Beaker className="h-5 w-5 mr-2"/> {studyItem.name} {studyItem.clave ? `(${studyItem.clave})` : ''}
-                      </CardTitle>
-                      {(studyItem.name === 'Antibiograma' || String(studyItem.clave||'').toUpperCase() === 'ABG') && (
-                        <Button size="sm" variant="outline" onClick={()=> setAbgOpen(true)}>
-                          Abrir Antibiograma
-                        </Button>
-                      )}
+              {/* Paquetes en orden de selección */}
+              {packageGroups.orderedPkgIds.map(pid => {
+                const group = packageGroups.byId.get(pid);
+                if (!group || group.studyIds.size === 0) return null;
+                const groupName = group.name;
+                const groupStudies = (studiesToDisplay || []).filter(s => group.studyIds.has(s.id));
+                return (
+                  <div key={`pkg-${pid}`} className="space-y-1.5">
+                    <div className={pkgChipClassFor(groupName)}>
+                      <Package className="h-4 w-4 mr-1.5" /> {groupName}
                     </div>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {(resultsData[studyItem.id] && resultsData[studyItem.id].length > 0) ? (
-                      resultsData[studyItem.id].map((param, paramIndex) => {
-                        const resultStatus = param.valor ? evaluateResult(param.valor, param, patient, patientAgeData) : 'no-evaluable';
-                        const inputClasses = cn(
-                          "md:col-span-1 bg-white/80 dark:bg-slate-700/80",
-                          {
-                            "border-red-500 focus-visible:ring-red-500": resultStatus === 'bajo' || resultStatus === 'alto' || resultStatus === 'invalido-alfanumerico',
-                            "border-yellow-500 focus-visible:ring-yellow-500": resultStatus === 'no-numerico',
-                          }
-                        );
-                        return (
-                          <div key={`${studyItem.id}-${param.parametroId}-${paramIndex}`} className="grid grid-cols-1 md:grid-cols-4 gap-3 items-center border-b dark:border-slate-700 pb-3 last:border-b-0 last:pb-0">
-                            <Label htmlFor={`result-${studyItem.id}-${paramIndex}`} className="text-sm md:col-span-1">
-                              {param.nombreParametro}
-                            </Label>
-                            <div className="relative md:col-span-1">
-                              <Input
-                                id={`result-${studyItem.id}-${paramIndex}`}
-                                value={param.valor}
-                                onChange={(e) => handleResultChange(studyItem.id, paramIndex, e.target.value)}
-                                placeholder="Ingresar valor"
-                                className={inputClasses}
-                              />
-                              {(resultStatus === 'bajo' || resultStatus === 'alto' || resultStatus === 'invalido-alfanumerico') && (
-                                <AlertTriangle className="absolute right-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-red-500" />
-                              )}
+                    {groupStudies.map(studyItem => {
+                      const allPkgNames = studyToPackages.get(studyItem.id) || [];
+                      const extraBadges = allPkgNames.filter(n => n !== groupName);
+                      return (
+                        <Card key={studyItem.id} className="bg-white dark:bg-slate-800/50 border-slate-200 dark:border-slate-700">
+                          <CardHeader className="py-1.5 px-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <CardTitle className="text-base text-sky-700 dark:text-sky-300 flex items-center">
+                                <Beaker className="h-5 w-5 mr-2"/> {studyItem.name} {studyItem.clave ? `(${studyItem.clave})` : ''}
+                              </CardTitle>
+                              <div className="flex items-center gap-2">
+                                {extraBadges.map((n, idx) => (
+                                  <Badge key={`${studyItem.id}-pkgextra-${idx}`} variant="secondary" className="text-[10px] py-0.5 px-1.5">{n}</Badge>
+                                ))}
+                                {(studyItem.name === 'Antibiograma' || String(studyItem.clave||'').toUpperCase() === 'ABG') && (
+                                  <Button size="sm" variant="outline" onClick={()=> setAbgOpen(true)}>
+                                    Abrir Antibiograma
+                                  </Button>
+                                )}
+                              </div>
                             </div>
-                            <p className="text-xs text-muted-foreground md:col-span-2">
-                                Ref: {getReferenceRangeText(param, patient, patientAgeData)}
-                            </p>
-                          </div>
-                        );
-                      })
-                    ) : (
-                      <p className="text-sm text-muted-foreground">Este estudio no tiene parámetros configurados para resultados o no se pudieron cargar.</p>
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
+                          </CardHeader>
+                          <CardContent className="px-3 py-1.5">
+                            {(resultsData[studyItem.id] && resultsData[studyItem.id].length > 0) ? (
+                              resultsData[studyItem.id].map((param, paramIndex) => {
+                                const resultStatus = param.valor ? evaluateResult(param.valor, param, patient, patientAgeData) : 'no-evaluable';
+                                const inputClasses = cn(
+                                  "md:col-span-1 bg-white/80 dark:bg-slate-700/80 h-8 py-1 text-sm",
+                                  {
+                                    "border-red-500 focus-visible:ring-red-500": resultStatus === 'bajo' || resultStatus === 'alto' || resultStatus === 'invalido-alfanumerico',
+                                    "border-yellow-500 focus-visible:ring-yellow-500": resultStatus === 'no-numerico',
+                                  }
+                                );
+                                return (
+                                  <div key={`${studyItem.id}-${param.parametroId}-${paramIndex}`} className="grid grid-cols-1 md:grid-cols-5 gap-1.5 items-center border-b dark:border-slate-700 py-1.5 last:border-b-0">
+                                    <Label htmlFor={`result-${studyItem.id}-${paramIndex}`} className="text-[12px] leading-tight md:col-span-2">
+                                      {param.nombreParametro}
+                                    </Label>
+                                    <div className="relative md:col-span-1">
+                                      <Input
+                                        id={`result-${studyItem.id}-${paramIndex}`}
+                                        value={param.valor}
+                                        onChange={(e) => handleResultChange(studyItem.id, paramIndex, e.target.value)}
+                                        placeholder="Ingresar valor"
+                                        className={inputClasses}
+                                      />
+                                      {(resultStatus === 'bajo' || resultStatus === 'alto' || resultStatus === 'invalido-alfanumerico') && (
+                                        <AlertTriangle className="absolute right-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-red-500" />
+                                      )}
+                                    </div>
+                                    <p className="text-[11px] leading-tight text-muted-foreground md:col-span-2">
+                                        Ref: {getReferenceRangeText(param, patient, patientAgeData)}
+                                    </p>
+                                  </div>
+                                );
+                              })
+                            ) : (
+                              <p className="text-sm text-muted-foreground">Este estudio no tiene parámetros configurados para resultados o no se pudieron cargar.</p>
+                            )}
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+
+              {/* Estudios individuales (no asignados a paquete) */}
+              {packageGroups.orphans.length > 0 && (
+                <div className="space-y-1.5">
+                  <div className="sticky top-0 z-10 w-fit bg-slate-100/80 dark:bg-slate-800/40 backdrop-blur px-3 py-1.5 rounded-md border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 font-semibold text-sm md:text-base flex items-center">
+                    <Beaker className="h-4 w-4 mr-1.5" /> Estudios individuales
+                  </div>
+                  {(studiesToDisplay || []).filter(s => packageGroups.orphans.includes(s.id)).map(studyItem => (
+                    <Card key={studyItem.id} className="bg-white dark:bg-slate-800/50 border-slate-200 dark:border-slate-700">
+                      <CardHeader className="py-1.5 px-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <CardTitle className="text-base text-sky-700 dark:text-sky-300 flex items-center">
+                            <Beaker className="h-5 w-5 mr-2"/> {studyItem.name} {studyItem.clave ? `(${studyItem.clave})` : ''}
+                          </CardTitle>
+                          {(studyItem.name === 'Antibiograma' || String(studyItem.clave||'').toUpperCase() === 'ABG') && (
+                            <Button size="sm" variant="outline" onClick={()=> setAbgOpen(true)}>
+                              Abrir Antibiograma
+                            </Button>
+                          )}
+                        </div>
+                      </CardHeader>
+                      <CardContent className="px-3 py-1.5">
+                        {(resultsData[studyItem.id] && resultsData[studyItem.id].length > 0) ? (
+                          resultsData[studyItem.id].map((param, paramIndex) => {
+                            const resultStatus = param.valor ? evaluateResult(param.valor, param, patient, patientAgeData) : 'no-evaluable';
+                            const inputClasses = cn(
+                              "md:col-span-1 bg-white/80 dark:bg-slate-700/80 h-8 py-1 text-sm",
+                              {
+                                "border-red-500 focus-visible:ring-red-500": resultStatus === 'bajo' || resultStatus === 'alto' || resultStatus === 'invalido-alfanumerico',
+                                "border-yellow-500 focus-visible:ring-yellow-500": resultStatus === 'no-numerico',
+                              }
+                            );
+                            return (
+                              <div key={`${studyItem.id}-${param.parametroId}-${paramIndex}`} className="grid grid-cols-1 md:grid-cols-5 gap-1.5 items-center border-b dark:border-slate-700 py-1.5 last:border-b-0">
+                                <Label htmlFor={`result-${studyItem.id}-${paramIndex}`} className="text-[12px] leading-tight md:col-span-2">
+                                  {param.nombreParametro}
+                                </Label>
+                                <div className="relative md:col-span-1">
+                                  <Input
+                                    id={`result-${studyItem.id}-${paramIndex}`}
+                                    value={param.valor}
+                                    onChange={(e) => handleResultChange(studyItem.id, paramIndex, e.target.value)}
+                                    placeholder="Ingresar valor"
+                                    className={inputClasses}
+                                  />
+                                  {(resultStatus === 'bajo' || resultStatus === 'alto' || resultStatus === 'invalido-alfanumerico') && (
+                                    <AlertTriangle className="absolute right-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-red-500" />
+                                  )}
+                                </div>
+                                <p className="text-[11px] leading-tight text-muted-foreground md:col-span-2">
+                                    Ref: {getReferenceRangeText(param, patient, patientAgeData)}
+                                </p>
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <p className="text-sm text-muted-foreground">Este estudio no tiene parámetros configurados para resultados o no se pudieron cargar.</p>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
               
               <Card className="bg-white dark:bg-slate-800/50">
                 <CardHeader><CardTitle className="text-lg text-sky-600 dark:text-sky-400">Estado y Validación</CardTitle></CardHeader>

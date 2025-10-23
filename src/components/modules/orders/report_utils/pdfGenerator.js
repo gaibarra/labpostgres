@@ -13,13 +13,19 @@ import autoTable from 'jspdf-autotable';
       getReferenceRangeText,
       evaluateResult,
       cleanNumericValueForStorage,
-      getStudiesAndParametersForOrder
+      getStudiesAndParametersForOrder,
+      compact = false
     ) => {
       const doc = new jsPDF();
-      const pageHeight = doc.internal.pageSize.height;
+    const pageHeight = doc.internal.pageSize.height;
       const pageWidth = doc.internal.pageSize.width;
       const margin = 10;
-      const headerHeight = 85;
+  const headerHeight = compact ? 58 : 85;
+    const topHeaderOnly = compact ? 22 : 28; // margen superior en páginas 2+
+      // Placeholder para total de páginas (se resuelve al final)
+      const totalPagesExp = '{total_pages_count_string}';
+      // Control para no dibujar la grilla de datos del paciente más de una vez por página
+      const patientGridDrawnPages = new Set();
 
       const labInfo = labSettings.labInfo || {};
       const reportSettings = labSettings.reportSettings || {};
@@ -64,7 +70,7 @@ import autoTable from 'jspdf-autotable';
       if (patient.phone_number) patientInfoList.push({ label: "Tel. Paciente:", value: patient.phone_number });
       if (patient.email) patientInfoList.push({ label: "Email Paciente:", value: patient.email });
 
-      const patientInfoGrid = [];
+  const patientInfoGrid = [];
       for (let i = 0; i < patientInfoList.length; i += 2) {
         const row = [
           patientInfoList[i].label,
@@ -111,13 +117,72 @@ import autoTable from 'jspdf-autotable';
 
       const studiesToRenderInPdf = computeStudiesToRender();
 
-      let mainContent = [];
-      
-      studiesToRenderInPdf.forEach(studyDetail => {
-        if (!studyDetail) return;
-        mainContent.push([{ content: studyDetail.name, colSpan: 4, styles: { fillColor: [241, 245, 249], textColor: [14, 116, 144], fontStyle: 'bold', fontSize: 11, cellPadding: 2.5 } }]);
+      // Detectar Biometría Hemática para layout especial en dos columnas
+      const isCBCName = (name) => /biometr[ií]a hem[aá]tica/i.test(String(name || ''));
+      let cbcStudy = null;
+      // Filtra CBC, el resto se agrupará por paquete
+      const nonCbcStudies = [];
+      for (const s of studiesToRenderInPdf) {
+        if (isCBCName(s?.name)) { cbcStudy = s; } else if (s) { nonCbcStudies.push(s); }
+      }
 
-        // Clean numeric fields in reference ranges to match preview behavior
+      // Construimos grupos por paquete preservando el orden de selected_items
+      const buildPackageGroups = () => {
+        const groups = [];
+        const seen = new Set();
+        const studiesById = new Map((nonCbcStudies || []).map(s => [String(s.id), s]));
+        const packagesById = new Map((packagesData || []).map(p => [String(p.id), p]));
+        const pushGroup = (name, studyIds) => {
+          const unique = [];
+          for (const id of studyIds) {
+            const key = String(id);
+            if (studiesById.has(key) && !seen.has(key)) {
+              unique.push(studiesById.get(key));
+              seen.add(key);
+            }
+          }
+          if (unique.length) groups.push({ name, studies: unique });
+        };
+
+        const items = Array.isArray(order?.selected_items) ? order.selected_items : [];
+        for (const rawItem of items) {
+          const item = { ...rawItem, id: rawItem.id || rawItem.item_id, type: (rawItem.type || rawItem.item_type) };
+          if (!item.id || !item.type) continue;
+          if (item.type === 'package') {
+            const pack = packagesById.get(String(item.id));
+            if (!pack || !Array.isArray(pack.items)) continue;
+            const packStudyIds = pack.items.filter(x => (x.item_type === 'analysis' || x.item_type === 'study')).map(x => x.item_id);
+            pushGroup(pack.name || 'Paquete', packStudyIds);
+          } else if (item.type === 'analysis' || item.type === 'study') {
+            const sid = String(item.id);
+            if (studiesById.has(sid) && !seen.has(sid)) pushGroup('Estudios individuales', [sid]);
+          }
+        }
+
+        // Agrega huérfanos que vengan de resultados o inferidos
+        const orphans = [];
+        for (const id of studiesById.keys()) {
+          if (!seen.has(id)) orphans.push(id);
+        }
+        if (orphans.length) pushGroup('Estudios individuales', orphans);
+        return groups;
+      };
+
+      const packageGroups = buildPackageGroups();
+
+      // Construir el cuerpo con encabezados de paquete y (opcional) de estudio
+      const mainContent = [];
+      const norm = (s) => String(s || '').trim().toLowerCase();
+      const shouldShowStudyHeader = (study) => {
+        const params = Array.isArray(study.parameters) ? study.parameters : [];
+        if (params.length !== 1) return true; // múltiples parámetros: siempre cabecera
+        const single = params[0];
+        // si el nombre coincide, omitimos cabecera de estudio
+        return norm(study.name) !== norm(single.name);
+      };
+
+      // Helper para renderizar parámetros de un estudio al arreglo body
+      const pushStudyParams = (studyDetail) => {
         const parameters = (studyDetail.parameters || []).map(p => ({
           ...p,
           valorReferencia: (p.valorReferencia || []).map(vr => ({
@@ -130,7 +195,7 @@ import autoTable from 'jspdf-autotable';
           }))
         }));
 
-        // Prefer results bucketed under the study id; fallback: search across all buckets by parametroId
+        // Prefer buckets por id de estudio; fallback buscar por parametroId
         let directResults = order.results?.[studyDetail.id] || order.results?.[String(studyDetail.id)] || [];
         const allResultKeys = Object.keys(order.results || {});
         if ((!directResults || directResults.length === 0) && allResultKeys.length > 0) {
@@ -147,30 +212,443 @@ import autoTable from 'jspdf-autotable';
             if (resultEntry && resultEntry.valor !== undefined && resultEntry.valor !== null && String(resultEntry.valor).trim() !== '') {
               resultValueToDisplay = String(resultEntry.valor);
             }
-
             const refData = getReferenceRangeText(param, patient, patientAgeData, true);
             const refRangeText = refData.valueText === 'N/A' ? 'N/A' : `${refData.valueText}\n${refData.demographics}`;
-
-            mainContent.push([
-              param.name,
-              resultValueToDisplay,
-              param.unit || studyDetail.general_units || '',
-              refRangeText,
-              param,
-            ]);
+            mainContent.push([param.name, resultValueToDisplay, refRangeText, param]);
           });
         } else {
-          mainContent.push([{ content: "Este estudio no tiene parámetros definidos.", colSpan: 4, styles: { fontStyle: 'italic', textColor: [100, 116, 139], halign: 'center', cellPadding: 3 } }]);
+          mainContent.push([{ content: "Este estudio no tiene parámetros definidos.", colSpan: 3, styles: { fontStyle: 'italic', textColor: [100, 116, 139], halign: 'center', cellPadding: 3 } }]);
         }
-      });
+      };
 
+      // Construimos el body final
+      for (const group of packageGroups) {
+        // Encabezado de Paquete
+        mainContent.push([{ content: group.name, colSpan: 3, styles: { fillColor: [226, 242, 253], textColor: [7, 89, 133], fontStyle: 'bold', fontSize: 11, cellPadding: 2.5 } }]);
+        for (const study of group.studies) {
+          if (shouldShowStudyHeader(study)) {
+            mainContent.push([{ content: study.name, colSpan: 3, styles: { fillColor: [241, 245, 249], textColor: [14, 116, 144], fontStyle: 'bold', fontSize: 10.5, cellPadding: 2.0 } }]);
+          }
+          pushStudyParams(study);
+        }
+      }
 
+      // Helper: dibuja cabecera/paciente y pie de página
+  const drawHeaderAndFooter = function (data) {
+          // Header
+          let yPos = compact ? 8 : 10;
+          if (labLogo && reportSettings.showLogoInReport) {
+            try {
+              const img = new Image();
+              img.src = labLogo;
+              const aspectRatio = img.width / img.height;
+              const logoHeight = compact ? 10 : 12;
+              const logoWidth = logoHeight * aspectRatio;
+              doc.addImage(img, 'PNG', margin, yPos, logoWidth, logoHeight);
+            } catch (e) { console.error("Error al cargar logo para PDF:", e); }
+          }
+          doc.setFontSize(compact ? 12 : 14).setFont(undefined, 'bold');
+          doc.setTextColor(30, 58, 138); 
+          doc.text(labName, pageWidth / 2, yPos + 4, { align: 'center' });
+          yPos += compact ? 4 : 5;
+          doc.setFontSize(compact ? 7 : 8).setFont(undefined, 'normal');
+          doc.setTextColor(100, 116, 139);
+          if (fullAddress) {
+            doc.text(fullAddress, pageWidth / 2, yPos + 4, { align: 'center' });
+            yPos += compact ? 3 : 4;
+          }
+          let contactString = [];
+          if (labPhone) contactString.push(`Tel: ${labPhone}`);
+          if (labEmail) contactString.push(`Email: ${labEmail}`);
+          if (contactString.length > 0) {
+            doc.text(contactString.join(' | '), pageWidth / 2, yPos + 4, { align: 'center' });
+          }
+          yPos += compact ? 8 : 10;
+          doc.setDrawColor(226, 232, 240);
+          doc.line(margin, yPos, pageWidth - margin, yPos);
+          yPos += compact ? 6 : 8;
+          doc.setFontSize(compact ? 11 : 12).setFont(undefined, 'bold');
+          doc.setTextColor(51, 65, 85);
+          // Para CBC, omitimos el título grande en el encabezado (fue comentado como "está de más").
+          const reportTitle = cbcStudy ? '' : (reportSettings.defaultHeader || 'Reporte de Resultados');
+          if (reportTitle) {
+            const titleWidth = doc.getStringUnitWidth(reportTitle) * doc.internal.getFontSize() / doc.internal.scaleFactor;
+            const titleX = (pageWidth - titleWidth) / 2;
+            doc.text(reportTitle, titleX, yPos);
+            yPos += compact ? 6 : 8;
+          }
+          // Dibuja datos del paciente solo en la primera página y una sola vez
+          if (data.pageNumber === 1 && !patientGridDrawnPages.has(1)) {
+            autoTable(doc, {
+              startY: yPos,
+              body: patientInfoGrid,
+              theme: 'plain',
+              styles: { fontSize: compact ? 7.2 : 8.5, cellPadding: compact ? 0.4 : 0.8, overflow: 'linebreak' },
+              columnStyles: { 0: { fontStyle: 'bold', textColor: [51, 65, 85] }, 2: { fontStyle: 'bold', textColor: [51, 65, 85] } },
+            });
+            patientGridDrawnPages.add(1);
+          }
+
+          // Footer
+          doc.setFontSize(compact ? 7 : 8).setFont(undefined, 'italic');
+          doc.setTextColor(100, 116, 139);
+          const footerText = reportSettings.defaultFooter || 'Gracias por su preferencia. Los resultados deben ser interpretados por un médico.';
+          doc.text(footerText, pageWidth / 2, pageHeight - 10, { align: 'center' });
+          doc.text(`Página ${data.pageNumber} de ${totalPagesExp}`, pageWidth - margin, pageHeight - 10, { align: 'right' });
+
+          // Firmas y notas (última página, se maneja al final del documento)
+      };
+
+      // Si hay Biometría Hemática, dibujarla primero en dos columnas
+      let afterCbcY = headerHeight;
+      if (cbcStudy) {
+        const gutter = 6;
+        const colWidth = (pageWidth - 2 * margin - gutter);
+        const leftWidth = colWidth / 2;
+        const rightWidth = colWidth / 2;
+        // Título del estudio (Biometría Hemática)
+        autoTable(doc, {
+          startY: headerHeight,
+          head: [[cbcStudy.name || 'Biometría Hemática']],
+          theme: 'grid',
+          margin: { top: topHeaderOnly, left: margin, right: margin },
+          tableWidth: pageWidth - 2 * margin,
+          headStyles: { fillColor: [241, 245, 249], textColor: [14, 116, 144], fontStyle: 'bold', fontSize: 11, lineWidth: 0.1, lineColor: [203, 213, 225] },
+          styles: { cellPadding: compact ? 2.0 : 2.5 },
+          showHead: 'firstPage',
+          didDrawPage: function(data) { drawHeaderAndFooter(data); },
+        });
+        const startY = doc.lastAutoTable ? doc.lastAutoTable.finalY + 2 : headerHeight;
+
+        // Utilidades de agrupación (mismas reglas que preview)
+        const groupParams = (parameters = []) => {
+          const list = parameters || [];
+          const findAny = (arr) => list.filter(p => arr.some(k => (p.name || '').toLowerCase().includes(k)));
+          const rojaOrder = ['Hemoglobina','Hematocrito','Eritrocitos','Volumen globular Medio','VCM','Hemoglobina glob. med.','HCM','Conc. media de Hb glob.','CHCM','RDW','Reticulocitos'];
+          const roja = [];
+          const consumed = new Set();
+          rojaOrder.forEach(n => { const hit = list.find(p => (p.name || '').toLowerCase() === n.toLowerCase()); if (hit) { roja.push(hit); consumed.add(hit.id || hit.name); } });
+          const plaquetaria = [];
+          const plateCandidates = findAny(['plaquet','vmp','mpv']);
+          plateCandidates.forEach(p => { const key = p.id || p.name; if (!consumed.has(key)) { plaquetaria.push(p); consumed.add(key); } });
+          const blanca = [];
+          const blancaKeys = ['leucocitos','neutrófilos','neutrofilos','segmentados','banda','metamielocitos','mielocitos','promielocitos','blastos','eosinófilos','eosinofilos','basófilos','basofilos','monocitos','linfocitos'];
+          const whiteCandidates = findAny(blancaKeys);
+          whiteCandidates.forEach(p => { const key = p.id || p.name; if (!consumed.has(key)) { blanca.push(p); consumed.add(key); } });
+          const otros = list.filter(p => !consumed.has(p.id || p.name)).map(p => ({ ...p, __otros: true }));
+          if (otros.length) blanca.push(...otros);
+          return { roja, plaquetaria, blanca };
+        };
+
+        const fillRows = (rows) => rows.map(p => {
+          const resultEntry = (Array.isArray(order.results?.[cbcStudy.id]) ? order.results[cbcStudy.id] : []).find(r => String(r.parametroId) === String(p.id))
+            || Object.values(order.results || {}).flatMap(v => Array.isArray(v) ? v : []).find(r => String(r.parametroId) === String(p.id));
+          const value = resultEntry && resultEntry.valor !== undefined && resultEntry.valor !== null && String(resultEntry.valor).trim() !== '' ? String(resultEntry.valor) : 'PENDIENTE';
+          // Rango de referencia compacto por debajo
+          const refData = getReferenceRangeText ? getReferenceRangeText(p, patient, patientAgeData, true) : null;
+          const refText = refData && refData.valueText !== 'N/A' ? `${refData.valueText}${refData.demographics ? ' · ' + refData.demographics : ''}` : '';
+          // Sin unidades: tercera columna solo con Valores de Referencia
+          return [p.name, value, refText, p];
+        });
+
+        const { roja, plaquetaria, blanca } = groupParams(cbcStudy.parameters || []);
+
+        const drawColumnSections = (x, width, sections) => {
+          let y = startY;
+          sections.forEach(sec => {
+            const bodyRows = fillRows(sec.rows);
+            autoTable(doc, {
+              startY: y,
+              margin: { top: topHeaderOnly, left: x, right: margin },
+              tableWidth: width,
+              head: [[sec.title, 'Resultado', 'Valores de Referencia']],
+              body: bodyRows,
+              theme: 'grid',
+              headStyles: { fillColor: [248, 250, 252], textColor: [30, 41, 59], fontStyle: 'bold', lineWidth: 0.1, lineColor: [203, 213, 225] },
+              styles: { fontSize: compact ? 7.2 : 8, cellPadding: compact ? 1.0 : 1.6, valign: 'middle', font: 'helvetica', overflow: 'linebreak' },
+              // Columnas consistentes: Param 42%, Resultado 22%, Referencia 36%
+              columnStyles: { 0: { cellWidth: width * 0.42, fontStyle: 'bold' }, 1: { cellWidth: width * 0.22, halign: 'center' }, 2: { cellWidth: width * 0.36, halign: 'center' } },
+              didParseCell: (data) => {
+                // Sombrear columna de Rango Normal
+                if (data.column.index === 2) {
+                  data.cell.styles.fillColor = [229, 231, 235];
+                }
+                if (data.cell.section === 'body' && data.column.index === 1) {
+                  const param = data.row.raw[3];
+                  const value = data.cell.text[0];
+                  const status = evaluateResult(String(value), param, patient, patientAgeData);
+                  data.cell.styles.fontStyle = 'bold';
+                  switch (status) {
+                    case 'bajo': data.cell.styles.textColor = [59, 130, 246]; break;
+                    case 'alto': data.cell.styles.textColor = [249, 115, 22]; break;
+                    case 'normal':
+                    case 'valido-alfanumerico': data.cell.styles.textColor = [22, 101, 52]; break;
+                    default: data.cell.styles.fontStyle = 'normal'; data.cell.styles.textColor = [100, 116, 139];
+                  }
+                }
+              },
+              didDrawCell: (data) => {
+                // Dibujar flechas arriba/abajo en fuera de rango para columna Resultado
+                if (data.cell.section === 'body' && data.column.index === 1) {
+                  const param = data.row.raw[3];
+                  if (!param || !data.cell.text) return;
+                  const value = data.cell.text[0];
+                  if (typeof value === 'undefined' || value === null) return;
+                  const status = evaluateResult(String(value), param, patient, patientAgeData);
+                  if (status === 'bajo' || status === 'alto') {
+                    const cell = data.cell;
+                    const textWidth = doc.getStringUnitWidth(String(value)) * cell.styles.fontSize / doc.internal.scaleFactor;
+                    const textX = cell.x + (cell.width - textWidth) / 2;
+                    const arrowSize = 1.5;
+                    const arrowX = textX - arrowSize - 1;
+                    const arrowY = cell.y + cell.height / 2;
+                    doc.setLineWidth(0.2);
+                    if (status === 'bajo') {
+                      doc.setDrawColor(59, 130, 246);
+                      doc.setFillColor(59, 130, 246);
+                      doc.triangle(arrowX, arrowY - arrowSize/2, arrowX + arrowSize, arrowY - arrowSize/2, arrowX + arrowSize/2, arrowY + arrowSize/2, 'F');
+                    } else { // alto
+                      doc.setDrawColor(249, 115, 22);
+                      doc.setFillColor(249, 115, 22);
+                      doc.triangle(arrowX, arrowY + arrowSize/2, arrowX + arrowSize, arrowY + arrowSize/2, arrowX + arrowSize/2, arrowY - arrowSize/2, 'F');
+                    }
+                  }
+                }
+              }
+            });
+            y = doc.lastAutoTable.finalY + 4;
+          });
+          return y;
+        };
+
+        const leftEndY = drawColumnSections(margin, leftWidth, [
+          { title: 'Serie Roja', rows: roja },
+          { title: 'Serie Plaquetaria', rows: plaquetaria }
+        ]);
+        const rightStartX = margin + leftWidth + gutter;
+        // Serie Blanca: dos columnas (Absoluto y %). Para simplificar: duplicamos filas,
+        // separando las que parecen % de las que no (
+  const whiteAbs = blanca.filter(p => !String(p.unit || '').includes('%'));
+  const whitePct = blanca.filter(p => String(p.unit || '').includes('%'));
+
+        // Construimos cuerpo manual con 3 columnas: Parámetro | Absoluto | % (más referencia aparte)
+  const buildWhiteBody = () => {
+          // Helpers
+          const norm = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+          const toNum = (val) => {
+            const s = (cleanNumericValueForStorage ? cleanNumericValueForStorage(val) : val);
+            const n = parseFloat(String(s).replace(',', '.'));
+            return Number.isFinite(n) ? n : null;
+          };
+          const fmtAbs = (n) => (n === null || typeof n === 'undefined') ? '—' : String(Number(n.toFixed(1)));
+          const fmtPct = (n) => (n === null || typeof n === 'undefined') ? '—' : String(Math.round(n));
+
+          // Busca Leucocitos Totales en la lista blanca y obtiene su valor
+          const isTotalLeuk = (name) => {
+            const t = norm(name);
+            return (t.includes('leucocitos') && t.includes('total')) || t.includes('wbc');
+          };
+          const totalLeukParam = blanca.find(p => isTotalLeuk(p?.name || '')) || whiteAbs.find(p => isTotalLeuk(p?.name || ''));
+          const getVal = (param) => {
+            if (!param) return '—';
+            const resultEntry = (Array.isArray(order.results?.[cbcStudy.id]) ? order.results[cbcStudy.id] : []).find(r => String(r.parametroId) === String(param.id))
+              || Object.values(order.results || {}).flatMap(v => Array.isArray(v) ? v : []).find(r => String(r.parametroId) === String(param.id));
+            return resultEntry && resultEntry.valor !== undefined && resultEntry.valor !== null && String(resultEntry.valor).trim() !== '' ? String(resultEntry.valor) : 'PENDIENTE';
+          };
+          const totalLeukValRaw = totalLeukParam ? getVal(totalLeukParam) : null;
+          const totalLeuk = toNum(totalLeukValRaw);
+
+          const mapByName = (arr) => new Map(arr.map(p => [String(p.name).toLowerCase(), p]));
+          const absMap = mapByName(whiteAbs);
+          const pctMap = mapByName(whitePct);
+          const names = Array.from(new Set([...absMap.keys(), ...pctMap.keys()]));
+          const rows = names.map(nameKey => {
+            const pAbs = absMap.get(nameKey);
+            const pPct = pctMap.get(nameKey);
+            const pRef = pAbs || pPct; // para unidad/ref
+
+            // Valores base
+            const absRaw = getVal(pAbs);
+            const pctRaw = getVal(pPct);
+            const absNum = toNum(absRaw);
+            const pctNum = toNum(pctRaw);
+
+            // Derivaciones a partir de leucocitos totales
+            let absOut = absRaw;
+            let pctOut = pctRaw;
+            const isTotalThisRow = pRef && isTotalLeuk(pRef.name || '');
+            if (!isTotalThisRow && totalLeuk !== null) {
+              if ((absNum === null || absRaw === 'PENDIENTE' || absRaw === '—') && pctNum !== null) {
+                absOut = fmtAbs(totalLeuk * (pctNum / 100));
+              }
+              if ((pctNum === null || pctRaw === 'PENDIENTE' || pctRaw === '—') && absNum !== null && totalLeuk > 0) {
+                pctOut = fmtPct((absNum / totalLeuk) * 100);
+              }
+            }
+
+            const refData = getReferenceRangeText ? getReferenceRangeText(pRef, patient, patientAgeData, true) : null;
+            const refText = refData && refData.valueText !== 'N/A' ? `${refData.valueText}${refData.demographics ? ' · ' + refData.demographics : ''}` : '';
+            const refIsPercent = !!(refData && typeof refData.valueText === 'string' && refData.valueText.includes('%'));
+
+            // Sin unidades: removemos líneas de unidad y mostramos solo valores
+            return [pRef?.name || nameKey, absOut, pctOut, /*ref*/ refText, /*pAbs*/ pAbs || null, /*pPct*/ pPct || null, /*refIsPercent*/ refIsPercent];
+          });
+          // Mover "Otros" al final si existe una fila con ese nombre
+          const otrosIndex = rows.findIndex(r => norm(r[0]) === 'otros');
+          if (otrosIndex > -1) {
+            const [otrosRow] = rows.splice(otrosIndex, 1);
+            rows.push(otrosRow);
+          }
+          return rows;
+        };
+
+        // Dibuja Serie Blanca manualmente
+        autoTable(doc, {
+          startY: startY,
+          margin: { top: topHeaderOnly, left: rightStartX, right: margin },
+          tableWidth: rightWidth,
+          head: [[ 'Serie Blanca', '', '' ]],
+          theme: 'grid',
+          headStyles: { fillColor: [248, 250, 252], textColor: [30, 41, 59], fontStyle: 'bold', lineWidth: 0.1, lineColor: [203, 213, 225] },
+          styles: { fontSize: compact ? 7.2 : 8, cellPadding: compact ? 1.0 : 1.6, valign: 'middle', font: 'helvetica' },
+          body: [],
+          columnStyles: { 0: { cellWidth: rightWidth * 0.44, fontStyle: 'bold' }, 1: { cellWidth: rightWidth * 0.22, halign: 'center' }, 2: { cellWidth: rightWidth * 0.34, halign: 'center' } },
+        });
+        const whiteHeaderY = doc.lastAutoTable.finalY;
+        // Banda superior con dos mitades: izquierda (Leucocitos totales + valor), derecha (Rango Normal (Abs.) + texto)
+        const normText = (p) => {
+          const ref = getReferenceRangeText ? getReferenceRangeText(p, patient, patientAgeData, true) : null;
+          return ref && ref.valueText !== 'N/A' ? `${ref.valueText} /µL` : '';
+        };
+        const normName = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+        const isTotalLeuk = (name) => {
+          const t = normName(name);
+          return (t.includes('leucocitos') && t.includes('total')) || t.includes('wbc');
+        };
+        const totalLeukParam = (cbcStudy.parameters || []).find(p => isTotalLeuk(p?.name || ''));
+        const totalLeukRes = (()=>{
+          if (!totalLeukParam) return '—';
+          const list = Array.isArray(order.results?.[cbcStudy.id]) ? order.results[cbcStudy.id] : [];
+          const hit = list.find(r => String(r.parametroId) === String(totalLeukParam.id))
+            || Object.values(order.results || {}).flatMap(v => Array.isArray(v) ? v : []).find(r => String(r.parametroId) === String(totalLeukParam.id));
+          return (hit && hit.valor !== undefined && hit.valor !== null && String(hit.valor).trim() !== '') ? String(hit.valor) : '—';
+        })();
+        const totalLeukRange = totalLeukParam ? normText(totalLeukParam) : '';
+        // Texto: 'Leucocitos totales' (izquierda), valor (centro), 'Rango Normal (Abs.)' + rango (derecha)
+  const bandY = whiteHeaderY + 5;
+  const bandH = compact ? 8 : 9;
+  const leftW = rightWidth * 0.60;
+  const rightW = rightWidth - leftW;
+  // Marco de banda
+  doc.setDrawColor(203, 213, 225);
+  doc.rect(rightStartX, bandY - (bandH - 2), rightWidth, bandH, 'S');
+  // Mitad derecha sombreada
+  doc.setFillColor(241, 245, 249); // más claro para mejor contraste
+  doc.rect(rightStartX + leftW, bandY - (bandH - 2), rightW, bandH, 'F');
+  // Textos
+  doc.setFontSize(compact ? 7.2 : 8).setFont(undefined, 'bold').setTextColor(51, 65, 85);
+  doc.text('Leucocitos totales', rightStartX + 2, bandY);
+  doc.setFontSize(compact ? 9 : 10).setFont(undefined, 'bold').setTextColor(0, 0, 0);
+  doc.text(String(totalLeukRes), rightStartX + (leftW / 2), bandY, { align: 'center' });
+  doc.setFontSize(compact ? 7.2 : 8).setFont(undefined, 'bold').setTextColor(30, 41, 59);
+  const rnLabel = 'Rango Normal (Abs.)';
+  const rnText = totalLeukRange ? `${rnLabel}  ${totalLeukRange}` : rnLabel;
+  doc.text(rnText, rightStartX + rightWidth - 2, bandY, { align: 'right' });
+        autoTable(doc, {
+          startY: bandY + 4,
+          margin: { top: topHeaderOnly, left: rightStartX, right: margin },
+          tableWidth: rightWidth,
+          // Encabezado verde, columnas: Parámetro | Absoluto | % | Valores de Referencia (Abs.)
+          head: [[ 'Parámetro', 'Absoluto', '%', 'Valores de Referencia' ]],
+          body: (function(){
+            const rows = buildWhiteBody();
+            // Mantener datos ocultos para evaluación precisa:
+            // [name, abs, pct, rangoVisible, pAbs, pPct, refIsPercent]
+            return rows.map(r => [r[0], r[1], r[2], r[3], r[4], r[5], r[6]]);
+          })(),
+          theme: 'grid',
+          headStyles: { fillColor: [5, 150, 105], textColor: [255, 255, 255], fontStyle: 'bold', lineWidth: 0.1, lineColor: [203, 213, 225] },
+          styles: { fontSize: compact ? 7.2 : 8, cellPadding: compact ? 1.0 : 1.6, valign: 'middle', font: 'helvetica', overflow: 'linebreak' },
+              // Columnas consistentes: Param 44%, Abs 22%, % 12%, Ref 22%
+          columnStyles: { 0: { cellWidth: rightWidth * 0.44, fontStyle: 'bold' }, 1: { cellWidth: rightWidth * 0.22, halign: 'center' }, 2: { cellWidth: rightWidth * 0.12, halign: 'center' }, 3: { cellWidth: rightWidth * 0.22, halign: 'center' } },
+          didParseCell: (data) => {
+            // sombrear columna de rango normal y asegurar legibilidad (texto oscuro)
+            if (data.column.index === 3) {
+              data.cell.styles.fillColor = [241, 245, 249];
+              data.cell.styles.textColor = [30, 41, 59];
+              data.cell.styles.fontStyle = 'normal';
+            }
+            if (data.cell.section === 'body' && (data.column.index === 1 || data.column.index === 2)) {
+              const pAbs = data.row.raw[4];
+              const pPct = data.row.raw[5];
+              const refIsPercent = !!data.row.raw[6];
+              const col = data.column.index; // 1: Abs, 2: %
+              // Solo coloreamos la columna relevante según el tipo de referencia
+              const isRelevant = (refIsPercent && col === 2) || (!refIsPercent && col === 1);
+              const value = data.cell.text && data.cell.text[0];
+              if (!isRelevant) {
+                // Dejar en neutro si no es la columna prioritaria
+                data.cell.styles.fontStyle = 'normal';
+                data.cell.styles.textColor = [100, 116, 139];
+                return;
+              }
+              const param = col === 2 ? (pPct || pAbs) : (pAbs || pPct);
+              const status = evaluateResult(String(value), param, patient, patientAgeData);
+              data.cell.styles.fontStyle = 'bold';
+              switch (status) {
+                case 'bajo': data.cell.styles.textColor = [59, 130, 246]; break;
+                case 'alto': data.cell.styles.textColor = [249, 115, 22]; break;
+                case 'normal':
+                case 'valido-alfanumerico': data.cell.styles.textColor = [22, 101, 52]; break;
+                default: data.cell.styles.fontStyle = 'normal'; data.cell.styles.textColor = [100, 116, 139];
+              }
+            }
+          },
+          didDrawCell: (data) => {
+            // Flechas de fuera de rango en la columna prioritaria (según referencia)
+            if (data.cell.section === 'body' && (data.column.index === 1 || data.column.index === 2)) {
+              const pAbs = data.row.raw[4];
+              const pPct = data.row.raw[5];
+              const refIsPercent = !!data.row.raw[6];
+              const col = data.column.index;
+              const isRelevant = (refIsPercent && col === 2) || (!refIsPercent && col === 1);
+              if (!isRelevant) return;
+              const value = data.cell.text && data.cell.text[0];
+              const param = col === 2 ? (pPct || pAbs) : (pAbs || pPct);
+              if (typeof value === 'undefined' || value === null) return;
+              const status = evaluateResult(String(value), param, patient, patientAgeData);
+              if (status === 'bajo' || status === 'alto') {
+                const cell = data.cell;
+                const textWidth = doc.getStringUnitWidth(String(value)) * cell.styles.fontSize / doc.internal.scaleFactor;
+                const textX = cell.x + (cell.width - textWidth) / 2;
+                const arrowSize = 1.5;
+                const arrowX = textX - arrowSize - 1;
+                const arrowY = cell.y + cell.height / 2;
+                doc.setLineWidth(0.2);
+                if (status === 'bajo') {
+                  doc.setDrawColor(59, 130, 246);
+                  doc.setFillColor(59, 130, 246);
+                  doc.triangle(arrowX, arrowY - arrowSize/2, arrowX + arrowSize, arrowY - arrowSize/2, arrowX + arrowSize/2, arrowY + arrowSize/2, 'F');
+                } else {
+                  doc.setDrawColor(249, 115, 22);
+                  doc.setFillColor(249, 115, 22);
+                  doc.triangle(arrowX, arrowY + arrowSize/2, arrowX + arrowSize, arrowY + arrowSize/2, arrowX + arrowSize/2, arrowY - arrowSize/2, 'F');
+                }
+              }
+            }
+          }
+        });
+        const rightEndY = doc.lastAutoTable.finalY + 4;
+        afterCbcY = Math.max(leftEndY, rightEndY) + 6;
+      }
+
+  if (mainContent.length > 0) {
   autoTable(doc, {
         theme: 'grid',
-        head: [['Parámetro', 'Resultado', 'Unidades', 'Valores de Referencia']],
+    head: [['Parámetro', 'Resultado', 'Valores de Referencia (VN)']],
         body: mainContent,
-        startY: headerHeight,
-        margin: { top: headerHeight },
+        startY: cbcStudy ? afterCbcY : headerHeight,
+    margin: { top: topHeaderOnly, left: margin, right: margin },
         showHead: 'firstPage',
         headStyles: { 
             fillColor: [248, 250, 252], 
@@ -179,16 +657,16 @@ import autoTable from 'jspdf-autotable';
             lineWidth: 0.1,
             lineColor: [203, 213, 225], 
         },
-        styles: { fontSize: 8, cellPadding: 2, valign: 'middle', font: 'helvetica' },
+        styles: { fontSize: compact ? 7.0 : 8, cellPadding: compact ? 1.0 : 1.8, valign: 'middle', font: 'helvetica' },
         columnStyles: {
-          0: { cellWidth: 50, fontStyle: 'bold' },
-          1: { cellWidth: 35, halign: 'center' },
-          2: { cellWidth: 20, halign: 'center' },
-          3: { cellWidth: 'auto', fontSize: 7.5 },
+          // Reducimos 'Parámetro' y ampliamos 'Valores de Referencia'
+          0: { cellWidth: compact ? 42 : 46, fontStyle: 'bold' },
+          1: { cellWidth: compact ? 28 : 34, halign: 'center' },
+          2: { cellWidth: 'auto', fontSize: compact ? 7 : 7.5 },
         },
         didDrawCell: (data) => {
           if (data.column.index === 1 && data.cell.section === 'body') {
-            const param = data.row.raw[4];
+            const param = data.row.raw[3];
             if (!param || !data.cell.text) return;
             const value = data.cell.text[0];
             if (typeof value === 'undefined' || value === null) return;
@@ -217,11 +695,11 @@ import autoTable from 'jspdf-autotable';
             }
           }
         },
-        didParseCell: (data) => {
+    didParseCell: (data) => {
           if (data.cell.section === 'body') {
-              const param = data.row.raw[4];
+        const param = data.row.raw[3];
               if (!param) {
-                  data.row.cells[0].colSpan = 4;
+          data.row.cells[0].colSpan = 3;
                   return;
               }
               const value = data.cell.text[0];
@@ -249,70 +727,9 @@ import autoTable from 'jspdf-autotable';
           }
         },
         didDrawPage: function (data) {
-          // Header
-          let yPos = 10;
-          if (labLogo && reportSettings.showLogoInReport) {
-            try {
-              const img = new Image();
-              img.src = labLogo;
-              const aspectRatio = img.width / img.height;
-              const logoHeight = 12;
-              const logoWidth = logoHeight * aspectRatio;
-              doc.addImage(img, 'PNG', margin, yPos, logoWidth, logoHeight);
-            } catch (e) { console.error("Error al cargar logo para PDF:", e); }
-          }
-      
-          doc.setFontSize(14).setFont(undefined, 'bold');
-          doc.setTextColor(30, 58, 138); 
-          doc.text(labName, pageWidth / 2, yPos + 4, { align: 'center' });
-          yPos += 5;
+          drawHeaderAndFooter(data);
 
-          doc.setFontSize(8).setFont(undefined, 'normal');
-          doc.setTextColor(100, 116, 139);
-          if (fullAddress) {
-            doc.text(fullAddress, pageWidth / 2, yPos + 4, { align: 'center' });
-            yPos += 4;
-          }
-          let contactString = [];
-          if (labPhone) contactString.push(`Tel: ${labPhone}`);
-          if (labEmail) contactString.push(`Email: ${labEmail}`);
-          if (contactString.length > 0) {
-            doc.text(contactString.join(' | '), pageWidth / 2, yPos + 4, { align: 'center' });
-          }
-          yPos += 10;
-          
-          doc.setDrawColor(226, 232, 240);
-          doc.line(margin, yPos, pageWidth - margin, yPos);
-          yPos += 8;
-      
-          doc.setFontSize(12).setFont(undefined, 'bold');
-          doc.setTextColor(51, 65, 85);
-          const reportTitle = reportSettings.defaultHeader || "Reporte de Resultados";
-          const titleWidth = doc.getStringUnitWidth(reportTitle) * doc.internal.getFontSize() / doc.internal.scaleFactor;
-          const titleX = (pageWidth - titleWidth) / 2;
-          doc.text(reportTitle, titleX, yPos);
-          yPos += 8;
-
-          autoTable(doc, {
-            startY: yPos,
-            body: patientInfoGrid,
-            theme: 'plain',
-            styles: { fontSize: 8.5, cellPadding: 0.8, overflow: 'linebreak' },
-            columnStyles: { 
-              0: { fontStyle: 'bold', textColor: [51, 65, 85] }, 
-              2: { fontStyle: 'bold', textColor: [51, 65, 85] }, 
-            },
-          });
-
-          // Footer
-          const pageCount = doc.internal.getNumberOfPages();
-          doc.setFontSize(8).setFont(undefined, 'italic');
-          doc.setTextColor(100, 116, 139);
-          const footerText = reportSettings.defaultFooter || 'Gracias por su preferencia. Los resultados deben ser interpretados por un médico.';
-          doc.text(footerText, pageWidth / 2, pageHeight - 10, { align: 'center' });
-          doc.text(`Página ${data.pageNumber} de ${pageCount}`, pageWidth - margin, pageHeight - 10, { align: 'right' });
-
-          if (data.pageNumber === pageCount) {
+          if (data.pageNumber === doc.internal.getNumberOfPages()) {
             const finalY = doc.lastAutoTable ? doc.lastAutoTable.finalY : undefined;
             if (order.validation_notes) {
                 doc.setFontSize(9).setFont(undefined, 'bold');
@@ -346,6 +763,12 @@ import autoTable from 'jspdf-autotable';
           }
         },
       });
+  }
+
+      // Completar numeración total de páginas
+      if (typeof doc.putTotalPages === 'function') {
+        doc.putTotalPages(totalPagesExp);
+      }
 
       doc.output('dataurlnewwindow');
     };
