@@ -66,9 +66,10 @@ const CBCReportLayout = ({ studyDetail, orderResults, compact = false, renderRes
         <Table className={cn("text-xs", compact ? "[&_*]:leading-[1.1]" : "")}>
           <TableHeader>
             <TableRow className="bg-slate-50/60 dark:bg-slate-700/30">
-              <TableHead className={cn(compact ? "py-1.5" : "py-2", "pl-3 font-semibold text-slate-600 dark:text-slate-300")}>Parámetro</TableHead>
-              <TableHead className={cn(compact ? "py-1.5" : "py-2", "text-center font-semibold text-slate-600 dark:text-slate-300 w-[30%]")}>Resultado</TableHead>
-              <TableHead className={cn(compact ? "py-1.5" : "py-2", "text-center font-semibold text-slate-600 dark:text-slate-300 w-[25%]")}>Unidades / Ref.</TableHead>
+              <TableHead className={cn(compact ? "py-1.5" : "py-2", "pl-3 font-semibold text-slate-600 dark:text-slate-300 w-[30%]")}>Parámetro</TableHead>
+              <TableHead className={cn(compact ? "py-1.5" : "py-2", "text-center font-semibold text-slate-600 dark:text-slate-300 w-[20%]")}>Resultado</TableHead>
+              <TableHead className={cn(compact ? "py-1.5" : "py-2", "text-center font-semibold text-slate-600 dark:text-slate-300 w-[15%]")}>Unidades</TableHead>
+              <TableHead className={cn(compact ? "py-1.5" : "py-2", "pr-3 text-left font-semibold text-slate-600 dark:text-slate-300 w-[35%]")}>Valores de Referencia</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -81,12 +82,15 @@ const CBCReportLayout = ({ studyDetail, orderResults, compact = false, renderRes
                   <TableCell className={cn(compact ? "py-1.5" : "py-2.5", "pl-3 font-medium text-slate-700 dark:text-slate-200")}>{p.name}</TableCell>
                   <TableCell className={cn(compact ? "py-1.5" : "py-2.5", "text-center")}>{renderResultCell(p._valor, { parametroId: p.id })}</TableCell>
                   <TableCell className={cn(compact ? "py-1.5" : "py-2.5", "text-center text-slate-600 dark:text-slate-300") }>
-                    <div className="leading-tight flex flex-col items-center">
-                      <span className="text-xs text-slate-600 dark:text-slate-300">{p.unit || ''}</span>
-                      {refText ? (
-                        <span className="text-[10px] text-slate-400 dark:text-slate-500">{refText}{demo ? ` · ${demo}` : ''}</span>
-                      ) : null}
-                    </div>
+                    <span className="text-xs">{p.unit || studyDetail.general_units || ''}</span>
+                  </TableCell>
+                  <TableCell className={cn(compact ? "py-1.5" : "py-2.5", "pr-3 text-left text-slate-600 dark:text-slate-300") }>
+                    {refText ? (
+                      <div className="leading-tight flex flex-col">
+                        <span className="text-xs font-medium text-slate-700 dark:text-slate-200">{refText}</span>
+                        {demo ? <span className="text-[10px] text-slate-400 dark:text-slate-500">{demo}</span> : null}
+                      </div>
+                    ) : <span className="text-[11px] text-slate-400">N/A</span>}
                   </TableCell>
                 </TableRow>
               );
@@ -119,7 +123,7 @@ const CBCReportLayout = ({ studyDetail, orderResults, compact = false, renderRes
     const totalLeuk = totalLeukParam ? toNum(totalLeukParam._valor) : null;
 
     // Render de filas con cálculo derivado cuando aplique
-    return (
+  return (
       <Card className="bg-white dark:bg-slate-800/50 shadow border dark:border-slate-700/40">
         <CardHeader className={cn("bg-slate-100 dark:bg-slate-800 border-b dark:border-slate-700", compact ? "py-1.5 px-3" : "py-2 px-4") }>
           <CardTitle className={cn(titleClass, compact ? "text-[12px]" : "text-[13px]")}>Serie Blanca</CardTitle>
@@ -128,10 +132,10 @@ const CBCReportLayout = ({ studyDetail, orderResults, compact = false, renderRes
           <Table className={cn("text-xs", compact ? "[&_*]:leading-[1.1]" : "") }>
             <TableHeader>
               <TableRow className="bg-slate-50/60 dark:bg-slate-700/30">
-                <TableHead className={cn(compact ? "py-1.5" : "py-2", "pl-3 font-semibold text-slate-600 dark:text-slate-300")}>Parámetro</TableHead>
-                <TableHead className={cn(compact ? "py-1.5" : "py-2", "text-center font-semibold text-slate-600 dark:text-slate-300 w-[28%]")}>Absoluto</TableHead>
-                <TableHead className={cn(compact ? "py-1.5" : "py-2", "text-center font-semibold text-slate-600 dark:text-slate-300 w-[22%]")}>%</TableHead>
-                <TableHead className={cn(compact ? "py-1.5" : "py-2", "pr-3 text-left font-semibold text-slate-600 dark:text-slate-300")}>Valores de Referencia</TableHead>
+                <TableHead className={cn(compact ? "py-1.5" : "py-2", "pl-3 font-semibold text-slate-600 dark:text-slate-300 w-[28%]")}>Parámetro</TableHead>
+                <TableHead className={cn(compact ? "py-1.5" : "py-2", "text-center font-semibold text-slate-600 dark:text-slate-300 w-[22%]")}>Absoluto</TableHead>
+                <TableHead className={cn(compact ? "py-1.5" : "py-2", "text-center font-semibold text-slate-600 dark:text-slate-300 w-[20%]")}>%</TableHead>
+                <TableHead className={cn(compact ? "py-1.5" : "py-2", "pr-3 text-left font-semibold text-slate-600 dark:text-slate-300 w-[30%]")}>Valores de Referencia</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -152,7 +156,7 @@ const CBCReportLayout = ({ studyDetail, orderResults, compact = false, renderRes
                 return (
                   <TableRow key={p.id || p.name}>
                     <TableCell className={cn(compact ? "py-1.5" : "py-2.5", "pl-3 font-medium text-slate-700 dark:text-slate-200")}>{p.name}</TableCell>
-                    <TableCell className={cn(compact ? "py-1.5" : "py-2.5", "text-center") }>
+          <TableCell className={cn(compact ? "py-1.5" : "py-2.5", "text-center") }>
                       <div className="flex flex-col items-center leading-tight">
                         {/* Absoluto directo (con evaluación) o derivado (neutro) */}
                         {!isPercent && renderResultCell(p._valor, { parametroId: p.id })}
@@ -163,7 +167,7 @@ const CBCReportLayout = ({ studyDetail, orderResults, compact = false, renderRes
                             <span className="text-[11px] text-slate-400">—</span>
                           )
                         )}
-                        <span className="text-[10px] text-slate-400 dark:text-slate-500">{absUnit}</span>
+            <span className="text-[10px] text-slate-400 dark:text-slate-500">{absUnit}</span>
                       </div>
                     </TableCell>
                     <TableCell className={cn(compact ? "py-1.5" : "py-2.5", "text-center") }>
@@ -177,11 +181,11 @@ const CBCReportLayout = ({ studyDetail, orderResults, compact = false, renderRes
                             <span className="text-[11px] text-slate-400">—</span>
                           )
                         )}
-                        <span className="text-[10px] text-slate-400 dark:text-slate-500">%</span>
+            <span className="text-[10px] text-slate-400 dark:text-slate-500">%</span>
                       </div>
                     </TableCell>
                     {/* Columna de Valores de Referencia */}
-                    <TableCell className={cn(compact ? "py-1.5" : "py-2.5", "pr-3") }>
+          <TableCell className={cn(compact ? "py-1.5" : "py-2.5", "pr-3 text-left") }>
                       {refText ? (
                         <div className="flex flex-col leading-tight">
                           <span className="text-xs font-medium text-slate-700 dark:text-slate-200">{isPercent ? `${refText}%` : refText}</span>
@@ -204,15 +208,25 @@ const CBCReportLayout = ({ studyDetail, orderResults, compact = false, renderRes
   };
 
   return (
-    <div className={cn("grid gap-3", "md:grid-cols-2") }>
-      <div className="space-y-3">
-        <TableWithValues title="Serie Roja" items={rojaFilled} />
-        {plaqFilled.length > 0 && <TableWithValues title="Serie Plaquetaria" items={plaqFilled} />}
-      </div>
-      <div className="space-y-3">
-        <WhiteSeriesTable items={blancaFilled} />
-      </div>
-    </div>
+    <Card className="bg-white dark:bg-slate-800/50 shadow-md border dark:border-slate-700/40 overflow-hidden">
+  <CardHeader className={cn("bg-slate-100 dark:bg-slate-800 rounded-t-lg border-b dark:border-slate-700", compact ? "py-1.5 px-3" : "py-2.5 px-4") }>
+        <CardTitle className={cn("font-semibold text-sky-800 dark:text-sky-300 flex items-center", compact ? "text-sm" : "text-base") }>
+          {/* icon intentionally omitted to keep report clean */}
+          {studyDetail.name}
+        </CardTitle>
+      </CardHeader>
+  <CardContent className={cn("p-3", compact ? "pt-2" : "pt-3.5") }>
+        <div className={cn("grid gap-3", "md:grid-cols-2") }>
+          <div className="space-y-3">
+            <TableWithValues title="Serie Roja" items={rojaFilled} />
+            {plaqFilled.length > 0 && <TableWithValues title="Serie Plaquetaria" items={plaqFilled} />}
+          </div>
+          <div className="space-y-3">
+            <WhiteSeriesTable items={blancaFilled} />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 };
 

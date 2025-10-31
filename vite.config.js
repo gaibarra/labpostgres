@@ -126,16 +126,36 @@ window.fetch = function(...args) {
 					const responseClone = response.clone();
 					const errorFromRes = await responseClone.text();
 					const requestUrl = response.url;
-					console.error(\`Fetch error from \${requestUrl}: \${errorFromRes}\`);
+					// Silence expected auth probe errors (e.g., unauthenticated /api/auth/me 401/404)
+					let quiet = false;
+					try {
+						const u = new URL(requestUrl, window.location.origin);
+						if (u.pathname.endsWith('/api/auth/me') && (response.status === 401 || response.status === 404)) {
+							quiet = true;
+						}
+					} catch (_) { /* ignore URL parse errors */ }
+					if (!quiet) {
+						console.error(\`Fetch error from \${requestUrl}: \${errorFromRes}\`);
+					}
 			}
 
 			return response;
 		})
 		.catch(error => {
-			if (!url.match(/\.html?$/i)) {
+			try {
+				const urlStr = (args[0] instanceof Request) ? args[0].url : String(args[0]);
+				const isHtml = /[.]html?$/i.test(urlStr);
+				let quiet = false;
+				try {
+					const u = new URL(urlStr, window.location.origin);
+					if (u.pathname.endsWith('/api/auth/me')) quiet = true;
+				} catch (_) { /* ignore */ }
+				if (!isHtml && !quiet) {
+					console.error(error);
+				}
+			} catch (_) {
 				console.error(error);
 			}
-
 			throw error;
 		});
 };

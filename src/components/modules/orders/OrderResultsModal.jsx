@@ -8,7 +8,7 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
     import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
     import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
   import { useToast } from "@/components/ui/use-toast";
-  import { FileEdit, Beaker, AlertTriangle, Info, Package } from 'lucide-react';
+  import { FileEdit, Beaker, AlertTriangle, Info, Package, HelpCircle } from 'lucide-react';
     import { cn } from "@/lib/utils";
     import { useEvaluationUtils } from './report_utils/evaluationUtils.js';
     import { useOrderManagement } from './hooks/useOrderManagement.js';
@@ -21,6 +21,7 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
       const [resultsData, setResultsData] = useState({});
       const [orderStatus, setOrderStatus] = useState(order?.status || 'Pendiente');
       const [validationNotes, setValidationNotes] = useState(order?.validation_notes || '');
+  const [abgHelpOpen, setAbgHelpOpen] = useState(false);
       const { calculateAgeInUnits, getReferenceRangeText, evaluateResult } = useEvaluationUtils();
       const { getStudiesAndParametersForOrder } = useOrderManagement();
 
@@ -320,9 +321,21 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
                                   <Badge key={`${studyItem.id}-pkgextra-${idx}`} variant="secondary" className="text-[10px] py-0.5 px-1.5">{n}</Badge>
                                 ))}
                                 {(studyItem.name === 'Antibiograma' || String(studyItem.clave||'').toUpperCase() === 'ABG') && (
-                                  <Button size="sm" variant="outline" onClick={()=> setAbgOpen(true)}>
-                                    Abrir Antibiograma
-                                  </Button>
+                                  <div className="flex items-center gap-1.5">
+                                    <Button size="sm" variant="outline" onClick={()=> setAbgOpen(true)}>
+                                      Abrir Antibiograma
+                                    </Button>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      className="h-8 w-8"
+                                      onClick={()=> setAbgHelpOpen(true)}
+                                      title="Ayuda sobre captura de Antibiograma"
+                                      aria-label="Ayuda sobre captura de Antibiograma"
+                                    >
+                                      <HelpCircle className="h-5 w-5 text-slate-500" />
+                                    </Button>
+                                  </div>
                                 )}
                               </div>
                             </div>
@@ -386,9 +399,21 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
                             <Beaker className="h-5 w-5 mr-2"/> {studyItem.name} {studyItem.clave ? `(${studyItem.clave})` : ''}
                           </CardTitle>
                           {(studyItem.name === 'Antibiograma' || String(studyItem.clave||'').toUpperCase() === 'ABG') && (
-                            <Button size="sm" variant="outline" onClick={()=> setAbgOpen(true)}>
-                              Abrir Antibiograma
-                            </Button>
+                            <div className="flex items-center gap-1.5">
+                              <Button size="sm" variant="outline" onClick={()=> setAbgOpen(true)}>
+                                Abrir Antibiograma
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8"
+                                onClick={()=> setAbgHelpOpen(true)}
+                                title="Ayuda sobre captura de Antibiograma"
+                                aria-label="Ayuda sobre captura de Antibiograma"
+                              >
+                                <HelpCircle className="h-5 w-5 text-slate-500" />
+                              </Button>
+                            </div>
                           )}
                         </div>
                       </CardHeader>
@@ -463,9 +488,21 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
                   </div>
                   <div className="flex gap-3 justify-end pt-2">
                     {abgStudy && (
-                      <Button variant="outline" type="button" onClick={()=> setAbgOpen(true)}>
-                        Abrir Antibiograma
-                      </Button>
+                      <div className="flex items-center gap-1.5">
+                        <Button variant="outline" type="button" onClick={()=> setAbgOpen(true)}>
+                          Abrir Antibiograma
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={()=> setAbgHelpOpen(true)}
+                          title="Ayuda sobre captura de Antibiograma"
+                          aria-label="Ayuda sobre captura de Antibiograma"
+                        >
+                          <HelpCircle className="h-5 w-5 text-slate-500" />
+                        </Button>
+                      </div>
                     )}
                     <Button variant="secondary" type="button" onClick={handleSave}>Guardar Borrador</Button>
                     <Button variant="default" type="button" onClick={handleValidateAndPreviewAction}>Validar y Previsualizar</Button>
@@ -479,6 +516,73 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
               {abgStudy && (
                 <AntibiogramEditor open={abgOpen} onOpenChange={setAbgOpen} workOrder={order} analysisId={abgStudy.id} />
               )}
+
+              {/* Ayuda de Antibiograma */}
+              <Dialog open={abgHelpOpen} onOpenChange={setAbgHelpOpen}>
+                <DialogContent className="sm:max-w-2xl">
+                  <DialogHeader>
+                    <DialogTitle>Ayuda: Captura de Antibiograma (ABG)</DialogTitle>
+                    <DialogDescription>
+                      Guía práctica para completar los campos generales y registrar resultados de sensibilidad a antibióticos.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-3 text-sm text-slate-700 dark:text-slate-200">
+                    <div>
+                      <p className="font-semibold">Campos generales (encabezado)</p>
+                      <ul className="list-disc pl-5 space-y-1">
+                        <li><span className="font-medium">Organismo</span>: nombre del microorganismo aislado (ej. E. coli, S. aureus).</li>
+                        <li><span className="font-medium">Método</span>: indique el método usado (Kirby-Bauer/Disco difusión, MIC/CIM, Etest).</li>
+                        <li><span className="font-medium">Estándar</span>: seleccione el referente (CLSI o EUCAST) que respalda la interpretación.</li>
+                        <li><span className="font-medium">Versión del Estándar</span>: especifique año/versión (p. ej. CLSI M100 2025 o EUCAST v15.0).</li>
+                      </ul>
+                    </div>
+                    <div>
+                      <p className="font-semibold">Registro de antibióticos</p>
+                      <ul className="list-disc pl-5 space-y-1">
+                        <li>Haga clic en <span className="font-medium">“Abrir Antibiograma”</span> para cargar/editar la tabla.</li>
+                        <li>Puede buscar y añadir antibióticos por <span className="font-medium">nombre</span> o <span className="font-medium">clase</span>.</li>
+                        <li>Para cada antibiótico capture:
+                          <ul className="list-[circle] pl-5 mt-1 space-y-1">
+                            <li><span className="font-medium">Medida</span>:
+                              <ul className="list-[square] pl-5 mt-1 space-y-1">
+                                <li><span className="font-medium">Kirby-Bauer (Disco difusión)</span>: registre el halo en <span className="font-medium">mm</span>.</li>
+                                <li><span className="font-medium">MIC/CIM</span>: registre la concentración en <span className="font-medium">µg/mL</span> (redondeo razonable, p. ej. 2 decimales).</li>
+                                <li><span className="font-medium">Etest</span>: registre la MIC indicada por la tira (µg/mL).</li>
+                              </ul>
+                            </li>
+                            <li><span className="font-medium">Interpretación</span>: seleccione <span className="font-medium">S</span> (Sensible), <span className="font-medium">I</span> (Intermedio) o <span className="font-medium">R</span> (Resistente).</li>
+                            <li><span className="font-medium">Notas</span>: comentarios adicionales (p. ej. BLEE/ESBL, carbapenemasa, inducibilidad, observaciones).</li>
+                          </ul>
+                        </li>
+                      </ul>
+                    </div>
+                    <div>
+                      <p className="font-semibold">Buenas prácticas</p>
+                      <ul className="list-disc pl-5 space-y-1">
+                        <li>Consistencia entre <span className="font-medium">Método</span>, <span className="font-medium">Estándar</span> y <span className="font-medium">Interpretación</span>.</li>
+                        <li>Revise la coherencia con el <span className="font-medium">organismo</span> y el <span className="font-medium">tipo de muestra</span>.</li>
+                        <li>Use las <span className="font-medium">Notas</span> para indicar particularidades y mecanismos de resistencia relevantes.</li>
+                      </ul>
+                    </div>
+                    <div>
+                      <p className="font-semibold">Previsualización y PDF</p>
+                      <ul className="list-disc pl-5 space-y-1">
+                        <li>El reporte muestra una sección <span className="font-medium">Antibiograma</span> con los metadatos (Organismo, Método, Estándar) y una tabla agrupada por <span className="font-medium">clase</span> de antibiótico.</li>
+                        <li>La disposición respeta el <span className="font-medium">modo compacto</span> de impresión.</li>
+                      </ul>
+                    </div>
+                    <div>
+                      <p className="font-semibold">Limitaciones actuales</p>
+                      <ul className="list-disc pl-5 space-y-1">
+                        <li>Soporte de <span className="font-medium">un solo aislamiento</span> por ahora (Isolate 1). Si se requiere más de uno, documente en <span className="font-medium">Notas</span> temporalmente.</li>
+                      </ul>
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button type="button" onClick={()=> setAbgHelpOpen(false)}>Cerrar</Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             </div>
             <DialogFooter className="pt-2" />
           </DialogContent>

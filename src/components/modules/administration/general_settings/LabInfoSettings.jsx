@@ -10,6 +10,7 @@ import { apiClient } from '@/lib/apiClient';
 const LabInfoSettings = ({ settings, handleInputChange }) => {
   const { toast } = useToast();
   const labInfo = settings?.labInfo || {};
+  const uiSettings = settings?.uiSettings || {};
   const [isUploading, setIsUploading] = useState(false);
 
   const handleLogoUpload = async (event) => {
@@ -27,13 +28,14 @@ const LabInfoSettings = ({ settings, handleInputChange }) => {
 
     setIsUploading(true);
     try {
-      // Placeholder: backend upload endpoint to implement
+    // Enviar al backend y guardar la URL del logo en uiSettings.logoUrl (no en labInfo.logoUrl protegido)
   const formData = new FormData();
   formData.append('file', file);
   // Usar apiClient para adjuntar Authorization si aplica y respetar base URL
   const data = await apiClient.post('/uploads/logo', formData);
   const { url } = data || {};
-      handleInputChange('labInfo', 'logoUrl', url);
+    // Guardar en uiSettings para evitar 409 por campos protegidos
+    handleInputChange('uiSettings', 'logoUrl', url);
       toast({ title: '¡Logo subido!', description: 'El logo se ha actualizado correctamente.' });
     } catch (error) {
       toast({ title: 'Error al subir el logo', description: error.message, variant: 'destructive' });
@@ -41,7 +43,8 @@ const LabInfoSettings = ({ settings, handleInputChange }) => {
   };
 
   const removeLogo = () => {
-    handleInputChange('labInfo', 'logoUrl', '');
+  // Quitar logo desde uiSettings para evitar tocar labInfo
+  handleInputChange('uiSettings', 'logoUrl', '');
     toast({
       title: "Logo eliminado",
       description: "Se ha quitado la URL del logo. Guarda los cambios para confirmar.",
@@ -71,8 +74,8 @@ const LabInfoSettings = ({ settings, handleInputChange }) => {
               <Label>Logo del Laboratorio</Label>
               <div className="flex items-center gap-4">
                 <div className="w-20 h-20 rounded-md border flex items-center justify-center bg-slate-50 dark:bg-slate-800">
-                  {labInfo.logoUrl ? (
-                    <img-replace src={labInfo.logoUrl} alt="Logo del Laboratorio" className="object-contain w-full h-full rounded-md" />
+                  {(uiSettings.logoUrl || labInfo.logoUrl) ? (
+                    <img src={uiSettings.logoUrl || labInfo.logoUrl} alt="Logo del Laboratorio" className="object-contain w-full h-full rounded-md" />
                   ) : (
                     <ImageIcon className="w-10 h-10 text-slate-400" />
                   )}
@@ -85,12 +88,12 @@ const LabInfoSettings = ({ settings, handleInputChange }) => {
                       <Input type="file" className="sr-only" onChange={handleLogoUpload} accept="image/png, image/jpeg, image/svg+xml" disabled={isUploading} />
                     </Label>
                   </Button>
-                  {labInfo.logoUrl && (
+                  {(uiSettings.logoUrl || labInfo.logoUrl) && (
                     <Button variant="ghost" size="icon" onClick={removeLogo} className="ml-2 text-red-500 hover:text-red-700">
                       <XCircle className="h-5 w-5" />
                     </Button>
                   )}
-                  <p className="text-xs text-muted-foreground mt-1">PNG, JPG, SVG. Máx 2MB.</p>
+                  <p className="text-xs text-muted-foreground mt-1">PNG, JPG, SVG. Máx 2MB. Se guarda en “Interfaz → URL del Logo”.</p>
                 </div>
               </div>
             </div>

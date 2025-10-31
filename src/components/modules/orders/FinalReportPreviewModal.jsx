@@ -18,8 +18,10 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
     import { useOrderManagement } from './hooks/useOrderManagement.js';
     import { useSettings } from '@/contexts/SettingsContext';
     import AIRecommendationsModal from './AIRecommendationsModal.jsx';
+    import AntibiogramReportSection from './report_utils/AntibiogramReportSection.jsx';
+    import { getAntibiogramResults } from '@/lib/antibiogramApi';
 
-    const FinalReportPreviewModal = ({ isOpen, onOpenChange, order, patient, referrer, studiesDetails, packagesData, onSend }) => {
+  const FinalReportPreviewModal = ({ isOpen, onOpenChange, order, patient, referrer, studiesDetails, packagesData, onSend }) => {
   const [pdfUrl, setPdfUrl] = useState(null);
   // const [aiPreview, setAIPreview] = useState({ order: null, recommendations: null }); // (unused currently)
   const [isAIPreviewOpen, setIsAIPreviewOpen] = useState(false);
@@ -27,7 +29,8 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
       const { settings: labSettings } = useSettings();
       const { calculateAgeInUnits, getReferenceRangeText, evaluateResult } = useEvaluationUtils();
       const { getStudiesAndParametersForOrder } = useOrderManagement();
-      const [isAIModalOpen, setIsAIModalOpen] = useState(false);
+  const [isAIModalOpen, setIsAIModalOpen] = useState(false);
+  const [antibiogramData, setAntibiogramData] = useState({ meta: {}, rows: [], hasData: false });
       // Modo compacto para ahorro de papel (predeterminado según settings, o true si no está configurado)
       const [isCompact, setIsCompact] = useState(() => {
         try {
@@ -84,6 +87,38 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
         return inferredStudies;
       }, [order, studiesDetails, packagesData, getStudiesAndParametersForOrder]);
 
+      // Fetch antibiogram when Antibiograma study is present
+      React.useEffect(() => {
+        let isMounted = true;
+        async function load() {
+          try {
+            const abgStudy = (studiesToDisplayInReport||[]).find(s => s?.name === 'Antibiograma' || String(s?.clave||'').toUpperCase() === 'ABG');
+            if (!abgStudy || !order?.id) { if (isMounted) setAntibiogramData({ meta: {}, rows: [], hasData: false }); return; }
+            const resp = await getAntibiogramResults({ work_order_id: order.id, analysis_id: abgStudy.id, isolate_no: 1 });
+            const items = Array.isArray(resp?.items) ? resp.items : [];
+            if (!isMounted) return;
+            if (!items.length) { setAntibiogramData({ meta: {}, rows: [], hasData: false }); return; }
+            // Meta from first row
+            const r0 = items[0] || {};
+            const meta = { organism: r0.organism || '', specimen_type: r0.specimen_type || '', method: r0.method || '', standard: r0.standard || '', standard_version: r0.standard_version || '' };
+            const rows = items.map(r => ({
+              antibiotic_name: r.antibiotic_name || r.antibiotic_code || '',
+              antibiotic_class: r.antibiotic_class || '',
+              measure_type: r.measure_type || '',
+              value_numeric: r.value_numeric,
+              unit: r.unit || '',
+              interpretation: r.interpretation || '',
+              comments: r.comments || ''
+            }));
+            setAntibiogramData({ meta, rows, hasData: rows.length > 0 });
+          } catch (e) {
+            if (isMounted) setAntibiogramData({ meta: {}, rows: [], hasData: false });
+          }
+        }
+        load();
+        return () => { isMounted = false; };
+      }, [order?.id, studiesToDisplayInReport]);
+
           // (debug eliminado: consola de resultados del reporte)
       // Snapshot conciso al montar/abrir (limpia logs anteriores ruidosos)
   const wf = useResultWorkflow();
@@ -111,7 +146,8 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
             evaluateResult,
             cleanNumericValueForStorage,
             getStudiesAndParametersForOrder,
-            isCompact
+            isCompact,
+            (antibiogramData && antibiogramData.hasData) ? antibiogramData : null
           );
           toast({ title: "Reporte Generado", description: "El PDF del reporte se está abriendo en una nueva pestaña." });
           logAuditEvent('ReportePDFGenerado', { orderId: order.id, patientId: patient.id }, order.createdBy || 'Sistema');
@@ -279,6 +315,12 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
                   <div className="mt-6 pt-4 border-t dark:border-slate-700">
                     <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1.5">Notas de Validación / Observaciones:</h4>
                     <p className="text-xs text-slate-600 dark:text-slate-400 whitespace-pre-wrap">{order.validation_notes}</p>
+                  </div>
+                )}
+
+                {antibiogramData.hasData && (
+                  <div className="mt-6">
+                    <AntibiogramReportSection data={antibiogramData} compact={isCompact} />
                   </div>
                 )}
               </div>

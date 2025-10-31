@@ -6,6 +6,7 @@ export const OrderReceipt = React.forwardRef(({ order, patient, referrer, studie
   const { settings } = useSettings();
   const labInfo = settings.labInfo || {};
   const reportSettings = settings.reportSettings || {};
+  const uiSettings = settings.uiSettings || {};
 
   // Normalized lab fields (support both modern and legacy keys)
   const labName = labInfo.name || labInfo.nombreComercial || 'Laboratorio Clínico';
@@ -111,9 +112,9 @@ export const OrderReceipt = React.forwardRef(({ order, patient, referrer, studie
   return (
     <div ref={ref} className="p-8 font-sans text-sm text-black bg-white">
       <header className="flex justify-between items-center mb-8 border-b pb-4">
-        {reportSettings.showLogo !== false && labInfo.logoUrl && (
+        {reportSettings.showLogo !== false && (labInfo.logoUrl || uiSettings.logoUrl) && (
           <div>
-            <img src={labInfo.logoUrl} alt="Logo del Laboratorio" className="h-16 object-contain" />
+            <img src={labInfo.logoUrl || uiSettings.logoUrl} alt="Logo del Laboratorio" className="h-16 object-contain" />
           </div>
         )}
         <div className="text-right">

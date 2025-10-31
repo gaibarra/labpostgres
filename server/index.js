@@ -14,6 +14,8 @@ const cookieParser = require('cookie-parser');
 const net = require('net');
 const { execSync } = require('child_process');
 const authMiddleware = require('./middleware/auth');
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
 
@@ -58,7 +60,7 @@ function isAllowedOrigin(origin){
   }
   return false;
 }
-const corsDebug = !!process.env.CORS_LOG;
+const corsDebug = String(process.env.CORS_LOG || '').trim() === '1';
 if (corsDebug) console.log('[CORS] Allowed origin patterns:', allowedOriginMatchers.map(m=>m.pattern));
 app.use(cors({
   origin(origin, callback){
@@ -89,6 +91,15 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(metricsMiddleware);
 app.use(cookieParser());
+
+// Static serving for uploaded assets (e.g., logos). Ensure directory exists.
+const uploadsDir = (process.env.UPLOADS_DIR && process.env.UPLOADS_DIR.trim()) || path.join(__dirname, 'uploads');
+try {
+  if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+} catch (e) {
+  console.error('[UPLOADS] No se pudo asegurar el directorio', uploadsDir, e.message);
+}
+app.use('/uploads', express.static(uploadsDir, { maxAge: '7d', immutable: false }));
 
 // Basic route
 app.get('/', (req, res) => {
@@ -185,6 +196,11 @@ registerRoute('/api/templates', templatesRoutes, { tenant: true });
 // Sucursales
 const branchesRoutes = require('./routes/branches');
 registerRoute('/api/branches', branchesRoutes, { tenant: true });
+
+// Uploads (logos, etc.)
+const uploadsRoutes = require('./routes/uploads');
+// No requiere resolver tenant ni acceso a BD; se protege con auth dentro del router
+registerRoute('/api/uploads', uploadsRoutes, { tenant: false });
 
 // Antibiotics catalog and antibiogram results
 const antibioticsRoutes = require('./routes/antibiotics');

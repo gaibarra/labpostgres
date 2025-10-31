@@ -45,7 +45,7 @@ export const AuthProvider = ({ children, initialUser = null }) => {
           const data = await apiClient.auth.me();
       setUser(normalizeUser(data.user));
         } catch (e) {
-          const isInvalid = e.status === 401 || (e.status === 404 && (e.code === 'USER_NOT_FOUND' || e.details?.error === 'Usuario no encontrado'));
+          const isInvalid = e.status === 401 || e.status === 404 || (e.status === 404 && (e.code === 'USER_NOT_FOUND' || e.details?.error === 'Usuario no encontrado'));
           if (isInvalid) {
             clearToken();
             setUser(null);

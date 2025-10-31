@@ -14,7 +14,8 @@ import autoTable from 'jspdf-autotable';
       evaluateResult,
       cleanNumericValueForStorage,
       getStudiesAndParametersForOrder,
-      compact = false
+      compact = false,
+      antibiogramPayload = null // { meta, rows }
     ) => {
       const doc = new jsPDF();
     const pageHeight = doc.internal.pageSize.height;
@@ -31,7 +32,7 @@ import autoTable from 'jspdf-autotable';
       const reportSettings = labSettings.reportSettings || {};
       const uiSettings = labSettings.uiSettings || {};
 
-      const labName = labInfo.name || "Laboratorio Clínico";
+  const labName = labInfo.name || "Laboratorio Clínico";
       const fullAddress = [
         labInfo.calle,
         labInfo.numeroExterior,
@@ -45,7 +46,8 @@ import autoTable from 'jspdf-autotable';
 
       const labPhone = labInfo.phone;
       const labEmail = labInfo.email;
-      const labLogo = uiSettings.logoUrl;
+  const labLogo = uiSettings.logoUrl;
+  const logoIncludesName = !!uiSettings.logoIncludesLabName; // if true, omit printing labName text to avoid duplication
       const dateFormat = reportSettings.dateFormat || 'dd/MM/yyyy';
       const timeFormat = reportSettings.timeFormat || 'HH:mm';
       const dateTimeFormat = `${dateFormat} ${timeFormat}`;
@@ -233,6 +235,81 @@ import autoTable from 'jspdf-autotable';
         }
       }
 
+      // Helper: render antibiogram section if provided
+      const drawAntibiogramSection = (startY) => {
+        const abg = antibiogramPayload;
+        const has = !!(abg && Array.isArray(abg.rows) && abg.rows.length);
+        if (!has) return startY;
+        // Title
+        autoTable(doc, {
+          startY: startY,
+          head: [['Antibiograma']],
+          theme: 'grid',
+          margin: { top: topHeaderOnly, left: margin, right: margin },
+          tableWidth: pageWidth - 2 * margin,
+          headStyles: { fillColor: [241, 245, 249], textColor: [14, 116, 144], fontStyle: 'bold', fontSize: compact ? 9 : 11, lineWidth: 0.1, lineColor: [203, 213, 225] },
+          styles: { cellPadding: compact ? 1.5 : 2.0 },
+          showHead: 'firstPage',
+          didDrawPage: function(data) { drawHeaderAndFooter(data); },
+        });
+        let y = doc.lastAutoTable ? doc.lastAutoTable.finalY + 2 : startY + 2;
+        // Meta line(s)
+        const meta = abg.meta || {};
+        const metaParts = [];
+        if (meta.organism) metaParts.push(`Organismo: ${meta.organism}`);
+        if (meta.specimen_type) metaParts.push(`Muestra: ${meta.specimen_type}`);
+        if (meta.method) metaParts.push(`Método: ${meta.method}`);
+        if (meta.standard) metaParts.push(`Estándar: ${meta.standard}${meta.standard_version ? (' ' + meta.standard_version) : ''}`);
+        if (metaParts.length) {
+          doc.setFontSize(compact ? 7 : 8).setFont(undefined, 'normal').setTextColor(51, 65, 85);
+          const txt = metaParts.join('   ·   ');
+          doc.text(txt, margin + 1, y);
+          y += compact ? 4 : 5;
+        }
+        // Group rows by class
+        const byClass = new Map();
+        for (const r of (abg.rows || [])) {
+          const key = r.antibiotic_class || '(Sin clase)';
+          if (!byClass.has(key)) byClass.set(key, []);
+          byClass.get(key).push(r);
+        }
+        for (const [cls, arr] of byClass.entries()) {
+          // Class header band
+          autoTable(doc, {
+            startY: y,
+            body: [[{ content: cls, styles: { fillColor: [226, 242, 253], textColor: [7, 89, 133], fontStyle: 'bold', fontSize: compact ? 7.5 : 9, halign: 'left', cellPadding: compact ? 1.2 : 1.6 } }]],
+            theme: 'plain',
+            margin: { top: topHeaderOnly, left: margin, right: margin },
+            tableWidth: pageWidth - 2 * margin,
+            styles: { cellPadding: 0.5 },
+          });
+          y = doc.lastAutoTable.finalY + 1;
+          // Table for rows
+          const body = arr.sort((a,b)=> String(a.antibiotic_name||'').localeCompare(String(b.antibiotic_name||''))).map(r => {
+            const mt = r.measure_type || '';
+            const v = (r.value_numeric ?? '') === '' || r.value_numeric == null ? '' : String(r.value_numeric);
+            const u = r.unit || '';
+            let measure = '—';
+            if (mt && v && u) measure = `${mt}: ${v} ${u}`; else if (mt && v) measure = `${mt}: ${v}`; else if (v && u) measure = `${v} ${u}`; else measure = mt || v || u || '—';
+            return [r.antibiotic_name || r.antibiotic_code || '', measure, r.interpretation || '—', r.comments || ''];
+          });
+          autoTable(doc, {
+            startY: y,
+            head: [['Antibiótico', 'Medida', 'S/I/R', 'Notas']],
+            body,
+            theme: 'grid',
+            margin: { top: topHeaderOnly, left: margin, right: margin },
+            tableWidth: pageWidth - 2 * margin,
+            headStyles: { fillColor: [248, 250, 252], textColor: [30, 41, 59], fontStyle: 'bold', lineWidth: 0.1, lineColor: [203, 213, 225] },
+            styles: { fontSize: compact ? 7.0 : 8, cellPadding: compact ? 1.0 : 1.6, valign: 'middle', font: 'helvetica', overflow: 'linebreak' },
+            columnStyles: { 0: { cellWidth: compact ? 60 : 70 }, 1: { cellWidth: compact ? 36 : 42, halign: 'center' }, 2: { cellWidth: compact ? 14 : 18, halign: 'center' }, 3: { cellWidth: 'auto' } },
+            didDrawPage: function(data) { drawHeaderAndFooter(data); },
+          });
+          y = doc.lastAutoTable.finalY + 2;
+        }
+        return y;
+      };
+
       // Helper: dibuja cabecera/paciente y pie de página
   const drawHeaderAndFooter = function (data) {
           // Header
@@ -241,15 +318,26 @@ import autoTable from 'jspdf-autotable';
             try {
               const img = new Image();
               img.src = labLogo;
-              const aspectRatio = img.width / img.height;
-              const logoHeight = compact ? 10 : 12;
-              const logoWidth = logoHeight * aspectRatio;
-              doc.addImage(img, 'PNG', margin, yPos, logoWidth, logoHeight);
+              const aspectRatio = img.height > 0 ? (img.width / img.height) : 3.5; // fallback AR if metadata not ready
+              const maxHeight = compact ? 10 : 12; // mm
+              const maxWidth = (pageWidth - 2 * margin) * 0.5; // keep logo at up to 50% width
+              let logoHeight = maxHeight;
+              let logoWidth = logoHeight * aspectRatio;
+              if (logoWidth > maxWidth) {
+                logoWidth = maxWidth;
+                logoHeight = logoWidth / aspectRatio;
+              }
+              // align logo left; allow center with optional flag
+              const wantCenter = !!reportSettings.logoAlignCenter;
+              const x = wantCenter ? (pageWidth - logoWidth) / 2 : margin;
+              doc.addImage(img, 'PNG', x, yPos, logoWidth, logoHeight);
             } catch (e) { console.error("Error al cargar logo para PDF:", e); }
           }
           doc.setFontSize(compact ? 12 : 14).setFont(undefined, 'bold');
           doc.setTextColor(30, 58, 138); 
-          doc.text(labName, pageWidth / 2, yPos + 4, { align: 'center' });
+          if (!(labLogo && logoIncludesName)) {
+            doc.text(labName, pageWidth / 2, yPos + 4, { align: 'center' });
+          }
           yPos += compact ? 4 : 5;
           doc.setFontSize(compact ? 7 : 8).setFont(undefined, 'normal');
           doc.setTextColor(100, 116, 139);
@@ -292,8 +380,15 @@ import autoTable from 'jspdf-autotable';
           // Footer
           doc.setFontSize(compact ? 7 : 8).setFont(undefined, 'italic');
           doc.setTextColor(100, 116, 139);
+          // VN note (Valores Normales)
+          doc.setFontSize(compact ? 6.5 : 7).setFont(undefined, 'normal');
+          doc.text('VN = Valores Normales', margin, pageHeight - 13, { align: 'left' });
+          // Main footer
           const footerText = reportSettings.defaultFooter || 'Gracias por su preferencia. Los resultados deben ser interpretados por un médico.';
+          doc.setFontSize(compact ? 7 : 8).setFont(undefined, 'italic');
           doc.text(footerText, pageWidth / 2, pageHeight - 10, { align: 'center' });
+          // Nota al pie: VN = Valores Normales
+          doc.text('VN = Valores Normales', margin, pageHeight - 10, { align: 'left' });
           doc.text(`Página ${data.pageNumber} de ${totalPagesExp}`, pageWidth - margin, pageHeight - 10, { align: 'right' });
 
           // Firmas y notas (última página, se maneja al final del documento)
@@ -347,8 +442,9 @@ import autoTable from 'jspdf-autotable';
           // Rango de referencia compacto por debajo
           const refData = getReferenceRangeText ? getReferenceRangeText(p, patient, patientAgeData, true) : null;
           const refText = refData && refData.valueText !== 'N/A' ? `${refData.valueText}${refData.demographics ? ' · ' + refData.demographics : ''}` : '';
-          // Sin unidades: tercera columna solo con Valores de Referencia
-          return [p.name, value, refText, p];
+          // Nueva columna de Unidades separada
+          const unit = p.unit || '';
+          return [p.name, value, unit, refText, p];
         });
 
         const { roja, plaquetaria, blanca } = groupParams(cbcStudy.parameters || []);
@@ -361,20 +457,20 @@ import autoTable from 'jspdf-autotable';
               startY: y,
               margin: { top: topHeaderOnly, left: x, right: margin },
               tableWidth: width,
-              head: [[sec.title, 'Resultado', 'Valores de Referencia']],
+              head: [[sec.title, 'Resultado', 'Unidades', 'Valores de Referencia (VN)']],
               body: bodyRows,
               theme: 'grid',
               headStyles: { fillColor: [248, 250, 252], textColor: [30, 41, 59], fontStyle: 'bold', lineWidth: 0.1, lineColor: [203, 213, 225] },
-              styles: { fontSize: compact ? 7.2 : 8, cellPadding: compact ? 1.0 : 1.6, valign: 'middle', font: 'helvetica', overflow: 'linebreak' },
-              // Columnas consistentes: Param 42%, Resultado 22%, Referencia 36%
-              columnStyles: { 0: { cellWidth: width * 0.42, fontStyle: 'bold' }, 1: { cellWidth: width * 0.22, halign: 'center' }, 2: { cellWidth: width * 0.36, halign: 'center' } },
+              styles: { fontSize: compact ? 7.2 : 8, cellPadding: compact ? 0.9 : 1.4, valign: 'middle', font: 'helvetica', overflow: 'linebreak' },
+              // Columnas: Parámetro 40%, Resultado 20%, Unidades 12%, Referencia 28%
+              columnStyles: { 0: { cellWidth: width * 0.40, fontStyle: 'bold' }, 1: { cellWidth: width * 0.20, halign: 'center' }, 2: { cellWidth: width * 0.12, halign: 'center' }, 3: { cellWidth: width * 0.28, halign: 'center' } },
               didParseCell: (data) => {
                 // Sombrear columna de Rango Normal
-                if (data.column.index === 2) {
+                if (data.column.index === 3) {
                   data.cell.styles.fillColor = [229, 231, 235];
                 }
                 if (data.cell.section === 'body' && data.column.index === 1) {
-                  const param = data.row.raw[3];
+                  const param = data.row.raw[4];
                   const value = data.cell.text[0];
                   const status = evaluateResult(String(value), param, patient, patientAgeData);
                   data.cell.styles.fontStyle = 'bold';
@@ -390,7 +486,7 @@ import autoTable from 'jspdf-autotable';
               didDrawCell: (data) => {
                 // Dibujar flechas arriba/abajo en fuera de rango para columna Resultado
                 if (data.cell.section === 'body' && data.column.index === 1) {
-                  const param = data.row.raw[3];
+                  const param = data.row.raw[4];
                   if (!param || !data.cell.text) return;
                   const value = data.cell.text[0];
                   if (typeof value === 'undefined' || value === null) return;
@@ -510,7 +606,7 @@ import autoTable from 'jspdf-autotable';
           head: [[ 'Serie Blanca', '', '' ]],
           theme: 'grid',
           headStyles: { fillColor: [248, 250, 252], textColor: [30, 41, 59], fontStyle: 'bold', lineWidth: 0.1, lineColor: [203, 213, 225] },
-          styles: { fontSize: compact ? 7.2 : 8, cellPadding: compact ? 1.0 : 1.6, valign: 'middle', font: 'helvetica' },
+          styles: { fontSize: compact ? 7.2 : 8, cellPadding: compact ? 0.9 : 1.4, valign: 'middle', font: 'helvetica' },
           body: [],
           columnStyles: { 0: { cellWidth: rightWidth * 0.44, fontStyle: 'bold' }, 1: { cellWidth: rightWidth * 0.22, halign: 'center' }, 2: { cellWidth: rightWidth * 0.34, halign: 'center' } },
         });
@@ -535,8 +631,8 @@ import autoTable from 'jspdf-autotable';
         })();
         const totalLeukRange = totalLeukParam ? normText(totalLeukParam) : '';
         // Texto: 'Leucocitos totales' (izquierda), valor (centro), 'Rango Normal (Abs.)' + rango (derecha)
-  const bandY = whiteHeaderY + 5;
-  const bandH = compact ? 8 : 9;
+    const bandY = whiteHeaderY + (compact ? 4 : 5);
+  const bandH = compact ? 8.5 : 9.5;
   const leftW = rightWidth * 0.60;
   const rightW = rightWidth - leftW;
   // Marco de banda
@@ -546,11 +642,11 @@ import autoTable from 'jspdf-autotable';
   doc.setFillColor(241, 245, 249); // más claro para mejor contraste
   doc.rect(rightStartX + leftW, bandY - (bandH - 2), rightW, bandH, 'F');
   // Textos
-  doc.setFontSize(compact ? 7.2 : 8).setFont(undefined, 'bold').setTextColor(51, 65, 85);
+  doc.setFontSize(compact ? 7.3 : 8.1).setFont(undefined, 'bold').setTextColor(51, 65, 85);
   doc.text('Leucocitos totales', rightStartX + 2, bandY);
-  doc.setFontSize(compact ? 9 : 10).setFont(undefined, 'bold').setTextColor(0, 0, 0);
+  doc.setFontSize(compact ? 9.2 : 10.2).setFont(undefined, 'bold').setTextColor(0, 0, 0);
   doc.text(String(totalLeukRes), rightStartX + (leftW / 2), bandY, { align: 'center' });
-  doc.setFontSize(compact ? 7.2 : 8).setFont(undefined, 'bold').setTextColor(30, 41, 59);
+  doc.setFontSize(compact ? 7.3 : 8.1).setFont(undefined, 'bold').setTextColor(30, 41, 59);
   const rnLabel = 'Rango Normal (Abs.)';
   const rnText = totalLeukRange ? `${rnLabel}  ${totalLeukRange}` : rnLabel;
   doc.text(rnText, rightStartX + rightWidth - 2, bandY, { align: 'right' });
@@ -559,7 +655,7 @@ import autoTable from 'jspdf-autotable';
           margin: { top: topHeaderOnly, left: rightStartX, right: margin },
           tableWidth: rightWidth,
           // Encabezado verde, columnas: Parámetro | Absoluto | % | Valores de Referencia (Abs.)
-          head: [[ 'Parámetro', 'Absoluto', '%', 'Valores de Referencia' ]],
+          head: [[ 'Parámetro', 'Absoluto', '%', 'Valores de Referencia (VN)' ]],
           body: (function(){
             const rows = buildWhiteBody();
             // Mantener datos ocultos para evaluación precisa:
@@ -568,7 +664,7 @@ import autoTable from 'jspdf-autotable';
           })(),
           theme: 'grid',
           headStyles: { fillColor: [5, 150, 105], textColor: [255, 255, 255], fontStyle: 'bold', lineWidth: 0.1, lineColor: [203, 213, 225] },
-          styles: { fontSize: compact ? 7.2 : 8, cellPadding: compact ? 1.0 : 1.6, valign: 'middle', font: 'helvetica', overflow: 'linebreak' },
+          styles: { fontSize: compact ? 7.2 : 8, cellPadding: compact ? 0.9 : 1.4, valign: 'middle', font: 'helvetica', overflow: 'linebreak' },
               // Columnas consistentes: Param 44%, Abs 22%, % 12%, Ref 22%
           columnStyles: { 0: { cellWidth: rightWidth * 0.44, fontStyle: 'bold' }, 1: { cellWidth: rightWidth * 0.22, halign: 'center' }, 2: { cellWidth: rightWidth * 0.12, halign: 'center' }, 3: { cellWidth: rightWidth * 0.22, halign: 'center' } },
           didParseCell: (data) => {
@@ -730,7 +826,9 @@ import autoTable from 'jspdf-autotable';
           drawHeaderAndFooter(data);
 
           if (data.pageNumber === doc.internal.getNumberOfPages()) {
-            const finalY = doc.lastAutoTable ? doc.lastAutoTable.finalY : undefined;
+                let finalY = doc.lastAutoTable ? doc.lastAutoTable.finalY : undefined;
+                // Antibiogram section (draw after main table if exists)
+                finalY = drawAntibiogramSection((typeof finalY === 'number' ? finalY + 6 : headerHeight));
             if (order.validation_notes) {
                 doc.setFontSize(9).setFont(undefined, 'bold');
                 doc.text("Notas de Validación / Observaciones:", margin, finalY + 8);

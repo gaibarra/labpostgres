@@ -1,8 +1,11 @@
 import React from 'react';
 import { format } from 'date-fns-tz';
 import { es } from 'date-fns/locale';
+import { useSettings } from '@/contexts/SettingsContext';
 
 const ReportHeader = ({ labInfo, order, patient, patientAgeData, isWorksheet = false, compact = false }) => {
+  const { settings } = useSettings();
+  const uiSettings = settings?.uiSettings || {};
   if (!order || !patient) return null;
 
   const formatDate = (dateString) => {
@@ -59,12 +62,14 @@ const ReportHeader = ({ labInfo, order, patient, patientAgeData, isWorksheet = f
     try { return String(addr); } catch { return 'Dirección del Laboratorio'; }
   };
 
+  const omitLabNameText = !!uiSettings.logoIncludesLabName;
+
   const FullHeader = () => (
     <div className={"flex items-center " + (compact ? "mb-1" : "mb-2") }>
       {/* Left: Logo (fixed width) */}
       <div className={compact ? "w-28 flex-shrink-0" : "w-32 flex-shrink-0"}>
-        {labInfo?.logoUrl ? (
-          <img-replace src={labInfo.logoUrl} alt="Logo del Laboratorio" className={compact ? "max-h-12" : "max-h-16"} />
+        { (labInfo?.logoUrl || uiSettings.logoUrl) ? (
+          <img src={labInfo?.logoUrl || uiSettings.logoUrl} alt="Logo del Laboratorio" className={compact ? "max-h-12" : "max-h-16"} />
         ) : (
           <div className={compact ? "h-12 w-28" : "h-16 w-32" + " bg-slate-200 flex items-center justify-center"}>
             <span className="text-slate-500">Logo</span>
@@ -73,7 +78,9 @@ const ReportHeader = ({ labInfo, order, patient, patientAgeData, isWorksheet = f
       </div>
       {/* Center: Name + Contact fully centered */}
       <div className="flex-1 text-center">
-        <h2 className={compact ? "font-bold text-base" : "font-bold text-lg"}>{labInfo?.name || 'Nombre del Laboratorio'}</h2>
+        {!omitLabNameText && (
+          <h2 className={compact ? "font-bold text-base" : "font-bold text-lg"}>{labInfo?.name || 'Nombre del Laboratorio'}</h2>
+        )}
         <p className={compact ? "text-[10px]" : undefined}>{formatAddress(labInfo?.address ?? {
           calle: labInfo?.calle,
           numeroExterior: labInfo?.numeroExterior,

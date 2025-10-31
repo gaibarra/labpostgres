@@ -30,12 +30,18 @@ const defaultSettings = {
     header: "Encabezado por defecto",
     footer: "Pie de página por defecto",
     showLogo: true,
-    showLogoInReport: true,
-    compactByDefault: true
+  showLogoInReport: true,
+  compactByDefault: true,
+  // Nuevo: opción para centrar logo en PDF
+  logoAlignCenter: false,
   },
   uiSettings: {
-    theme: "system",
-    primaryColor: "#0ea5e9"
+  theme: "system",
+  primaryColor: "#0ea5e9",
+  // Nuevo: URL del logo usada por la UI/PDF si labInfo.logoUrl está vacío
+  logoUrl: "",
+  // Nuevo: si el logo ya incluye el nombre, evita imprimir el nombre en PDF
+  logoIncludesLabName: false,
   },
   regionalSettings: {
     dateFormat: "dd/MM/yyyy",
@@ -128,7 +134,10 @@ export const SettingsProvider = ({ children }) => {
       }
     }
     delete frontendSettings.integrations.openAIKey;
-  console.log('[SettingsContext] processAndSetSettings RAW integrations keys', Object.keys(frontendSettings.integrations || {}));
+  // Debug reducido: evitar spam en consola en producción
+  // if (process.env.NODE_ENV !== 'production') {
+  //   console.debug('[SettingsContext] processAndSetSettings integrations keys', Object.keys(frontendSettings.integrations || {}));
+  // }
 
     const mergedSettings = deepmerge(defaultSettings, frontendSettings);
     
@@ -147,7 +156,7 @@ export const SettingsProvider = ({ children }) => {
     if (!user) {
       setIsLoading(false);
       setIsInitialized(true);
-      if (!settings) setSettings(defaultSettings);
+      setSettings(prev => prev || defaultSettings);
       return;
     }
     setIsLoading(true);
@@ -156,7 +165,7 @@ export const SettingsProvider = ({ children }) => {
       if (!abortController.signal.aborted && data) {
         processAndSetSettings(data);
       }
-    } catch (error) {
+  } catch (error) {
       if (abortController.signal.aborted) return;
       if (error.name !== 'AbortError') {
         console.error('Error cargando configuración', error);
@@ -165,7 +174,7 @@ export const SettingsProvider = ({ children }) => {
           description: 'No se pudo cargar la configuración. Se usará la última versión guardada.',
           variant: 'destructive'
         });
-        if (!settings) setSettings(defaultSettings);
+    setSettings(prev => prev || defaultSettings);
       }
     } finally {
       if (!abortController.signal.aborted) {
@@ -173,7 +182,7 @@ export const SettingsProvider = ({ children }) => {
         setIsInitialized(true);
       }
     }
-  }, [user, toast, settings, processAndSetSettings]);
+  }, [user, toast, processAndSetSettings]);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -189,7 +198,7 @@ export const SettingsProvider = ({ children }) => {
             }
         }
     };
-  }, [authLoading, user]);
+  }, [authLoading, user, fetchSettings]);
 
   const updateSettings = async (newSettings) => {
     console.log('[SettingsContext] updateSettings START', {
@@ -218,6 +227,18 @@ export const SettingsProvider = ({ children }) => {
     const baseline = settings || {};
     const mergedLocalSettings = deepmerge(baseline, newSettings);
 
+    // Si por UX algún componente aún escribe labInfo.logoUrl, redirígelo a uiSettings.logoUrl
+    if (mergedLocalSettings?.labInfo?.logoUrl && (!baseline?.labInfo || mergedLocalSettings.labInfo.logoUrl !== baseline.labInfo.logoUrl)) {
+      mergedLocalSettings.uiSettings = mergedLocalSettings.uiSettings || {};
+      mergedLocalSettings.uiSettings.logoUrl = mergedLocalSettings.labInfo.logoUrl;
+      // No tocar el valor persistido de labInfo.logoUrl para evitar 409
+      if (settings?.labInfo?.logoUrl) {
+        mergedLocalSettings.labInfo.logoUrl = settings.labInfo.logoUrl;
+      } else {
+        delete mergedLocalSettings.labInfo.logoUrl;
+      }
+    }
+
     // Preservar secretos en memoria si el valor entrante es cadena vacía (interpreta como "no cambiar")
     const secretIntegrationFields = ['openaiApiKey','deepseekKey','perplexityKey','emailApiKey','whatsappApiKey','telegramBotToken'];
     if (mergedLocalSettings.integrations && baseline.integrations) {
@@ -242,7 +263,7 @@ export const SettingsProvider = ({ children }) => {
         try { return JSON.stringify(a) === JSON.stringify(b); } catch { return false; }
       };
       const secretIntegrationFields = ['openaiApiKey','deepseekKey','perplexityKey','emailApiKey','whatsappApiKey','telegramBotToken'];
-      for (const key in frontendToDbMapping) {
+  for (const key in frontendToDbMapping) {
         if (!Object.prototype.hasOwnProperty.call(mergedLocalSettings, key)) continue;
         const newVal = mergedLocalSettings[key];
         const oldVal = baselineForDiff[key];
@@ -260,6 +281,14 @@ export const SettingsProvider = ({ children }) => {
           // Permitir borrado explícito usando null.
           payload[key] = cleaned;
         } else {
+          // Evitar mandar labInfo.logoUrl en el PATCH (campo protegido)
+          if (key === 'labInfo' && newVal && typeof newVal === 'object') {
+            const { logoUrl: _omitLogoUrl, ...rest } = newVal;
+            if (!shallowEqual(rest, oldVal)) {
+              payload[key] = rest;
+            }
+            continue;
+          }
           payload[key] = newVal;
         }
       }

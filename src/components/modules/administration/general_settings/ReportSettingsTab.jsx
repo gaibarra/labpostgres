@@ -53,6 +53,14 @@ const ReportSettingsTab = ({ settings, handleInputChange, handleCheckboxChange }
         </div>
         <div className="flex items-center space-x-2 pt-2">
           <Switch 
+            id="logoAlignCenter" 
+            checked={!!reportSettings.logoAlignCenter} 
+            onCheckedChange={(checked) => handleCheckboxChange('reportSettings', 'logoAlignCenter', checked)}
+          />
+          <Label htmlFor="logoAlignCenter" className="cursor-pointer">Centrar logo en el encabezado del PDF</Label>
+        </div>
+        <div className="flex items-center space-x-2 pt-2">
+          <Switch 
             id="compactByDefault" 
             checked={reportSettings.compactByDefault !== false} 
             onCheckedChange={(checked) => handleCheckboxChange('reportSettings', 'compactByDefault', checked)}

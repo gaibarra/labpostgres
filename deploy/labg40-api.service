@@ -10,8 +10,11 @@ Type=simple
 WorkingDirectory=/home/gaibarra/labg40
 Environment=NODE_ENV=production
 Environment=MULTI_TENANT=1
+Environment=UPLOADS_DIR=/var/lib/labg40/uploads
 Environment=NODE_OPTIONS=--max-old-space-size=512
 EnvironmentFile=/home/gaibarra/labg40/.env
+ExecStartPre=/usr/bin/mkdir -p /var/lib/labg40/uploads
+ExecStartPre=/usr/bin/chown -R www-data:www-data /var/lib/labg40
 ExecStartPre=/usr/bin/bash /home/gaibarra/labg40/server/scripts/initMaster.sh
 ExecStart=/usr/bin/node server/index.js
 Restart=on-failure
