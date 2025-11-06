@@ -4,8 +4,36 @@ const { requirePermission } = require('../middleware/permissions');
 const { AppError } = require('../utils/errors');
 // db exports { pool }, ensure we use the actual Pool instance
 const { pool } = require('../db');
+// Optional multi-tenant helpers (loaded lazily to avoid hard dependency when MT disabled)
+let getTenantMeta = null;
+try { ({ getTenantMeta } = require('../services/tenantResolver')); } catch(_) { /* single-tenant mode */ }
 
 const router = express.Router();
+
+// Resolve active pool (tenant-aware if middleware attached)
+function activePool(req){ return req.tenantPool || pool; }
+
+// Guard: allow sensitive ops only for tenant 'demo'
+async function ensureDemoTenant(req, _res, next) {
+  try {
+    // Accept either explicit tenant claim or fall back to env var SINGLE_TENANT_SLUG
+    const tId = req.auth?.tenant_id || req.auth?.tenantId || req.user?.tenant_id || req.user?.tenantId || null;
+    let slug = process.env.SINGLE_TENANT_SLUG || null;
+    if (getTenantMeta && tId) {
+      try {
+        const meta = await getTenantMeta(tId);
+        slug = meta?.slug || slug;
+      } catch(_) { /* ignore lookup errors; fall back to env */ }
+    }
+    // If still unknown in single-tenant, allow DEMO via env override
+    const isDemo = (slug && slug.toLowerCase() === 'demo')
+      || (String(process.env.DEMO_TENANT_ONLY || '').trim() === '1');
+    if (!isDemo) return next(new AppError(403, 'Operación permitida únicamente para tenant demo', 'DEMO_ONLY'));
+    return next();
+  } catch (e) {
+    return next(new AppError(403, 'Operación restringida a demo', 'DEMO_ONLY'));
+  }
+}
 
 // Simple AI content generation placeholder
 router.post('/generate', auth, requirePermission('marketing','access_marketing_tools'), async (req, res, next) => {
@@ -567,9 +595,9 @@ router.get('/email/lists/:id/subscribers', auth, requirePermission('marketing','
 });
 
 // ========================= Ad Campaigns ============================= //
-router.get('/ad-campaigns', auth, requirePermission('marketing','manage_campaigns'), async (_req, res, next) => {
+router.get('/ad-campaigns', auth, requirePermission('marketing','manage_campaigns'), async (req, res, next) => {
   try {
-    const { rows } = await pool.query('SELECT * FROM ad_campaigns ORDER BY created_at DESC LIMIT 1000');
+  const { rows } = await activePool(req).query('SELECT * FROM ad_campaigns ORDER BY created_at DESC LIMIT 1000');
     const normalized = rows.map(r => ({
       ...r,
       budget: typeof r.budget === 'number' ? r.budget : parseFloat(r.budget) || 0,
@@ -601,7 +629,7 @@ router.post('/ad-campaigns', auth, requirePermission('marketing','manage_campaig
     ...(kpis || {})
   };
   try {
-    const { rows } = await pool.query(`
+  const { rows } = await activePool(req).query(`
       INSERT INTO ad_campaigns (name, platform, start_date, end_date, budget, objectives, status, notes, kpis)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *
     `,[name, platform, start_date, end_date || null, normalizedBudget, objectives || null, status || 'Planificada', notes || null, mergedKpis]);
@@ -628,7 +656,7 @@ router.put('/ad-campaigns/:id', auth, requirePermission('marketing','manage_camp
     ...(kpis || {})
   };
   try {
-    const { rows } = await pool.query(`
+  const { rows } = await activePool(req).query(`
       UPDATE ad_campaigns SET
         name = COALESCE($2,name),
         platform = COALESCE($3,platform),
@@ -651,10 +679,67 @@ router.put('/ad-campaigns/:id', auth, requirePermission('marketing','manage_camp
 
 router.post('/ad-campaigns/:id/archive', auth, requirePermission('marketing','manage_campaigns'), async (req, res, next) => {
   const { id } = req.params; try {
-    const { rows } = await pool.query('UPDATE ad_campaigns SET status = $2 WHERE id=$1 RETURNING *',[id,'Archivada']);
+  const { rows } = await activePool(req).query('UPDATE ad_campaigns SET status = $2 WHERE id=$1 RETURNING *',[id,'Archivada']);
     if (!rows[0]) return next(new AppError(404,'Campaña no encontrada','AD_CAMPAIGN_NOT_FOUND'));
     res.json(rows[0]);
   } catch (e) { next(new AppError(500,'Error archivando campaña','AD_CAMPAIGN_ARCHIVE_FAIL')); }
+});
+
+// Delete single ad campaign
+router.delete('/ad-campaigns/:id', auth, requirePermission('marketing','manage_campaigns'), async (req, res, next) => {
+  const { id } = req.params;
+  try {
+  const { rowCount } = await activePool(req).query('DELETE FROM ad_campaigns WHERE id=$1', [id]);
+    if (!rowCount) return next(new AppError(404,'Campaña no encontrada','AD_CAMPAIGN_NOT_FOUND'));
+    res.json({ success: true });
+  } catch (e) { next(new AppError(500,'Error eliminando campaña','AD_CAMPAIGN_DELETE_FAIL')); }
+});
+
+// Bulk delete campaigns generated for testing (name ILIKE '%test%')
+router.post('/ad-campaigns/bulk-delete-tests', auth, requirePermission('marketing','manage_campaigns'), ensureDemoTenant, async (req, res, next) => {
+  // Optional custom pattern in body; defaults to '%test%'
+  const { namePattern, statusIn } = req.body || {};
+  const pattern = (namePattern && typeof namePattern === 'string' && namePattern.trim()) ? namePattern.trim() : '%test%';
+  // Optionally limit by statuses (e.g., ['Planificada','Archivada'])
+  const statuses = Array.isArray(statusIn) && statusIn.length ? statusIn : null;
+  try {
+    let query = 'DELETE FROM ad_campaigns WHERE lower(name) LIKE lower($1)';
+    const params = [pattern];
+    if (statuses) {
+      query += ' AND status = ANY($2::text[])';
+      params.push(statuses);
+    }
+    const { rowCount } = await activePool(req).query(query, params);
+    res.json({ success: true, deleted: rowCount, pattern });
+  } catch (e) { next(new AppError(500,'Error eliminando campañas de prueba','AD_CAMPAIGN_BULK_DELETE_FAIL')); }
+});
+
+// Diagnostics: confirm DB/schema/search_path and row count for ad_campaigns
+router.get('/ad-campaigns/diag', auth, requirePermission('marketing','manage_campaigns'), ensureDemoTenant, async (req, res, next) => {
+  try {
+    const { rows } = await activePool(req).query(`
+      SELECT
+        current_database() AS database,
+        current_schema()    AS schema,
+        current_setting('search_path') AS search_path,
+        (SELECT COUNT(*)::int FROM ad_campaigns) AS ad_campaigns_count
+    `);
+    res.json(rows[0]);
+  } catch (e) { next(new AppError(500,'Error obteniendo diagnóstico','AD_CAMPAIGNS_DIAG_FAIL')); }
+});
+
+// Read-only DB identity for objective verification (no demo guard)
+router.get('/ad-campaigns/whereami', auth, requirePermission('marketing','manage_campaigns'), async (req, res, next) => {
+  try {
+    const { rows } = await activePool(req).query(`
+      SELECT
+        current_database() AS database,
+        current_schema()    AS schema,
+        current_setting('search_path') AS search_path,
+        (SELECT COUNT(*)::int FROM ad_campaigns) AS ad_campaigns_count
+    `);
+    res.json(rows[0]);
+  } catch (e) { next(new AppError(500,'Error obteniendo identidad de DB','AD_CAMPAIGNS_WHEREAMI_FAIL')); }
 });
 
 // ========================= SEO & Content ============================= //

@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger, DialogClose } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { motion } from 'framer-motion';
-import { Megaphone, PlusCircle, Edit3, Search, Eye, Archive, Loader2 } from 'lucide-react';
+import { Megaphone, PlusCircle, Edit3, Search, Eye, Archive, Loader2, Trash2 } from 'lucide-react';
 import { useToast } from "@/components/ui/use-toast";
 import { logAuditEvent } from '@/lib/auditUtils';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -154,6 +154,22 @@ const AdCampaigns = () => {
       toast({ title: 'Error al archivar', description: error.message, variant: 'destructive' });
     } finally { setIsLoading(false); }
   };
+
+  const handleDeleteCampaign = async (campaignId) => {
+    const campaign = campaigns.find(c => c.id === campaignId);
+    if (!campaign) return;
+    const ok = window.confirm(`¿Eliminar la campaña "${campaign.name}"? Esta acción no se puede deshacer.`);
+    if (!ok) return;
+    setIsLoading(true);
+    try {
+      await apiClient.delete(`/marketing/ad-campaigns/${campaignId}`);
+      await logAuditEvent('Marketing:CampañaEliminada', { campaignId });
+      toast({ title: 'Campaña eliminada', description: `"${campaign.name}" fue eliminada.` });
+      loadCampaigns();
+    } catch (error) {
+      toast({ title: 'Error al eliminar', description: error.message, variant: 'destructive' });
+    } finally { setIsLoading(false); }
+  };
   
   const filteredCampaigns = campaigns.filter(campaign =>
     campaign.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -194,9 +210,11 @@ const AdCampaigns = () => {
                 className="pl-10 bg-white dark:bg-theme-davy-dark/50 border-theme-powder dark:border-theme-davy"
               />
             </div>
-            <Button onClick={() => openForm('new')} className="w-full sm:w-auto bg-gradient-to-r from-theme-celestial to-theme-midnight hover:from-theme-celestial-dark hover:to-theme-midnight-dark text-white">
-              <PlusCircle className="mr-2 h-4 w-4" /> Nueva Campaña
-            </Button>
+            <div className="flex w-full sm:w-auto gap-2">
+              <Button onClick={() => openForm('new')} className="flex-1 sm:flex-none bg-gradient-to-r from-theme-celestial to-theme-midnight hover:from-theme-celestial-dark hover:to-theme-midnight-dark text-white">
+                <PlusCircle className="mr-2 h-4 w-4" /> Nueva Campaña
+              </Button>
+            </div>
           </div>
 
           <ScrollArea className="h-[450px] rounded-md border border-theme-powder dark:border-theme-davy">
@@ -245,6 +263,9 @@ const AdCampaigns = () => {
                           <Archive className="h-4 w-4" />
                         </Button>
                       )}
+                      <Button variant="outline" size="icon" onClick={() => handleDeleteCampaign(campaign.id)} title="Eliminar Campaña" className="border-red-500 text-red-600 hover:bg-red-50 dark:border-red-400 dark:text-red-300 dark:hover:bg-red-900/20" disabled={isLoading}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </TableCell>
                   </TableRow>
                 )) : (

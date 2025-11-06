@@ -258,6 +258,7 @@ export const SettingsProvider = ({ children }) => {
 
     try {
       const payload = {};
+      const wantsForceUnlock = Boolean(newSettings && newSettings.forceUnlock);
       const baselineForDiff = settings || {};
       const shallowEqual = (a,b) => {
         try { return JSON.stringify(a) === JSON.stringify(b); } catch { return false; }
@@ -292,6 +293,11 @@ export const SettingsProvider = ({ children }) => {
           payload[key] = newVal;
         }
       }
+      // Si UI solicitó forceUnlock explícito, propágalo para que el backend permita cambios protegidos
+      if (wantsForceUnlock) {
+        payload.forceUnlock = true;
+      }
+
       if (Object.keys(payload).length === 0) {
         console.log('[SettingsContext] updateSettings: no diff -> skip PATCH');
         setIsLoading(false);
@@ -302,7 +308,9 @@ export const SettingsProvider = ({ children }) => {
         payloadKeys: Object.keys(payload),
         integrations: payload.integrations ? { ...payload.integrations, openaiApiKeyPreview: payload.integrations.openaiApiKey ? payload.integrations.openaiApiKey.slice(0,8)+'...' : '' } : undefined
       });
-  const data = await apiClient.patch('/config', payload);
+      // Enviar también como query param por robustez ante proxies intermedios
+      const patchPath = wantsForceUnlock ? '/config?forceUnlock=1' : '/config';
+  const data = await apiClient.patch(patchPath, payload);
       console.log('[SettingsContext] PATCH /config - AFTER response', {
         updated_at: data.updated_at,
         integrations: data.integrations ? {

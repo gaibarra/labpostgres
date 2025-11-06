@@ -16,7 +16,8 @@ const triggerSizeClasses = {
   lg: 'h-12 text-base px-4'
 };
 const triggerVariantClasses = {
-  default: 'bg-white border-input',
+  // Light: blanco con texto oscuro; Dark: fondo oscuro con texto claro (contraste correcto)
+  default: 'bg-white border-input text-slate-900 dark:bg-slate-900 dark:text-slate-100',
   subtle: 'bg-slate-50 border-slate-200 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700',
   ghost: 'bg-transparent border-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
 };
@@ -25,7 +26,7 @@ const SelectTrigger = React.forwardRef(({ className, children, size='md', varian
   <SelectPrimitive.Trigger
     ref={ref}
     className={cn(
-      'flex w-full items-center justify-between rounded-md border text-slate-800 dark:text-slate-50 ring-offset-background focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1 placeholder:text-slate-500 dark:placeholder:text-slate-400 transition-colors',
+  'flex w-full items-center justify-between rounded-md border text-slate-800 dark:text-slate-50 ring-offset-background focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1 placeholder:text-slate-500 dark:placeholder:text-slate-400 transition-colors',
       triggerSizeClasses[size] || triggerSizeClasses.md,
       triggerVariantClasses[variant] || triggerVariantClasses.default,
       'dark:border-slate-700',
@@ -63,10 +64,10 @@ SelectScrollDownButton.displayName = SelectPrimitive.ScrollDownButton.displayNam
 
 const SelectContent = React.forwardRef(({ className, children, position = "popper", ...props }, ref) => (
   <SelectPrimitive.Portal>
-    <SelectPrimitive.Content
+  <SelectPrimitive.Content
       ref={ref}
       className={cn(
-        "relative z-50 max-h-96 min-w-[8rem] overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+        "relative z-50 max-h-96 min-w-[8rem] overflow-hidden rounded-md border bg-popover shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 text-slate-900",
         "dark:bg-slate-800 dark:border-slate-700 dark:text-slate-50",
         position === "popper" &&
           "data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
@@ -98,12 +99,12 @@ const SelectItem = React.forwardRef(({ className, children, ...props }, ref) => 
   <SelectPrimitive.Item
     ref={ref}
     className={cn(
-      'relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors',
+  'relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors text-slate-900',
       'data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
       // Estados de foco / hover / seleccionado accesibles
       'focus:bg-sky-100 focus:text-slate-900 data-[highlighted]:bg-sky-100 data-[highlighted]:text-slate-900',
       'data-[state=checked]:bg-sky-200 data-[state=checked]:text-slate-900 data-[state=checked]:font-semibold',
-      'dark:text-slate-100 dark:focus:bg-slate-700 dark:data-[highlighted]:bg-slate-700 dark:data-[state=checked]:bg-slate-600',
+  'dark:text-slate-100 dark:focus:bg-slate-700 dark:data-[highlighted]:bg-slate-700 dark:data-[state=checked]:bg-slate-600',
       className
     )}
     {...props}

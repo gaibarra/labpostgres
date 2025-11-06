@@ -3,7 +3,7 @@ import apiClient from '@/lib/apiClient';
 import { motion } from 'framer-motion';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Loader2, AlertCircle, Users, FlaskConical, Package, Stethoscope, FileText, BarChart2, ListOrdered, ArrowRight, UserCircle } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { format, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
@@ -35,18 +35,32 @@ function getPatientDisplayName(order) {
   return unique[0] || '—';
 }
 
-const StatCard = ({ id, title, value, icon, description }) => (
-  <Card className="shadow-sm hover:shadow-lg transition-shadow duration-300 bg-white dark:bg-slate-800">
-    <CardHeader className="flex flex-row items-center justify-between pb-2">
-      <CardTitle className="text-sm font-medium text-slate-500 dark:text-slate-400">{title}</CardTitle>
-      {icon}
-    </CardHeader>
-    <CardContent>
-      <div data-testid={`stat-${id}`} className="text-2xl font-bold text-slate-900 dark:text-slate-50">{value}</div>
-      <p className="text-xs text-muted-foreground">{description}</p>
-    </CardContent>
-  </Card>
-);
+const StatCard = ({ id, title, value, icon, description, to, accentBg = 'bg-sky-500', iconColor = 'text-sky-600' }) => {
+  const IconEl = React.cloneElement(icon, {
+    className: `${icon.props?.className || ''} ${iconColor}`.trim(),
+  });
+  return (
+    <Link
+      to={to || '#'}
+      aria-label={`${title}. Ir a la sección`}
+      className="group block rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-slate-400"
+    >
+      <Card className="relative shadow-sm group-hover:shadow-lg transition-shadow duration-300 bg-white dark:bg-slate-800 border border-slate-200/70 dark:border-slate-700/60 group-hover:bg-slate-50/50 dark:group-hover:bg-slate-800/60">
+        <div className={`absolute inset-x-0 top-0 h-1 ${accentBg}`} />
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-300 group-hover:text-slate-800 dark:group-hover:text-slate-100">
+            {title}
+          </CardTitle>
+          {IconEl}
+        </CardHeader>
+        <CardContent>
+          <div data-testid={`stat-${id}`} className="text-2xl font-bold text-slate-900 dark:text-slate-50">{value}</div>
+          <p className="text-xs text-muted-foreground">{description}</p>
+        </CardContent>
+      </Card>
+    </Link>
+  );
+};
 
 const DashboardPage = () => {
   const { user } = useAuth();
@@ -218,11 +232,56 @@ const DashboardPage = () => {
   };
   
   const cardData = [
-    { id: 'patients', title: "Pacientes Registrados", value: stats.patients, icon: <Users className="h-5 w-5 text-muted-foreground" />, description: "Total de pacientes en el sistema" },
-    { id: 'orders-today', title: "Órdenes de Hoy", value: stats.ordersToday, icon: <FileText className="h-5 w-5 text-muted-foreground" />, description: "Órdenes creadas en el día" },
-    { id: 'studies', title: "Estudios Disponibles", value: stats.studies, icon: <FlaskConical className="h-5 w-5 text-muted-foreground" />, description: "Catálogo total de estudios" },
-    { id: 'packages', title: "Paquetes Disponibles", value: stats.packages, icon: <Package className="h-5 w-5 text-muted-foreground" />, description: "Catálogo total de paquetes" },
-    { id: 'referrers', title: "Médicos Referentes", value: stats.referrers, icon: <Stethoscope className="h-5 w-5 text-muted-foreground" />, description: "Total de médicos y entidades" }
+    {
+      id: 'patients',
+      title: "Pacientes Registrados",
+      value: stats.patients,
+      icon: <Users className="h-5 w-5" />,
+      description: "Total de pacientes en el sistema",
+      to: '/patients',
+      accentBg: 'bg-sky-500',
+      iconColor: 'text-sky-600'
+    },
+    {
+      id: 'orders-today',
+      title: "Órdenes de Hoy",
+      value: stats.ordersToday,
+      icon: <FileText className="h-5 w-5" />,
+      description: "Órdenes creadas en el día",
+      to: '/orders',
+      accentBg: 'bg-violet-500',
+      iconColor: 'text-violet-600'
+    },
+    {
+      id: 'studies',
+      title: "Estudios Disponibles",
+      value: stats.studies,
+      icon: <FlaskConical className="h-5 w-5" />,
+      description: "Catálogo total de estudios",
+      to: '/studies',
+      accentBg: 'bg-emerald-500',
+      iconColor: 'text-emerald-600'
+    },
+    {
+      id: 'packages',
+      title: "Paquetes Disponibles",
+      value: stats.packages,
+      icon: <Package className="h-5 w-5" />,
+      description: "Catálogo total de paquetes",
+      to: '/packages',
+      accentBg: 'bg-fuchsia-500',
+      iconColor: 'text-fuchsia-600'
+    },
+    {
+      id: 'referrers',
+      title: "Médicos Referentes",
+      value: stats.referrers,
+      icon: <Stethoscope className="h-5 w-5" />,
+      description: "Total de médicos y entidades",
+      to: '/referrers',
+      accentBg: 'bg-teal-500',
+      iconColor: 'text-teal-600'
+    }
   ];
 
   const userName = user?.profile?.first_name && user?.profile?.last_name ? `${user.profile.first_name} ${user.profile.last_name}` : user?.email;
@@ -244,7 +303,7 @@ const DashboardPage = () => {
         variants={{ visible: { transition: { staggerChildren: 0.1 } } }}
         className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {cardData.map((card, i) => (
-           <motion.div key={card.title} custom={i} variants={cardVariants}>
+          <motion.div key={card.title} custom={i} variants={cardVariants}>
             <StatCard {...card} />
           </motion.div>
         ))}

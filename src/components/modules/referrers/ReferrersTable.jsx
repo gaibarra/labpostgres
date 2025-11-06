@@ -17,26 +17,31 @@ const ReferrersTable = ({
   isSubmitting
 }) => {
   return (
-    <div className="rounded-md border border-slate-200 dark:border-slate-700 shadow-inner">
-      <Table>
+    <div className="relative rounded-md border border-slate-200 dark:border-slate-700 shadow-inner overflow-x-auto xl:overflow-x-visible">
+      <Table className="table-fixed w-full border-separate border-spacing-0">
         <TableHeader className="sticky top-0 bg-slate-100 dark:bg-slate-800 z-10">
           <TableRow>
-            {/* Nombre más ancho */}
-            <TableHead className="w-[240px] md:w-[280px] text-slate-700 dark:text-slate-300">Nombre</TableHead>
-            <TableHead className="text-slate-700 dark:text-slate-300 hidden sm:table-cell">Tipo</TableHead>
-            {/* Especialidad más angosta */}
-            <TableHead className="w-[120px] md:w-[140px] text-slate-700 dark:text-slate-300 hidden md:table-cell">Especialidad</TableHead>
-            <TableHead className="text-slate-700 dark:text-slate-300 hidden lg:table-cell">Teléfono</TableHead>
-            <TableHead className="text-slate-700 dark:text-slate-300 hidden lg:table-cell">Email</TableHead>
-            <TableHead className="text-slate-700 dark:text-slate-300 hidden xl:table-cell w-[280px]">Dirección</TableHead>
-            <TableHead className="text-right text-slate-700 dark:text-slate-300 sticky right-0 z-10 bg-slate-100 dark:bg-slate-800">Acciones</TableHead>
+            {/* Nombre: adaptable y contenido envuelve si es necesario */}
+            <TableHead className="w-[160px] md:w-[220px] lg:w-[240px] text-slate-700 dark:text-slate-300">Nombre</TableHead>
+            <TableHead className="w-[90px] text-slate-700 dark:text-slate-300 hidden sm:table-cell">Tipo</TableHead>
+    {/* Especialidad más angosta */}
+            <TableHead className="w-[110px] md:w-[140px] text-slate-700 dark:text-slate-300 hidden md:table-cell">Especialidad</TableHead>
+            <TableHead className="w-[110px] text-slate-700 dark:text-slate-300 hidden lg:table-cell">Teléfono</TableHead>
+            <TableHead className="w-[220px] text-slate-700 dark:text-slate-300 hidden 2xl:table-cell">Email</TableHead>
+            {/* Dirección reducida a la mitad de ancho y permitiendo múltiples líneas */}
+            <TableHead className="text-slate-700 dark:text-slate-300 hidden xl:table-cell w-[140px]">Dirección</TableHead>
+            {/* Acciones: ancho fijo y sticky a la derecha */}
+            <TableHead className="text-right text-slate-700 dark:text-slate-300 sticky right-0 z-20 bg-slate-100 dark:bg-slate-800 w-[88px] min-w-[88px] whitespace-nowrap">
+              <span className="hidden xl:inline">Acciones</span>
+              <span className="xl:hidden">Acc.</span>
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {referrers.length > 0 ? (
             referrers.map((referrer) => (
               <TableRow key={referrer.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                <TableCell className="font-medium text-slate-800 dark:text-slate-200 w-[240px] md:w-[280px] align-top">
+                <TableCell className="font-medium text-slate-800 dark:text-slate-200 w-[160px] md:w-[220px] lg:w-[240px] align-top whitespace-normal break-words">
                   <div className="space-y-1">
                     <div>{referrer.name}</div>
                     {/* Bloque compacto sólo visible en pantallas < sm */}
@@ -50,18 +55,20 @@ const ReferrersTable = ({
                   </div>
                 </TableCell>
                 <TableCell className="text-slate-600 dark:text-slate-400 hidden sm:table-cell">{referrer.entity_type}</TableCell>
-                <TableCell className="text-slate-600 dark:text-slate-400 w-[120px] md:w-[140px] truncate hidden md:table-cell" title={referrer.specialty || ''}>{referrer.specialty || '___'}</TableCell>
-                <TableCell className="text-slate-600 dark:text-slate-400 hidden lg:table-cell">{referrer.phone_number || '___'}</TableCell>
-                <TableCell className="text-slate-600 dark:text-slate-400 hidden lg:table-cell">{referrer.email || '___'}</TableCell>
-                <TableCell className="text-slate-600 dark:text-slate-400 hidden xl:table-cell w-[280px] truncate" title={referrer.address || ''}>{referrer.address || '___'}</TableCell>
-                <TableCell className="text-right sticky right-0 z-10 bg-slate-50 dark:bg-slate-900">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" className="h-8 w-8 p-0" disabled={isSubmitting}>
-                        <span className="sr-only">Abrir menú</span>
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
+                <TableCell className="text-slate-600 dark:text-slate-400 w-[110px] md:w-[140px] truncate hidden md:table-cell" title={referrer.specialty || ''}>{referrer.specialty || '___'}</TableCell>
+                <TableCell className="text-slate-600 dark:text-slate-400 w-[110px] hidden lg:table-cell">{referrer.phone_number || '___'}</TableCell>
+                <TableCell className="text-slate-600 dark:text-slate-400 w-[220px] truncate hidden 2xl:table-cell" title={referrer.email || ''}>{referrer.email || '___'}</TableCell>
+                {/* Dirección reducida y con wrap (sin truncate) */}
+                <TableCell className="text-slate-600 dark:text-slate-400 hidden xl:table-cell w-[140px] whitespace-normal break-words align-top" title={referrer.address || ''}>{referrer.address || '___'}</TableCell>
+                <TableCell className="text-right sticky right-0 z-20 bg-slate-50 dark:bg-slate-900 w-[88px] min-w-[88px]">
+                  <div className="flex justify-end">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" className="h-8 w-8 p-0" disabled={isSubmitting}>
+                          <span className="sr-only">Abrir menú</span>
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="bg-white dark:bg-slate-900 shadow-lg border-slate-200 dark:border-slate-700">
                       {referrer.name !== 'Particular' && (
                         <DropdownMenuItem onClick={() => handleEdit(referrer)} className="cursor-pointer" disabled={isSubmitting}>
@@ -87,8 +94,9 @@ const ReferrersTable = ({
                           Eliminar
                         </DropdownMenuItem>
                       )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 </TableCell>
               </TableRow>
             ))

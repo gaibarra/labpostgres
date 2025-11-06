@@ -11,13 +11,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import SearchableSelect from '@/components/ui/SearchableSelect';
 import { Loader2 } from 'lucide-react';
 import { useAppData } from '@/contexts/AppDataContext';
 import useUserForm from './useUserForm';
@@ -80,16 +74,20 @@ const UserFormDialog = ({ isOpen, onOpenChange, selectedUser, onFormSubmit }) =>
           </div>
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="role" className="text-right">Rol</Label>
-            <Select onValueChange={handleRoleChange} value={formData.role} disabled={isSubmitting}>
-              <SelectTrigger className="col-span-3">
-                <SelectValue placeholder={roles && roles.length > 0 ? "Selecciona un rol" : "Cargando roles..."} />
-              </SelectTrigger>
-              <SelectContent>
-                {roles.map(({ role_name, label }) => (
-                  <SelectItem key={role_name} value={role_name}>{label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="col-span-3">
+              <SearchableSelect
+                options={roles.map(r => ({ value: r.role_name, label: r.label || r.role_name }))}
+                value={formData.role}
+                onValueChange={handleRoleChange}
+                placeholder={roles && roles.length ? 'Selecciona un rol' : 'Cargando roles...'}
+                emptyText="No hay roles disponibles"
+                disabled={isSubmitting}
+              />
+              {/* Fallback debug (remueve si ya se ve bien) */}
+              {!formData.role && roles.length === 0 && (
+                <p className="mt-1 text-xs text-red-600">No se cargaron roles aún.</p>
+              )}
+            </div>
           </div>
         </div>
         <DialogFooter>

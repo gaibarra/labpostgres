@@ -150,5 +150,10 @@ module.exports = {
   tenantMiddleware,
   closeAllTenantPools,
   masterHealth,
+  // Expose a lightweight metadata fetcher for other modules (e.g., to enforce demo-only ops)
+  getTenantMeta: async (tenantId) => {
+    const rec = await fetchTenantRecord(tenantId);
+    return { id: rec.id, slug: rec.slug, dbName: rec.db_name, status: rec.status, dbVersion: rec.db_version };
+  },
   __getCache: () => tenantCache
 };
