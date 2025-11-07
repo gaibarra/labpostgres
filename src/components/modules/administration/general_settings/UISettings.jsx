@@ -2,7 +2,7 @@ import React from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import SearchableSelect from '@/components/ui/SearchableSelect';
 import { Switch } from '@/components/ui/switch';
 
 const UISettings = ({ settings, handleInputChange, handleCheckboxChange }) => {
@@ -27,14 +27,18 @@ const UISettings = ({ settings, handleInputChange, handleCheckboxChange }) => {
         </div>
         <div>
           <Label htmlFor="tableDensity">Densidad de Tablas</Label>
-          <Select value={uiSettings.tableDensity || 'compact'} onValueChange={(value) => handleInputChange('uiSettings', 'tableDensity', value)}>
-            <SelectTrigger id="tableDensity"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="compact">Compacta</SelectItem>
-              <SelectItem value="comfortable">Cómoda</SelectItem>
-              <SelectItem value="spacious">Espaciada</SelectItem>
-            </SelectContent>
-          </Select>
+          <SearchableSelect
+            options={[
+              {value:'compact',label:'Compacta'},
+              {value:'comfortable',label:'Cómoda'},
+              {value:'spacious',label:'Espaciada'}
+            ]}
+            value={uiSettings.tableDensity || 'compact'}
+            onValueChange={(value) => handleInputChange('uiSettings', 'tableDensity', value)}
+            placeholder="Selecciona densidad..."
+            searchPlaceholder="Buscar densidad..."
+            notFoundMessage="Sin opciones"
+          />
         </div>
         <div>
           <Label htmlFor="notificationsDuration">Duración Notificaciones (ms)</Label>

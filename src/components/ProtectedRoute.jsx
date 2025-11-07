@@ -1,6 +1,7 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { getToken, setToken } from '@/lib/apiClient';
 
 const ProtectedRoute = ({ children }) => {
   const auth = useAuth();
@@ -21,6 +22,21 @@ const ProtectedRoute = ({ children }) => {
   }
 
   const { user, loading } = auth;
+
+
+  // Special-case: printing routes can carry auth in the URL hash (#at=TOKEN) and should render even before /auth/me finishes.
+  const hashMatch = (location.hash || '').match(/[#&]at=([^&]+)/);
+  if (hashMatch && hashMatch[1]) {
+    const token = decodeURIComponent(hashMatch[1]);
+    if (token && !getToken()) {
+      try { setToken(token); } catch { /* ignore */ }
+    }
+    return children;
+  }
+  // If token already exists and we're on a print route, allow rendering while auth context catches up.
+  if (getToken() && /^\/print\//.test(location.pathname)) {
+    return children;
+  }
 
   if (loading) {
     return (

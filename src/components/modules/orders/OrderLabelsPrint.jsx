@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { apiClient } from '@/lib/apiClient';
+import { apiClient, setToken, getToken } from '@/lib/apiClient';
 import QRCode from 'qrcode.react';
 import { formatInTimeZone } from '@/lib/dateUtils';
+import { loadLabelPrefs, pageSizeCss } from '@/lib/labelPrintingConfig';
 import { Loader2, ServerCrash } from 'lucide-react';
 
     const OrderLabelsPrint = () => {
@@ -13,7 +14,46 @@ import { Loader2, ServerCrash } from 'lucide-react';
         const [loading, setLoading] = useState(true);
         const [error, setError] = useState(null);
 
-        useEffect(() => {
+                // Bootstrap de token desde hash (#at=TOKEN) o via postMessage
+                                useEffect(() => {
+                                                let fetchedMe = false;
+                        // 1) Leer token del hash si viene
+                        try {
+                            const hash = typeof window !== 'undefined' ? window.location.hash : '';
+                            const m = hash && hash.match(/[#&]at=([^&]+)/);
+                            if (m && m[1]) {
+                                const token = decodeURIComponent(m[1]);
+                                                                if (token && !getToken()) {
+                                                                    setToken(token);
+                                                                }
+                            }
+                        } catch(_) { /* noop */ }
+                                                // If token already present now, trigger /auth/me once
+                                                try {
+                                                    if (getToken()) {
+                                                        fetchedMe = true;
+                                                        apiClient.auth.me().catch(()=>{});
+                                                    }
+                                                } catch(_) { /* ignore */ }
+                        // 2) Escuchar postMessage del opener con el token
+                        try {
+                            const handler = (e) => {
+                                if (!e || !e.data) return;
+                                if (e.origin !== window.location.origin) return; // misma origin
+                                if (e.data.type === 'LABG40_AUTH_TOKEN' && e.data.token && !getToken()) {
+                                                                        setToken(e.data.token);
+                                                                        if (!fetchedMe) {
+                                                                            fetchedMe = true;
+                                                                            apiClient.auth.me().catch(()=>{});
+                                                                        }
+                                }
+                            };
+                            window.addEventListener('message', handler);
+                            return () => window.removeEventListener('message', handler);
+                        } catch(_) { /* ignore */ }
+                }, []);
+
+                useEffect(() => {
             const fetchOrderData = async () => {
                 if (!orderId) {
                     setError("No se proporcionó ID de la orden.");
@@ -97,8 +137,11 @@ import { Loader2, ServerCrash } from 'lucide-react';
             );
         }
 
+        const prefs = loadLabelPrefs();
+        const dynamicCss = pageSizeCss(prefs);
         return (
             <div className="p-2 font-sans bg-white">
+                <style>{dynamicCss}</style>
                 <div className="grid grid-cols-2 gap-2">
                     {studies.map((study, index) => {
                         const qrValue = `Folio: ${order.folio}\nPaciente: ${patient.full_name}\nEstudio: ${study.name}\nContenedor: ${study.sample_container}`;

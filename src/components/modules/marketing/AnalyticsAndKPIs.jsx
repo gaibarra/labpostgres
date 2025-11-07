@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import SearchableSelect from '@/components/ui/SearchableSelect';
 import { motion } from 'framer-motion';
 import { BarChart3, Users, TrendingUp, MousePointerClick, Target as TargetIcon, CalendarDays, DollarSign, Percent, Eye, Filter, Clock, Mail, Send, Search as SearchIcon, Loader2 } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -153,14 +153,15 @@ const AnalyticsAndKPIs = () => {
             </div>
             <div className="flex items-center gap-2">
               <Filter className="h-5 w-5 text-theme-davy dark:text-theme-powder/80" />
-              <Select value={selectedPeriod} onValueChange={setSelectedPeriod} disabled={isLoading}>
-                <SelectTrigger className="w-[180px] bg-white dark:bg-theme-davy-dark/50 border-theme-powder dark:border-theme-davy">
-                  <SelectValue placeholder="Seleccionar Periodo" />
-                </SelectTrigger>
-                <SelectContent>
-                  {kpiPeriods.map(period => <SelectItem key={period} value={period}>{period}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                options={kpiPeriods.map(p=>({value:p,label:p}))}
+                value={selectedPeriod}
+                onValueChange={setSelectedPeriod}
+                placeholder="Seleccionar Periodo"
+                searchPlaceholder="Buscar periodo..."
+                notFoundMessage="Sin periodos"
+                disabled={isLoading}
+              />
             </div>
           </div>
         </CardHeader>

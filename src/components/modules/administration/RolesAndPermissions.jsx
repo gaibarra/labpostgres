@@ -4,10 +4,10 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter }
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import SearchableSelect from '@/components/ui/SearchableSelect';
 import { motion } from 'framer-motion';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ShieldCheck, LockKeyhole, Save, AlertTriangle, RefreshCw, UserCog } from 'lucide-react';
+import { LockKeyhole, Save, AlertTriangle, RefreshCw } from 'lucide-react';
 import { useToast } from "@/components/ui/use-toast";
 import { apiClient } from '@/lib/apiClient';
 import { logAuditEvent } from '@/lib/auditUtils';
@@ -68,7 +68,7 @@ const RolesAndPermissions = () => {
   const [rolesPermissions, setRolesPermissions] = useState([]);
   // Use roles table for selector options
   const { roles: roleOptions } = useAppData();
-  const availableRoles = roleOptions.map(r => r.role_name);
+  // const availableRoles = roleOptions.map(r => r.role_name); // not used after refactor
   // Role attributes from roles table
   const { roles, setRoles } = useAppData();
   const [roleLabel, setRoleLabel] = useState('');
@@ -239,30 +239,17 @@ const RolesAndPermissions = () => {
               {/* Role selector */}
               <div className="grid grid-cols-4 items-center gap-4 mb-4">
                 <Label htmlFor="role-select" className="text-right">Rol</Label>
-                <Select id="role-select" onValueChange={handleRoleChange} value={selectedRole} disabled={!isAdmin}>
-                  <SelectTrigger className="min-w-[220px] font-medium text-slate-800 dark:text-slate-100">
-                    {/* SelectValue puede renderizar vacío si la opción aún no está montada; añadimos fallback */}
-                    <SelectValue placeholder="Selecciona un rol" />
-                    {!roleOptions.some(r=> r.role_name === selectedRole) ? null : (
-                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-800 dark:text-slate-100 select-none">
-                        {(() => {
-                          const found = roleOptions.find(r=> r.role_name === selectedRole);
-                          return (found && (found.label?.trim()||found.role_name)) || selectedRole || '';
-                        })()}
-                      </span>
-                    )}
-                  </SelectTrigger>
-                  <SelectContent>
-                    {roleOptions.map(({ role_name, label }) => {
-                      const display = (typeof label === 'string' && label.trim().length>0) ? label : role_name;
-                      return (
-                        <SelectItem key={role_name} value={role_name} className="text-slate-800 dark:text-slate-100">
-                          {display}
-                        </SelectItem>
-                      );
-                    })}
-                  </SelectContent>
-                </Select>
+                <div className="col-span-3">
+                  <SearchableSelect
+                    options={roleOptions.map(r => ({ value: r.role_name, label: (r.label && r.label.trim()) ? r.label : r.role_name }))}
+                    value={selectedRole}
+                    onValueChange={handleRoleChange}
+                    placeholder="Selecciona un rol"
+                    searchPlaceholder="Buscar rol..."
+                    notFoundMessage="Sin roles"
+                    disabled={!isAdmin}
+                  />
+                </div>
               </div>
 
               {/* Role attributes editor */}
@@ -336,7 +323,7 @@ const RolesAndPermissions = () => {
         <CardContent className="text-amber-700 dark:text-amber-300 text-sm space-y-2">
            <p>Solo los usuarios con el rol de <strong className="font-semibold">Administrador</strong> pueden gestionar los roles, permisos y usuarios del sistema. Puedes gestionar los usuarios en <Link to="/administration/user-management" className="text-sky-600 dark:text-sky-400 hover:underline">Gestión de Usuarios</Link>.</p>
           <p>La aplicación de estos permisos en cada módulo (restringir acciones basadas en estos settings) <strong>aún no está implementada.</strong> Para una funcionalidad completa, se requiere integrar la lógica de verificación de permisos en cada componente. Puede solicitar esta funcionalidad en su próximo mensaje.</p>
-          <p>El rol "Administrador" tiene todos los permisos por defecto y no pueden ser restringidos para asegurar la operatividad del sistema.</p>
+          <p>El rol &quot;Administrador&quot; tiene todos los permisos por defecto y no pueden ser restringidos para asegurar la operatividad del sistema.</p>
         </CardContent>
       </Card>
     </motion.div>

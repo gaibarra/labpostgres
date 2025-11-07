@@ -1,7 +1,7 @@
 import React from 'react';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import SearchableSelect from '@/components/ui/SearchableSelect';
 
 const GENDER_OPTIONS = [
   { value: 'ambos', label: 'Ambos' },
@@ -38,33 +38,38 @@ const ReferenceValueInput = ({ index, value, onChange, isSubmitting }) => {
   return (
     <div className="w-full space-y-3">
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
-        <Select onValueChange={(v) => handleChange('gender', v)} value={val.gender} disabled={isSubmitting}>
-          <SelectTrigger><SelectValue placeholder="Género" /></SelectTrigger>
-          <SelectContent>
-            {GENDER_OPTIONS.map(option => (
-              <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <SearchableSelect
+          value={val.gender}
+          onValueChange={(v) => handleChange('gender', v)}
+          options={GENDER_OPTIONS.map(o => ({ value: o.value, label: o.label }))}
+          placeholder="Género"
+          searchPlaceholder="Buscar género..."
+          emptyText="Sin opciones"
+          disabled={isSubmitting}
+        />
         <Input type="number" placeholder="Edad Mín." value={val.age_min} onChange={(e) => handleChange('age_min', e.target.value)} disabled={isSubmitting} />
         <Input type="number" placeholder="Edad Máx." value={val.age_max} onChange={(e) => handleChange('age_max', e.target.value)} disabled={isSubmitting} />
-        <Select onValueChange={(v) => handleChange('age_unit', v)} value={val.age_unit} disabled={isSubmitting}>
-          <SelectTrigger><SelectValue placeholder="Unidad" /></SelectTrigger>
-          <SelectContent>
-            {AGE_UNITS.map(unit => <SelectItem key={unit} value={unit}>{unit}</SelectItem>)}
-          </SelectContent>
-        </Select>
+        <SearchableSelect
+          value={val.age_unit}
+          onValueChange={(v) => handleChange('age_unit', v)}
+          options={AGE_UNITS.map(u => ({ value: u, label: u }))}
+          placeholder="Unidad"
+          searchPlaceholder="Buscar unidad..."
+          emptyText="Sin unidades"
+          disabled={isSubmitting}
+        />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-        <Select onValueChange={(v) => handleChange('tipoValor', v)} value={val.tipoValor} disabled={isSubmitting}>
-          <SelectTrigger><SelectValue placeholder="Tipo de Valor" /></SelectTrigger>
-          <SelectContent>
-            {VALUE_TYPES.map(option => (
-              <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <SearchableSelect
+          value={val.tipoValor}
+          onValueChange={(v) => handleChange('tipoValor', v)}
+          options={VALUE_TYPES.map(o => ({ value: o.value, label: o.label }))}
+          placeholder="Tipo de Valor"
+          searchPlaceholder="Buscar tipo..."
+          emptyText="Sin tipos"
+          disabled={isSubmitting}
+        />
         {val.tipoValor === 'numerico' && (
           <>
             <Input type="number" placeholder="Normal Mín." value={val.normal_min} onChange={(e) => handleChange('normal_min', e.target.value)} disabled={isSubmitting} />

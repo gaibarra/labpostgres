@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+// removed legacy Select usage in this component
+import SearchableSelect from '@/components/ui/SearchableSelect';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { motion } from 'framer-motion';
-import { Users as SocialIcon, PlusCircle, Edit3, Search, Eye, Archive, Calendar as CalendarIcon, Image as ImageIcon, Video, Link as LinkIcon, MessageSquare, ThumbsUp, Share2, Loader2 } from 'lucide-react';
+import { Users as SocialIcon, PlusCircle, Edit3, Search, Eye, Archive, Image as ImageIcon, Video, Link as LinkIcon, MessageSquare, ThumbsUp, Share2, Loader2 } from 'lucide-react';
 import { useToast } from "@/components/ui/use-toast";
 import { logAuditEvent } from '@/lib/auditUtils';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -293,21 +294,25 @@ const SocialMediaManagement = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="postPlatform">Plataforma</Label>
-                  <Select value={currentPost.platform} onValueChange={(value) => handleInputChange('platform', value)}>
-                    <SelectTrigger id="postPlatform"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {socialPlatforms.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                  <SearchableSelect
+                    value={currentPost.platform}
+                    onValueChange={(value) => handleInputChange('platform', value)}
+                    options={socialPlatforms.map(p => ({ value: p, label: p }))}
+                    placeholder="Seleccionar plataforma"
+                    searchPlaceholder="Buscar plataforma..."
+                    emptyText="Sin plataformas"
+                  />
                 </div>
                 <div>
                   <Label htmlFor="postStatus">Estado</Label>
-                  <Select value={currentPost.status} onValueChange={(value) => handleInputChange('status', value)}>
-                    <SelectTrigger id="postStatus"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {postStatuses.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                  <SearchableSelect
+                    value={currentPost.status}
+                    onValueChange={(value) => handleInputChange('status', value)}
+                    options={postStatuses.map(s => ({ value: s, label: s }))}
+                    placeholder="Seleccionar estado"
+                    searchPlaceholder="Buscar estado..."
+                    emptyText="Sin estados"
+                  />
                 </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -327,12 +332,14 @@ const SocialMediaManagement = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="contentType">Tipo de Contenido</Label>
-                  <Select value={currentPost.content_type} onValueChange={(value) => handleInputChange('content_type', value)}>
-                    <SelectTrigger id="contentType"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {contentTypes.map(ct => <SelectItem key={ct} value={ct}>{ct}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                  <SearchableSelect
+                    value={currentPost.content_type}
+                    onValueChange={(value) => handleInputChange('content_type', value)}
+                    options={contentTypes.map(ct => ({ value: ct, label: ct }))}
+                    placeholder="Seleccionar tipo"
+                    searchPlaceholder="Buscar tipo..."
+                    emptyText="Sin tipos"
+                  />
                 </div>
                 {(currentPost.content_type === 'Imagen' || currentPost.content_type === 'Video' || currentPost.content_type === 'Enlace') && (
                   <div><Label htmlFor="mediaUrl">URL del Medio/Enlace</Label><Input id="mediaUrl" value={currentPost.media_url} onChange={(e) => handleInputChange('media_url', e.target.value)} placeholder="https://ejemplo.com/imagen.jpg"/></div>

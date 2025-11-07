@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from "@/components/ui/button";
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import SearchableSelect from '@/components/ui/SearchableSelect';
 import { Loader2, Sparkles, Wand2, AlertTriangle } from 'lucide-react';
 import { useToast } from "@/components/ui/use-toast";
 import { apiClient } from '@/lib/apiClient';
@@ -69,7 +69,7 @@ const AIAssistEmailDialog = ({ open, onOpenChange, onContentGenerated }) => {
             const sections = Array.isArray(guide.sections) ? guide.sections.map(s => `\n\n## ${s.heading}\n${s.content}` ).join('') : '';
             finalBody += `\n\n---\n\n# ${guide.title || 'Guía'}\n\n${guide.intro || ''}${sections}\n\n**${guide.cta || ''}**`;
           }
-        } catch(_) {}
+  } catch(_e) { /* ignorar error de parseo de guía */ }
       }
   onContentGenerated({ subject, body: finalBody, guide: typeof guide === 'object' ? JSON.stringify(guide, null, 2) : (guide || ''), _meta });
       onOpenChange(false);
@@ -111,16 +111,18 @@ const AIAssistEmailDialog = ({ open, onOpenChange, onContentGenerated }) => {
   <div className="py-4 space-y-4">
           <div>
             <Label htmlFor="audience">Público Objetivo</Label>
-            <Select onValueChange={setAudience} value={audience}>
-              <SelectTrigger id="audience">
-                <SelectValue placeholder="Selecciona un público..." />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="pacientes">Pacientes</SelectItem>
-                <SelectItem value="medicos">Médicos Referentes</SelectItem>
-                <SelectItem value="instituciones">Instituciones / Empresas</SelectItem>
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              options={[
+                {value:'pacientes',label:'Pacientes'},
+                {value:'medicos',label:'Médicos Referentes'},
+                {value:'instituciones',label:'Instituciones / Empresas'}
+              ]}
+              value={audience}
+              onValueChange={setAudience}
+              placeholder="Selecciona un público..."
+              searchPlaceholder="Buscar público..."
+              notFoundMessage="Sin públicos"
+            />
           </div>
           <div>
             <Label htmlFor="topic">Tema Principal</Label>
@@ -133,16 +135,18 @@ const AIAssistEmailDialog = ({ open, onOpenChange, onContentGenerated }) => {
           </div>
           <div>
             <Label htmlFor="tone">Tono del Mensaje</Label>
-            <Select onValueChange={setTone} value={tone}>
-              <SelectTrigger id="tone">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="informativo">Informativo y Profesional</SelectItem>
-                <SelectItem value="amigable">Amigable y Cercano</SelectItem>
-                <SelectItem value="urgente">Urgente / Promocional</SelectItem>
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              options={[
+                {value:'informativo',label:'Informativo y Profesional'},
+                {value:'amigable',label:'Amigable y Cercano'},
+                {value:'urgente',label:'Urgente / Promocional'}
+              ]}
+              value={tone}
+              onValueChange={setTone}
+              placeholder="Selecciona tono..."
+              searchPlaceholder="Buscar tono..."
+              notFoundMessage="Sin tonos"
+            />
           </div>
           <div className="flex items-center space-x-2">
             <input id="includeGuide" type="checkbox" className="h-4 w-4" checked={includeGuide} onChange={e=>setIncludeGuide(e.target.checked)} />

@@ -2,7 +2,7 @@ import React from 'react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import SearchableSelect from '@/components/ui/SearchableSelect';
 import { DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Loader2 } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -38,22 +38,15 @@ const ReferrerForm = ({ currentReferrer, handleInputChange, handleSelectChange, 
             </div>
             <div>
               <Label htmlFor="entity_type">Tipo <span className="text-red-500">*</span></Label>
-              <Select 
-                name="entity_type" 
-                value={currentReferrer.entity_type} 
+              <SearchableSelect
+                options={(isParticular ? ['Particular'] : referrerTypes).map(t => ({ value: t, label: t }))}
+                value={currentReferrer.entity_type}
                 onValueChange={(value) => handleSelectChange('entity_type', value)}
+                placeholder="Selecciona tipo..."
+                searchPlaceholder="Buscar tipo..."
+                notFoundMessage="Sin coincidencias"
                 disabled={isParticular || isSubmitting}
-                required
-              >
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {isParticular ? (
-                    <SelectItem value="Particular">Particular</SelectItem>
-                  ) : (
-                    referrerTypes.map(type => <SelectItem key={type} value={type}>{type}</SelectItem>)
-                  )}
-                </SelectContent>
-              </Select>
+              />
             </div>
           </div>
           {isDoctorType(currentReferrer.entity_type) && (

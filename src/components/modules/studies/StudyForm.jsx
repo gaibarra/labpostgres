@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import SearchableSelect from '@/components/ui/SearchableSelect';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import StudyParameters from '@/components/modules/studies/StudyParameters';
@@ -149,12 +149,15 @@ const StudyForm = forwardRef(function StudyFormFwd({ initialStudy, onSubmit, onC
             </div>
             <div className="md:col-span-2">
               <Label htmlFor="category">Categoría</Label>
-              <Select onValueChange={(val) => handleSelectChange('category', val)} value={study.category || ''} disabled={isSubmitting}>
-                <SelectTrigger id="category"><SelectValue placeholder="Seleccione una categoría" /></SelectTrigger>
-                <SelectContent>
-                  {studyCategories.map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                value={study.category || ''}
+                onValueChange={(val) => handleSelectChange('category', val)}
+                options={studyCategories.map(cat => ({ value: cat, label: cat }))}
+                placeholder="Seleccione una categoría"
+                searchPlaceholder="Buscar categoría..."
+                emptyText="Sin categorías"
+                disabled={isSubmitting}
+              />
             </div>
           </div>
 

@@ -4,12 +4,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import SearchableSelect from '@/components/ui/SearchableSelect';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { motion } from 'framer-motion';
-import { Award, PlusCircle, Edit3, Search, Users, Settings, Star, Trash2, Info, Loader2 } from 'lucide-react';
+import { Award, PlusCircle, Edit3, Users, Settings, Star, Trash2, Info, Loader2 } from 'lucide-react';
 import { useToast } from "@/components/ui/use-toast";
 import { logAuditEvent } from '@/lib/auditUtils';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -271,10 +271,14 @@ const LoyaltyPrograms = () => {
                 <div><Label htmlFor="progName">Nombre Programa</Label><Input id="progName" value={currentProgram.name} onChange={(e) => setCurrentProgram({...currentProgram, name: e.target.value})} /></div>
                 <div>
                   <Label htmlFor="progType">Tipo de Programa</Label>
-                  <Select value={currentProgram.type} onValueChange={(val) => setCurrentProgram({...currentProgram, type: val})}>
-                    <SelectTrigger id="progType"><SelectValue/></SelectTrigger>
-                    <SelectContent>{programTypes.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
-                  </Select>
+                  <SearchableSelect
+                    value={currentProgram.type}
+                    onValueChange={(val) => setCurrentProgram({...currentProgram, type: val})}
+                    options={programTypes.map(t => ({ value: t, label: t }))}
+                    placeholder="Seleccionar tipo"
+                    searchPlaceholder="Buscar tipo..."
+                    emptyText="Sin tipos"
+                  />
                 </div>
               </div>
               <div><Label htmlFor="progDesc">Descripción</Label><Textarea id="progDesc" value={currentProgram.description} onChange={(e) => setCurrentProgram({...currentProgram, description: e.target.value})} /></div>
@@ -285,10 +289,14 @@ const LoyaltyPrograms = () => {
               </div>
               <div>
                 <Label htmlFor="progStatus">Estado</Label>
-                <Select value={currentProgram.status} onValueChange={(val) => setCurrentProgram({...currentProgram, status: val})}>
-                  <SelectTrigger id="progStatus"><SelectValue/></SelectTrigger>
-                  <SelectContent>{programStatuses.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
-                </Select>
+                <SearchableSelect
+                  value={currentProgram.status}
+                  onValueChange={(val) => setCurrentProgram({...currentProgram, status: val})}
+                  options={programStatuses.map(s => ({ value: s, label: s }))}
+                  placeholder="Seleccionar estado"
+                  searchPlaceholder="Buscar estado..."
+                  emptyText="Sin estados"
+                />
               </div>
               
               <div className="mt-4 border-t pt-4">

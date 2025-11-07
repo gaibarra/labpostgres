@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogC
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import SearchableSelect from '@/components/ui/SearchableSelect';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { DatePicker } from '@/components/ui/datepicker'; 
 import { format, setHours, setMinutes, setSeconds, parseISO } from 'date-fns';
@@ -50,17 +50,25 @@ const CampaignFormDialog = ({ isOpen, onOpenChange, onSave, mode, initialData, l
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="campList">Lista de Suscriptores</Label>
-                <Select value={currentCampaign.listId} onValueChange={(val) => setCurrentCampaign({...currentCampaign, listId: val})}>
-                  <SelectTrigger id="campList"><SelectValue placeholder="Seleccionar lista..."/></SelectTrigger>
-                  <SelectContent>{lists.map(l => <SelectItem key={l.id} value={l.id}>{l.name} ({l.subscriberCount} suscriptores)</SelectItem>)}</SelectContent>
-                </Select>
+                <SearchableSelect
+                  value={currentCampaign.listId}
+                  onValueChange={(val) => setCurrentCampaign({...currentCampaign, listId: val})}
+                  options={lists.map(l => ({ value: l.id, label: `${l.name} (${l.subscriberCount} suscriptores)` }))}
+                  placeholder="Seleccionar lista..."
+                  searchPlaceholder="Buscar lista..."
+                  emptyText="Sin listas"
+                />
               </div>
               <div>
                 <Label htmlFor="campTemplate">Plantilla de Email</Label>
-                <Select value={currentCampaign.templateId} onValueChange={(val) => setCurrentCampaign({...currentCampaign, templateId: val})}>
-                  <SelectTrigger id="campTemplate"><SelectValue placeholder="Seleccionar plantilla..."/></SelectTrigger>
-                  <SelectContent>{templates.map(t => <SelectItem key={t.id} value={t.id}>{t.name} - {t.subject}</SelectItem>)}</SelectContent>
-                </Select>
+                <SearchableSelect
+                  value={currentCampaign.templateId}
+                  onValueChange={(val) => setCurrentCampaign({...currentCampaign, templateId: val})}
+                  options={templates.map(t => ({ value: t.id, label: `${t.name} - ${t.subject}` }))}
+                  placeholder="Seleccionar plantilla..."
+                  searchPlaceholder="Buscar plantilla..."
+                  emptyText="Sin plantillas"
+                />
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -69,10 +77,14 @@ const CampaignFormDialog = ({ isOpen, onOpenChange, onSave, mode, initialData, l
             </div>
             <div>
               <Label htmlFor="campStatus">Estado</Label>
-              <Select value={currentCampaign.status} onValueChange={(val) => setCurrentCampaign({...currentCampaign, status: val})}>
-                <SelectTrigger id="campStatus"><SelectValue/></SelectTrigger>
-                <SelectContent>{campaignStatuses.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
-              </Select>
+              <SearchableSelect
+                value={currentCampaign.status}
+                onValueChange={(val) => setCurrentCampaign({...currentCampaign, status: val})}
+                options={campaignStatuses.map(s => ({ value: s, label: s }))}
+                placeholder="Seleccionar estado"
+                searchPlaceholder="Buscar estado..."
+                emptyText="Sin estados"
+              />
             </div>
           </div>
         </ScrollArea>

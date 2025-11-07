@@ -1,7 +1,7 @@
 import React from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { DatePickerWithRange } from '@/components/ui/datepicker';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import SearchableSelect from '@/components/ui/SearchableSelect';
 import { Filter } from 'lucide-react';
 
 const ARHeader = ({ 
@@ -31,37 +31,41 @@ const ARHeader = ({
         </div>
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Filtrar Por</label>
-          <Select value={filterBy} onValueChange={(value) => { onFilterByChange(value); onFilterEntityIdChange('all'); }} disabled={isLoading}>
-            <SelectTrigger className="w-full bg-white dark:bg-slate-700"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos</SelectItem>
-              <SelectItem value="patient">Paciente</SelectItem>
-              <SelectItem value="referrer">Referente</SelectItem>
-            </SelectContent>
-          </Select>
+          <SearchableSelect
+            value={filterBy}
+            onValueChange={(value) => { onFilterByChange(value); onFilterEntityIdChange('all'); }}
+            options={[{ value: 'all', label: 'Todos' }, { value: 'patient', label: 'Paciente' }, { value: 'referrer', label: 'Referente' }]}
+            placeholder="Seleccionar filtro"
+            searchPlaceholder="Buscar filtro..."
+            emptyText="Sin filtros"
+            disabled={isLoading}
+          />
         </div>
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
             {filterBy === 'patient' ? 'Paciente' : (filterBy === 'referrer' ? 'Referente' : 'Entidad')}
           </label>
-          <Select value={filterEntityId} onValueChange={onFilterEntityIdChange} disabled={filterBy === 'all' || isLoading || entityOptions.length === 0}>
-            <SelectTrigger className="w-full bg-white dark:bg-slate-700"><SelectValue placeholder={`Seleccionar ${filterBy}`} /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos</SelectItem>
-              {entityOptions.map(entity => <SelectItem key={entity.id} value={entity.id}>{entity.nombre}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <SearchableSelect
+            value={filterEntityId}
+            onValueChange={onFilterEntityIdChange}
+            options={[{ value: 'all', label: 'Todos' }, ...entityOptions.map(e => ({ value: e.id, label: e.nombre }))]}
+            placeholder={`Seleccionar ${filterBy}`}
+            searchPlaceholder={`Buscar ${filterBy}...`}
+            emptyText={`Sin ${filterBy}`}
+            disabled={filterBy === 'all' || isLoading || entityOptions.length === 0}
+          />
         </div>
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Estado de Pago</label>
-          <Select value={filterStatus} onValueChange={onFilterStatusChange} disabled={isLoading}>
-            <SelectTrigger className="w-full bg-white dark:bg-slate-700"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos</SelectItem>
-              <SelectItem value="pending">Pendientes</SelectItem>
-              <SelectItem value="paid">Pagadas</SelectItem>
-            </SelectContent>
-          </Select>
+          <SearchableSelect
+            value={filterStatus}
+            onValueChange={onFilterStatusChange}
+            options={[{ value: 'all', label: 'Todos' }, { value: 'pending', label: 'Pendientes' }, { value: 'paid', label: 'Pagadas' }]}
+            placeholder="Seleccionar estado"
+            searchPlaceholder="Buscar estado..."
+            emptyText="Sin estados"
+            disabled={isLoading}
+          />
         </div>
       </CardContent>
     </Card>

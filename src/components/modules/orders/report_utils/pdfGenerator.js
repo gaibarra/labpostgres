@@ -15,7 +15,8 @@ import autoTable from 'jspdf-autotable';
       cleanNumericValueForStorage,
       getStudiesAndParametersForOrder,
       compact = false,
-      antibiogramPayload = null // { meta, rows }
+      antibiogramPayload = null, // { meta, rows }
+      options = { mode: 'window' } // 'window' | 'blob'
     ) => {
       const doc = new jsPDF();
     const pageHeight = doc.internal.pageSize.height;
@@ -868,5 +869,13 @@ import autoTable from 'jspdf-autotable';
         doc.putTotalPages(totalPagesExp);
       }
 
+      if (options && (options.mode === 'blob' || options.mode === 'blob+window')) {
+        const blob = doc.output('blob');
+        if (options.mode === 'blob+window') {
+          try { doc.output('dataurlnewwindow'); } catch(_) { /* popup blocked */ }
+        }
+        return blob;
+      }
+      // default legacy behavior
       doc.output('dataurlnewwindow');
     };

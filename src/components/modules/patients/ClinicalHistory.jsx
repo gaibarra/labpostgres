@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
     import { apiClient } from '@/lib/apiClient';
     import { useToast } from '@/components/ui/use-toast';
     import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-    import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+  import SearchableSelect from '@/components/ui/SearchableSelect';
     import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
     import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
     import { Loader2, User, ChevronLeft, AlertCircle, FilterX } from 'lucide-react';
@@ -403,16 +403,14 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
             </CardHeader>
             <CardContent>
               <div className="mb-6 w-full md:w-1/3">
-                 <Select onValueChange={setSelectedParameterForChart} value={selectedParameterForChart}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleccionar un parámetro para graficar..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {allParametersForChart.map(param => (
-                            <SelectItem key={param} value={param}>{param}</SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
+                 <SearchableSelect
+                   value={selectedParameterForChart}
+                   onValueChange={setSelectedParameterForChart}
+                   options={allParametersForChart.map(p => ({ value: p, label: p }))}
+                   placeholder="Seleccionar un parámetro para graficar..."
+                   searchPlaceholder="Buscar parámetro..."
+                   emptyText="Sin parámetros"
+                 />
               </div>
               <div className="h-80 w-full">
                 {selectedParameterForChart && chartData.length > 1 ? (
@@ -442,22 +440,25 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
             </CardHeader>
             <CardContent>
               <div className="flex flex-col md:flex-row gap-4 mb-6">
-                <Select onValueChange={handleStudyFilterChange} value={selectedStudyFilter}>
-                  <SelectTrigger className="w-full md:w-64">
-                    <SelectValue placeholder="Filtrar por estudio..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableStudies.map(study => <SelectItem key={study} value={study}>{study}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-                <Select onValueChange={setSelectedParameterFilter} value={selectedParameterFilter} disabled={!selectedStudyFilter}>
-                  <SelectTrigger className="w-full md:w-64">
-                    <SelectValue placeholder="Filtrar por parámetro..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableParameters.map(param => <SelectItem key={param} value={param}>{param}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  value={selectedStudyFilter}
+                  onValueChange={handleStudyFilterChange}
+                  options={availableStudies.map(s => ({ value: s, label: s }))}
+                  placeholder="Filtrar por estudio..."
+                  searchPlaceholder="Buscar estudio..."
+                  emptyText="Sin estudios"
+                  className="w-full md:w-64"
+                />
+                <SearchableSelect
+                  value={selectedParameterFilter}
+                  onValueChange={setSelectedParameterFilter}
+                  options={availableParameters.map(p => ({ value: p, label: p }))}
+                  placeholder="Filtrar por parámetro..."
+                  searchPlaceholder="Buscar parámetro..."
+                  emptyText="Sin parámetros"
+                  className="w-full md:w-64"
+                  disabled={!selectedStudyFilter}
+                />
                 <Button variant="ghost" onClick={clearFilters} className="flex items-center gap-2">
                   <FilterX className="h-4 w-4" />
                   Limpiar Filtros

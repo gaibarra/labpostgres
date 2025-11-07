@@ -57,7 +57,10 @@
     "pino": "^9.2.0",
     "pino-http": "^10.3.0",
     "prom-client": "^15.1.2",
-    "validator": "^13.11.0",
+  "validator": "^13.11.0",
+  "nodemailer": "^6.9.12",
+  "jspdf": "^2.5.1",
+  "jspdf-autotable": "^3.8.2",
     "zod": "^3.23.8"
   },
   "optionalDependencies": {

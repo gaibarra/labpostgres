@@ -6,7 +6,7 @@ import React, { useState, useMemo } from 'react';
 
     import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
     import { Button } from '@/components/ui/button';
-    import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+    import SearchableSelect from '@/components/ui/SearchableSelect';
     import { DatePickerWithRange } from '@/components/ui/datepicker';
     import { Loader2, Filter, BarChart2, AlertCircle, PieChart as PieChartIcon, LineChart as LineChartIcon, Banknote } from 'lucide-react';
     import { useToast } from "@/components/ui/use-toast";
@@ -110,20 +110,22 @@ import React, { useState, useMemo } from 'react';
                             <label className="text-sm font-medium">Rango de Fechas</label>
                             <DatePickerWithRange date={dateRange} setDate={setDateRange} />
                         </div>
-                        <div className="flex flex-col space-y-2">
-                             <label className="text-sm font-medium">Agrupar Por</label>
-                            <Select value={groupBy} onValueChange={setGroupBy}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Seleccionar agrupación" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">Todas las Órdenes</SelectItem>
-                                    <SelectItem value="day">Día</SelectItem>
-                                    <SelectItem value="referrer">Referente</SelectItem>
-                                    <SelectItem value="patient">Paciente</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
+                                                <div className="flex flex-col space-y-2">
+                                                         <label className="text-sm font-medium">Agrupar Por</label>
+                                                         <SearchableSelect
+                                                             options={[
+                                                                 {value:'all',label:'Todas las Órdenes'},
+                                                                 {value:'day',label:'Día'},
+                                                                 {value:'referrer',label:'Referente'},
+                                                                 {value:'patient',label:'Paciente'}
+                                                             ]}
+                                                             value={groupBy}
+                                                             onValueChange={setGroupBy}
+                                                             placeholder="Seleccionar agrupación"
+                                                             searchPlaceholder="Buscar opción..."
+                                                             notFoundMessage="Sin opciones"
+                                                         />
+                                                </div>
                         <div className="flex items-end">
                             <Button onClick={handleGenerateReport} disabled={loading} className="w-full md:w-auto">
                                 {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}

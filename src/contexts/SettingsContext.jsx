@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 // Settings now loaded from backend /api/config endpoints (Express + PostgreSQL)
 import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from '@/contexts/AuthContext';
@@ -100,6 +100,10 @@ export const SettingsProvider = ({ children }) => {
   // sí estuviera guardada en BD. Eliminamos toda dependencia de 'session'.
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
+  // In tests, useToast may return a new function/object each render; keep a stable ref to avoid
+  // re-creating callbacks/effects that depend on toast and causing render loops.
+  const toastRef = useRef(toast);
+  useEffect(() => { toastRef.current = toast; }, [toast]);
   const [settings, setSettings] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isInitialized, setIsInitialized] = useState(false);
@@ -167,9 +171,10 @@ export const SettingsProvider = ({ children }) => {
       }
   } catch (error) {
       if (abortController.signal.aborted) return;
-      if (error.name !== 'AbortError') {
+  if (error.name !== 'AbortError') {
         console.error('Error cargando configuración', error);
-        toast({
+    // Use ref to avoid unstable dependency on toast in this callback
+    toastRef.current({
           title: 'Error de Configuración',
           description: 'No se pudo cargar la configuración. Se usará la última versión guardada.',
           variant: 'destructive'
@@ -182,7 +187,7 @@ export const SettingsProvider = ({ children }) => {
         setIsInitialized(true);
       }
     }
-  }, [user, toast, processAndSetSettings]);
+  }, [user, processAndSetSettings]);
 
   useEffect(() => {
     const abortController = new AbortController();

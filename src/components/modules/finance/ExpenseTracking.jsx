@@ -3,11 +3,11 @@ import React, { useState, useEffect, useCallback } from 'react';
     import { Button } from '@/components/ui/button';
     import { Input } from '@/components/ui/input';
     import { DatePickerWithRange } from '@/components/ui/datepicker';
-    import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+    import SearchableSelect from '@/components/ui/SearchableSelect';
     import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
     import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog";
     import { motion } from 'framer-motion';
-    import { ShoppingCart, Receipt, Filter, PlusCircle, Edit3, Trash2, Download, AlertCircle, Loader2 } from 'lucide-react';
+    import { ShoppingCart, Receipt, PlusCircle, Edit3, Trash2, Download, Loader2 } from 'lucide-react';
     import { useToast } from "@/components/ui/use-toast";
     import { format, parseISO, isValid, startOfDay, endOfDay } from 'date-fns';
     import { apiClient } from '@/lib/apiClient';
@@ -91,7 +91,7 @@ import React, { useState, useEffect, useCallback } from 'react';
         }
 
         setIsLoading(true);
-        let error, data;
+  // cleaned unused vars
         const expenseData = {
           expense_date: format(currentExpense.expense_date, 'yyyy-MM-dd'),
           description: currentExpense.description,
@@ -214,20 +214,22 @@ import React, { useState, useEffect, useCallback } from 'react';
               <div className="flex flex-col md:flex-row justify-between items-center gap-4 p-4 bg-slate-100 dark:bg-slate-800/30 rounded-lg">
                 <div className="flex flex-wrap items-center gap-4">
                   <DatePickerWithRange date={dateRange} onDateChange={setDateRange} />
-                  <Select value={filterCategory} onValueChange={setFilterCategory}>
-                    <SelectTrigger className="w-full md:w-[180px] bg-white dark:bg-slate-700">
-                      <SelectValue placeholder="Categoría" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todas</SelectItem>
-                      <SelectItem value="insumos">Insumos de Laboratorio</SelectItem>
-                      <SelectItem value="operativos">Gastos Operativos</SelectItem>
-                      <SelectItem value="administrativos">Gastos Administrativos</SelectItem>
-                      <SelectItem value="marketing">Marketing y Publicidad</SelectItem>
-                      <SelectItem value="mantenimiento">Mantenimiento y Reparaciones</SelectItem>
-                      <SelectItem value="otro">Otro</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <SearchableSelect
+                    options={[
+                      {value:'all',label:'Todas'},
+                      {value:'insumos',label:'Insumos de Laboratorio'},
+                      {value:'operativos',label:'Gastos Operativos'},
+                      {value:'administrativos',label:'Gastos Administrativos'},
+                      {value:'marketing',label:'Marketing y Publicidad'},
+                      {value:'mantenimiento',label:'Mantenimiento y Reparaciones'},
+                      {value:'otro',label:'Otro'}
+                    ]}
+                    value={filterCategory}
+                    onValueChange={setFilterCategory}
+                    placeholder="Categoría"
+                    searchPlaceholder="Buscar categoría..."
+                    notFoundMessage="Sin categorías"
+                  />
                 </div>
                 <Dialog open={isFormOpen} onOpenChange={(isOpen) => {
                   setIsFormOpen(isOpen);
@@ -256,19 +258,21 @@ import React, { useState, useEffect, useCallback } from 'react';
                       </div>
                       <div>
                         <label htmlFor="categoria-gasto" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Categoría</label>
-                         <Select value={currentExpense.category} onValueChange={handleCategoryChange} name="category">
-                            <SelectTrigger className="w-full bg-white dark:bg-slate-800">
-                              <SelectValue placeholder="Seleccionar categoría" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="insumos">Insumos de Laboratorio</SelectItem>
-                                <SelectItem value="operativos">Gastos Operativos (renta, luz)</SelectItem>
-                                <SelectItem value="administrativos">Gastos Administrativos (papelería)</SelectItem>
-                                <SelectItem value="marketing">Marketing y Publicidad</SelectItem>
-                                <SelectItem value="mantenimiento">Mantenimiento y Reparaciones</SelectItem>
-                                <SelectItem value="otro">Otro</SelectItem>
-                            </SelectContent>
-                        </Select>
+                         <SearchableSelect
+                           options={[
+                             {value:'insumos',label:'Insumos de Laboratorio'},
+                             {value:'operativos',label:'Gastos Operativos (renta, luz)'},
+                             {value:'administrativos',label:'Gastos Administrativos (papelería)'},
+                             {value:'marketing',label:'Marketing y Publicidad'},
+                             {value:'mantenimiento',label:'Mantenimiento y Reparaciones'},
+                             {value:'otro',label:'Otro'}
+                           ]}
+                           value={currentExpense.category}
+                           onValueChange={handleCategoryChange}
+                           placeholder="Seleccionar categoría"
+                           searchPlaceholder="Buscar categoría..."
+                           notFoundMessage="Sin categorías"
+                         />
                       </div>
                        <div>
                         <label htmlFor="monto-gasto" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Monto (MXN)</label>

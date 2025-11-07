@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
     import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
     import { Button } from '@/components/ui/button';
     import { Label } from '@/components/ui/label';
-    import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+  // removed legacy Select
   // Supabase removed – using apiClient
   import apiClient from '@/lib/apiClient';
     import { useToast } from "@/components/ui/use-toast";
@@ -123,14 +123,15 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
                 </div>
                 <div>
                   <Label htmlFor="workOrder">Orden de Trabajo</Label>
-                  <Select value={selectedWorkOrderId || ''} onValueChange={setSelectedWorkOrderId} disabled={!selectedPatientId || isFetchingData}>
-                    <SelectTrigger><SelectValue placeholder="Seleccionar orden..." /></SelectTrigger>
-                    <SelectContent>
-                      {workOrders.map(wo => (
-                        <SelectItem key={wo.value} value={wo.value}>{wo.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <SearchableSelect
+                    options={workOrders}
+                    value={selectedWorkOrderId || ''}
+                    onValueChange={setSelectedWorkOrderId}
+                    placeholder="Seleccionar orden..."
+                    searchPlaceholder="Buscar orden..."
+                    notFoundMessage="Sin órdenes"
+                    disabled={!selectedPatientId || isFetchingData}
+                  />
                 </div>
                 <Button onClick={handlePreview} disabled={!selectedPatientId || isLoading}>
                   {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Generar Vista Previa"}

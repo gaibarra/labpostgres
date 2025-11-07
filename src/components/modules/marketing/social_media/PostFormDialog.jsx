@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import SearchableSelect from '@/components/ui/SearchableSelect';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { DatePicker } from '@/components/ui/datepicker';
 import { Loader2 } from 'lucide-react';
@@ -40,21 +40,25 @@ const PostFormDialog = ({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="postPlatform">Plataforma</Label>
-                <Select value={currentPost.platform} onValueChange={(value) => handleInputChange('platform', value)}>
-                  <SelectTrigger id="postPlatform"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {socialPlatforms.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  options={socialPlatforms.map(p=>({value:p,label:p}))}
+                  value={currentPost.platform}
+                  onValueChange={(value) => handleInputChange('platform', value)}
+                  placeholder="Selecciona plataforma..."
+                  searchPlaceholder="Buscar plataforma..."
+                  notFoundMessage="Sin plataformas"
+                />
               </div>
               <div>
                 <Label htmlFor="postStatus">Estado</Label>
-                <Select value={currentPost.status} onValueChange={(value) => handleInputChange('status', value)}>
-                  <SelectTrigger id="postStatus"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {postStatuses.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  options={postStatuses.map(s=>({value:s,label:s}))}
+                  value={currentPost.status}
+                  onValueChange={(value) => handleInputChange('status', value)}
+                  placeholder="Selecciona estado..."
+                  searchPlaceholder="Buscar estado..."
+                  notFoundMessage="Sin estados"
+                />
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -74,12 +78,14 @@ const PostFormDialog = ({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="contentType">Tipo de Contenido</Label>
-                <Select value={currentPost.content_type} onValueChange={(value) => handleInputChange('content_type', value)}>
-                  <SelectTrigger id="contentType"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {contentTypes.map(ct => <SelectItem key={ct} value={ct}>{ct}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  options={contentTypes.map(ct=>({value:ct,label:ct}))}
+                  value={currentPost.content_type}
+                  onValueChange={(value) => handleInputChange('content_type', value)}
+                  placeholder="Selecciona tipo..."
+                  searchPlaceholder="Buscar tipo..."
+                  notFoundMessage="Sin tipos"
+                />
               </div>
               {(currentPost.content_type === 'Imagen' || currentPost.content_type === 'Video' || currentPost.content_type === 'Enlace') && (
                 <div><Label htmlFor="mediaUrl">URL del Medio/Enlace</Label><Input id="mediaUrl" value={currentPost.media_url} onChange={(e) => handleInputChange('media_url', e.target.value)} placeholder="https://ejemplo.com/imagen.jpg"/></div>

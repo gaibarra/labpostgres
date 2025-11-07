@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,23 +14,13 @@ const IntegrationsSettingsTab = ({ settings, handleInputChange }) => {
   // Estado local para impedir envío si usuario no editó
   const [openAiLocal, setOpenAiLocal] = useState('');
   const [openAiDirty, setOpenAiDirty] = useState(false);
-  useEffect(()=>{
-    // Cuando cambie settings externos, si no está dirty, sincronizar placeholder
-    if (!openAiDirty) {
-      if (integrations.openaiApiKey && integrations.openaiApiKey.startsWith('sk-')) {
-        setOpenAiLocal(''); // mantenemos vacío para no re-exponer
-      } else {
-        setOpenAiLocal('');
-      }
-    }
-  }, [integrations.openaiApiKey, integrations.openaiApiKeyPreview, openAiDirty]);
 
   // Interceptar handleInputChange para omitir envío si no cambió valor real.
   const handleOpenAiChange = (val) => {
-    setOpenAiLocal(val);
-    setOpenAiDirty(true);
+  setOpenAiLocal(val);
+  setOpenAiDirty(true);
     // Pasamos el valor al settings sólo si no es cadena vacía (usuario quiere rotar) o null (borrar)
-    if (val === null) {
+  if (val === null) {
       handleInputChange('integrations', 'openaiApiKey', null);
       setOpenAiDirty(false);
       setOpenAiLocal('');

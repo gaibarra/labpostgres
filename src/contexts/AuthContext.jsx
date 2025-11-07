@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
-import { apiClient, clearToken, getToken } from '@/lib/apiClient';
+import { apiClient, clearToken, getToken, setToken } from '@/lib/apiClient';
 import { useToast } from '@/components/ui/use-toast';
 
     const AuthContext = createContext(undefined);
@@ -43,7 +43,8 @@ export const AuthProvider = ({ children, initialUser = null }) => {
         if (!getToken()) { setUser(null); return; }
         try {
           const data = await apiClient.auth.me();
-      setUser(normalizeUser(data.user));
+          const rawUser = data && (data.user || data);
+          setUser(normalizeUser(rawUser));
         } catch (e) {
           const isInvalid = e.status === 401 || e.status === 404 || (e.status === 404 && (e.code === 'USER_NOT_FOUND' || e.details?.error === 'Usuario no encontrado'));
           if (isInvalid) {
@@ -57,7 +58,40 @@ export const AuthProvider = ({ children, initialUser = null }) => {
 
       useEffect(() => {
         if (initialUser) return; // en pruebas skip fetch /auth/me
-        (async () => { setLoading(true); await loadCurrentUser(); setLoading(false); })();
+        // 1) Bootstrap: token en hash (#at=TOKEN) cuando abrimos pestañas de impresión protegidas
+        try {
+          const hash = typeof window !== 'undefined' ? window.location.hash : '';
+          const m = hash && hash.match(/[#&]at=([^&]+)/);
+          if (m && m[1] && !getToken()) {
+            const token = decodeURIComponent(m[1]);
+            if (token) setToken(token);
+          }
+        } catch (_) { /* noop */ }
+
+        // 2) Listener para recibir token via postMessage desde la pestaña origen
+        const handler = (e) => {
+          try {
+            if (!e || !e.data) return;
+            if (e.origin !== window.location.origin) return;
+            if (e.data.type === 'LABG40_AUTH_TOKEN' && e.data.token && !getToken()) {
+              setToken(e.data.token);
+              (async () => { setLoading(true); await loadCurrentUser(); setLoading(false); })();
+            }
+          } catch(_) { /* ignore */ }
+        };
+        try { window.addEventListener('message', handler); } catch(_) { /* ignore */ }
+
+        // 3) Cargar usuario actual (ya con token si vino en hash). Para rutas de impresión sin token aún, esperar a postMessage.
+        try {
+          const isPrintRoute = typeof window !== 'undefined' && /^\/print\//.test(window.location.pathname);
+          if (!isPrintRoute || getToken()) {
+            (async () => { setLoading(true); await loadCurrentUser(); setLoading(false); })();
+          } else {
+            // No token y estamos en ruta de impresión: permitir que ProtectedRoute muestre hijos y esperar mensaje.
+            setLoading(false);
+          }
+        } catch { /* ignore */ }
+        return () => { try { window.removeEventListener('message', handler); } catch(_) { /* ignore */ } };
       }, [loadCurrentUser, initialUser]);
 
     const signUp = useCallback(async (email, password, firstName, lastName) => {

@@ -2,7 +2,7 @@ import React from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import SearchableSelect from '@/components/ui/SearchableSelect';
 import { Switch } from '@/components/ui/switch';
 
 const ReportSettingsTab = ({ settings, handleInputChange, handleCheckboxChange }) => {
@@ -15,24 +15,28 @@ const ReportSettingsTab = ({ settings, handleInputChange, handleCheckboxChange }
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <Label htmlFor="dateFormat">Formato de Fecha</Label>
-            <Select value={reportSettings.dateFormat || 'dd/MM/yyyy'} onValueChange={(value) => handleInputChange('reportSettings', 'dateFormat', value)}>
-              <SelectTrigger id="dateFormat"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="dd/MM/yyyy">dd/MM/yyyy</SelectItem>
-                <SelectItem value="MM/dd/yyyy">MM/dd/yyyy</SelectItem>
-                <SelectItem value="yyyy-MM-dd">yyyy-MM-dd</SelectItem>
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              options={['dd/MM/yyyy','MM/dd/yyyy','yyyy-MM-dd'].map(f=>({value:f,label:f}))}
+              value={reportSettings.dateFormat || 'dd/MM/yyyy'}
+              onValueChange={(value) => handleInputChange('reportSettings', 'dateFormat', value)}
+              placeholder="Selecciona formato..."
+              searchPlaceholder="Buscar formato..."
+              notFoundMessage="Sin formatos"
+            />
           </div>
           <div>
             <Label htmlFor="timeFormat">Formato de Hora</Label>
-            <Select value={reportSettings.timeFormat || 'HH:mm'} onValueChange={(value) => handleInputChange('reportSettings', 'timeFormat', value)}>
-              <SelectTrigger id="timeFormat"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="HH:mm">24 Horas (HH:mm)</SelectItem>
-                <SelectItem value="hh:mm a">12 Horas (hh:mm a)</SelectItem>
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              options={[
+                {value:'HH:mm',label:'24 Horas (HH:mm)'},
+                {value:'hh:mm a',label:'12 Horas (hh:mm a)'}
+              ]}
+              value={reportSettings.timeFormat || 'HH:mm'}
+              onValueChange={(value) => handleInputChange('reportSettings', 'timeFormat', value)}
+              placeholder="Selecciona formato..."
+              searchPlaceholder="Buscar formato..."
+              notFoundMessage="Sin formatos"
+            />
           </div>
         </div>
         <div>

@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import SearchableSelect from '@/components/ui/SearchableSelect';
 import { motion } from 'framer-motion';
 import { Percent, Save, Loader2, Building } from 'lucide-react';
 import { useSettings } from '@/contexts/SettingsContext';
@@ -152,19 +152,14 @@ const TaxConfiguration = () => {
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="regimenFiscal">Régimen Fiscal (SAT)</Label>
-                  <Select 
-                    value={settings.taxSettings.regimenFiscal} 
+                  <SearchableSelect
+                    value={settings.taxSettings.regimenFiscal}
                     onValueChange={(value) => handleSelectChange('regimenFiscal', value)}
-                  >
-                    <SelectTrigger id="regimenFiscal" className="w-full bg-white dark:bg-slate-700">
-                      <SelectValue placeholder="Selecciona un régimen" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {regimenesFiscales.map(reg => (
-                        <SelectItem key={reg.value} value={reg.value}>{reg.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    options={regimenesFiscales.map(reg => ({ value: reg.value, label: reg.label }))}
+                    placeholder="Selecciona un régimen"
+                    searchPlaceholder="Buscar régimen..."
+                    emptyText="Sin opciones"
+                  />
                 </div>
                  <p className="text-sm text-muted-foreground">
                    La información de Razón Social y RFC se configura en <span className="font-semibold">Administración &gt; Configuración General &gt; Info. Lab</span>.

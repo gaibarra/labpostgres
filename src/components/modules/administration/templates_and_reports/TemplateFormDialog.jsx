@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import SearchableSelect from '@/components/ui/SearchableSelect';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Loader2, Save } from 'lucide-react';
 
@@ -37,14 +37,17 @@ const TemplateFormDialog = ({
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="templateType" className="text-right">Tipo</Label>
-              <Select value={currentTemplate.type} onValueChange={(value) => handleInputChange('type', value)} disabled={formMode === 'edit' && currentTemplate.is_system}>
-                <SelectTrigger className="col-span-3"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {(templateTypes || []).map(type => (
-                    <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="col-span-3">
+                <SearchableSelect
+                  options={(templateTypes||[]).map(t=>({value:t.value,label:t.label}))}
+                  value={currentTemplate.type}
+                  onValueChange={(value) => handleInputChange('type', value)}
+                  placeholder="Selecciona tipo..."
+                  searchPlaceholder="Buscar tipo..."
+                  notFoundMessage="Sin tipos"
+                  disabled={formMode === 'edit' && currentTemplate.is_system}
+                />
+              </div>
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="templateHeader" className="text-right">Encabezado</Label>

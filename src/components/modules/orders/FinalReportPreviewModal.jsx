@@ -15,6 +15,7 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
     import ReportFooter from './report_utils/ReportFooter.jsx';
     import { logAuditEvent } from '@/lib/auditUtils';
     import { generatePdfContent } from './report_utils/pdfGenerator.js';
+    import { apiClient } from '@/lib/apiClient';
     import { useOrderManagement } from './hooks/useOrderManagement.js';
     import { useSettings } from '@/contexts/SettingsContext';
     import AIRecommendationsModal from './AIRecommendationsModal.jsx';
@@ -161,19 +162,53 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
         }
       };
 
-      const handleSendAction = (platform) => {
+
+      const handleSendAction = async (platform) => {
         const labName = labSettings.labInfo?.name || "Laboratorio Clínico Horizonte";
         const reportSummary = `Resultados de Laboratorio - ${labName}\nFolio: ${order.folio}\nPaciente: ${patient.full_name}`;
-        const reminder = `\n\nIMPORTANTE: Recuerde generar el PDF del reporte desde la previsualización y adjuntarlo a este mensaje antes de enviar.`;
+        const reminder = `\n\n(Adjunto: Reporte de Resultados en PDF)`;
+        // Generate PDF Blob and create object URL (for browser attachment manual flow)
+        const pdfBlob = (()=>{
+          try {
+            return generatePdfContent(
+              order,
+              patient,
+              referrer,
+              studiesDetails,
+              packagesData,
+              patientAgeData,
+              labSettings,
+              getReferenceRangeText,
+              evaluateResult,
+              cleanNumericValueForStorage,
+              getStudiesAndParametersForOrder,
+              isCompact,
+              (antibiogramData && antibiogramData.hasData) ? antibiogramData : null,
+              { mode: 'blob+window' }
+            );
+          } catch(e){ console.error('Failed to build PDF blob', e); return null; }
+        })();
+        let pdfObjectUrl = null;
+        if (pdfBlob) {
+          try { pdfObjectUrl = URL.createObjectURL(pdfBlob); } catch(_) { /* ignore URL blob creation failure */ }
+        }
+        // Call backend dispatch stub (so audit trail can later be extended)
+        try {
+          await apiClient.post(`/work-orders/${order.id}/send-report/dispatch`, {
+            channel: platform.toLowerCase(),
+            patient: { full_name: patient.full_name, email: patient.email, phone_number: patient.phone_number },
+            labName
+          });
+        } catch(e) { console.warn('Dispatch endpoint failed (non-blocking)', e.message); }
         
         if (platform === 'Email') {
           const subject = `Resultados de Laboratorio - ${patient.full_name} - Folio ${order.folio}`;
-          const body = `Estimado(a) ${patient.full_name},\n\n${reportSummary}\n\nPor favor, genere el PDF desde la previsualización y adjúntelo a este correo antes de enviar.\n\nSaludos cordiales,\n${labName}`;
+          const body = `Estimado(a) ${patient.full_name},\n\n${reportSummary}\n\nAdjuntamos su reporte de resultados en PDF.\n\nSaludos cordiales,\n${labName}`;
           const mailtoLink = `mailto:${patient.email || ''}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
           window.location.href = mailtoLink;
           toast({
             title: "Preparando Email",
-            description: "Se ha abierto su cliente de correo. Por favor, adjunte el PDF generado antes de enviar.",
+            description: pdfObjectUrl ? "Se abrió el PDF en una nueva pestaña. Descárguelo y adjúntelo antes de enviar." : "No se pudo abrir el PDF. Usa 'Imprimir / Guardar PDF' y adjunta manualmente.",
             duration: 7000,
           });
           logAuditEvent('ReporteEnviadoIntento', { orderId: order.id, platform: 'Email' }, order.createdBy || 'Sistema');
@@ -188,11 +223,7 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
             }
           }
           window.open(telegramUrl, '_blank');
-          toast({
-            title: "Preparando envío por Telegram",
-            description: "Se intentará abrir Telegram. Por favor, adjunte el PDF y complete el envío.",
-            duration: 7000,
-          });
+          toast({ title: "Telegram", description: pdfObjectUrl ? "Se abrió el PDF. Descárgalo y adjúntalo en Telegram." : "Genera el PDF con 'Imprimir / Guardar PDF' para adjuntarlo.", duration: 6000 });
           logAuditEvent('ReporteEnviadoIntento', { orderId: order.id, platform: 'Telegram' }, order.createdBy || 'Sistema');
         } else if (platform === 'WhatsApp') {
           const whatsappMessage = `Estimado(a) ${patient.full_name},\n${reportSummary}${reminder}\n\nSaludos cordiales,\n${labName}`;
@@ -206,11 +237,7 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
           whatsappUrl += `?text=${encodeURIComponent(whatsappMessage)}`;
           
           window.open(whatsappUrl, '_blank');
-          toast({
-            title: "Preparando envío por WhatsApp",
-            description: "Se intentará abrir WhatsApp. Por favor, adjunte el PDF y complete el envío.",
-            duration: 7000,
-          });
+          toast({ title: "WhatsApp", description: pdfObjectUrl ? "Se abrió el PDF. Descárgalo y adjúntalo en WhatsApp." : "Genera el PDF con 'Imprimir / Guardar PDF' para adjuntarlo.", duration: 6000 });
           logAuditEvent('ReporteEnviadoIntento', { orderId: order.id, platform: 'WhatsApp' }, order.createdBy || 'Sistema');
         } else {
           onSend(platform, order, patient);

@@ -4,12 +4,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import SearchableSelect from '@/components/ui/SearchableSelect';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { motion } from 'framer-motion';
-import { SearchCheck, PlusCircle, Edit3, Search as SearchIcon, Globe, Type, TrendingUp, BarChartHorizontalBig, Activity, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { SearchCheck, PlusCircle, Edit3, Globe, Type, TrendingUp, BarChartHorizontalBig, Activity, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { useToast } from "@/components/ui/use-toast";
 import { logAuditEvent } from '@/lib/auditUtils';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -17,7 +17,7 @@ import { DatePicker } from '@/components/ui/datepicker';
 import { format, parseISO } from 'date-fns';
 import { apiClient } from '@/lib/apiClient';
 import { useSettings } from '@/contexts/SettingsContext';
-import { useAuth } from '@/contexts/AuthContext';
+// import { useAuth } from '@/contexts/AuthContext';
 
 const initialKeywordForm = { id: null, keyword: '', target_url: '', volume: '', difficulty: '', position: '', notes: '' };
 const initialContentForm = { id: null, title: '', author: '', publish_date: null, content: '', status: 'Borrador', category: '', tags: '' };
@@ -26,7 +26,7 @@ const contentCategories = ['Salud General', 'Avances Médicos', 'Consejos Bienes
 
 const SeoAndContent = () => {
   const { toast } = useToast();
-  const { user } = useAuth();
+  // const { user } = useAuth();
   const { settings } = useSettings();
   const [activeTab, setActiveTab] = useState('keywords');
   
@@ -352,19 +352,27 @@ const SeoAndContent = () => {
               </div>
               <div>
                 <Label htmlFor="contentCategory">Categoría</Label>
-                <Select value={currentContentItem.category} onValueChange={(val) => setCurrentContentItem({...currentContentItem, category: val})}>
-                  <SelectTrigger id="contentCategory"><SelectValue placeholder="Seleccionar categoría..."/></SelectTrigger>
-                  <SelectContent>{contentCategories.map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}</SelectContent>
-                </Select>
+                <SearchableSelect
+                  value={currentContentItem.category}
+                  onValueChange={(val) => setCurrentContentItem({...currentContentItem, category: val})}
+                  options={contentCategories.map(cat => ({ value: cat, label: cat }))}
+                  placeholder="Seleccionar categoría..."
+                  searchPlaceholder="Buscar categoría..."
+                  emptyText="Sin categorías"
+                />
               </div>
               <div><Label htmlFor="contentTags">Etiquetas (separadas por coma)</Label><Input id="contentTags" value={currentContentItem.tags} onChange={(e) => setCurrentContentItem({...currentContentItem, tags: e.target.value})} placeholder="salud, bienestar, análisis"/></div>
               <div><Label htmlFor="contentBody">Contenido</Label><Textarea id="contentBody" value={currentContentItem.content} onChange={(e) => setCurrentContentItem({...currentContentItem, content: e.target.value})} rows={12} placeholder="Escribe aquí el contenido del artículo..."/></div>
               <div>
                 <Label htmlFor="contentStatus">Estado</Label>
-                <Select value={currentContentItem.status} onValueChange={(val) => setCurrentContentItem({...currentContentItem, status: val})}>
-                  <SelectTrigger id="contentStatus"><SelectValue/></SelectTrigger>
-                  <SelectContent>{contentStatuses.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
-                </Select>
+                <SearchableSelect
+                  value={currentContentItem.status}
+                  onValueChange={(val) => setCurrentContentItem({...currentContentItem, status: val})}
+                  options={contentStatuses.map(s => ({ value: s, label: s }))}
+                  placeholder="Seleccionar estado"
+                  searchPlaceholder="Buscar estado..."
+                  emptyText="Sin estados"
+                />
               </div>
             </div>
           </ScrollArea>

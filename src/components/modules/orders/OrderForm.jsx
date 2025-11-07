@@ -2,13 +2,12 @@ import React, { useState, useEffect, useCallback } from 'react';
     import { Label } from '@/components/ui/label';
     import { Input } from '@/components/ui/input';
     import { Button } from '@/components/ui/button';
-    import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
     import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
     import { format } from 'date-fns';
     import { es } from 'date-fns/locale';
     import { DialogFooter } from "@/components/ui/dialog";
     import SearchableSelect from '@/components/ui/SearchableSelect';
-    import { User, Package as PackageIcon, Trash2, Beaker, FileText, Stethoscope, Hash } from 'lucide-react';
+  import { Package as PackageIcon, Trash2, Beaker, FileText, Stethoscope, Hash } from 'lucide-react';
     import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
     import OrderPreviewModal from './OrderPreviewModal';
     import { AnimatePresence, motion } from 'framer-motion';
@@ -339,14 +338,14 @@ import React, { useState, useEffect, useCallback } from 'react';
                 </div>
                  <div>
                     <Label htmlFor="status" className="text-slate-700 dark:text-slate-300">Estado de Orden</Label>
-                    <Select name="status" value={order.status} onValueChange={(value) => handleSelectChange('status', value)}>
-                      <SelectTrigger className="bg-white/80 dark:bg-slate-800/80"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {orderStatusOptions.map(s => (
-                          <SelectItem key={s} value={s}><span>{s}</span></SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <SearchableSelect
+                      options={orderStatusOptions.map(s=>({value:s,label:s}))}
+                      value={order.status}
+                      onValueChange={(value) => handleSelectChange('status', value)}
+                      placeholder="Selecciona estado..."
+                      searchPlaceholder="Buscar estado..."
+                      notFoundMessage="Sin estados"
+                    />
                   </div>
             </div>
              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

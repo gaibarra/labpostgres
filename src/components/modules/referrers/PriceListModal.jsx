@@ -3,7 +3,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogC
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/use-toast";
 import { DollarSign, ListPlus, Trash2, Loader2 } from 'lucide-react';
@@ -128,13 +127,15 @@ const PriceListModal = ({
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
             <div>
               <Label htmlFor="itemTypeForPrice" className="text-slate-700 dark:text-slate-300">Tipo de Ítem</Label>
-              <Select value={itemType} onValueChange={(value) => { setItemType(value); setSelectedItemId(''); setSpecificPrice(''); }} disabled={isActionDisabled}>
-                <SelectTrigger className="bg-white/80 dark:bg-slate-800/80"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="study">Estudio</SelectItem>
-                  <SelectItem value="package">Paquete</SelectItem>
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                options={[{value:'study',label:'Estudio'},{value:'package',label:'Paquete'}]}
+                value={itemType}
+                onValueChange={(value) => { setItemType(value); setSelectedItemId(''); setSpecificPrice(''); }}
+                placeholder="Selecciona tipo..."
+                searchPlaceholder="Buscar tipo..."
+                notFoundMessage="Sin opciones"
+                disabled={isActionDisabled}
+              />
             </div>
             <div className="md:col-span-2">
               <Label htmlFor="selectedItemForPrice" className="text-slate-700 dark:text-slate-300">

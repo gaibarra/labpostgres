@@ -5,7 +5,8 @@ import React, { useState, useEffect, useCallback } from 'react';
     import { Label } from "@/components/ui/label";
     import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
     import { DatePickerWithRange } from "@/components/ui/datepicker"; 
-    import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+  // Legacy Select removido tras migración a SearchableSelect
+    import SearchableSelect from '@/components/ui/SearchableSelect';
     import { motion } from 'framer-motion';
     import { Activity, ListFilter, Search, Download, Trash2, Eye, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
     import { triggerBlobDownload } from '@/utils/safeDownload';
@@ -42,8 +43,8 @@ import React, { useState, useEffect, useCallback } from 'react';
       const [searchTerm, setSearchTerm] = useState('');
       const [debouncedSearchTerm] = useDebounce(searchTerm, 500);
       const [dateRange, setDateRange] = useState({ from: null, to: null });
-      const [selectedUser, setSelectedUser] = useState('');
-      const [selectedActionType, setSelectedActionType] = useState('');
+  const [selectedUser, setSelectedUser] = useState('');
+  const [selectedActionType, setSelectedActionType] = useState('');
       const [users, setUsers] = useState([]);
       const [selectedLogDetails, setSelectedLogDetails] = useState(null);
       const [page, setPage] = useState(0);
@@ -196,21 +197,27 @@ import React, { useState, useEffect, useCallback } from 'react';
                 </div>
                 <div>
                   <Label htmlFor="user-filter-audit">Usuario</Label>
-                  <Select value={selectedUser} onValueChange={setSelectedUser}>
-                    <SelectTrigger id="user-filter-audit" className="w-full bg-white dark:bg-slate-700"><SelectValue placeholder="Filtrar por usuario" /></SelectTrigger>
-                    <SelectContent>
-                      {users.map(user => <SelectItem key={user.id} value={user.id}>{user.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                  <SearchableSelect
+                    value={selectedUser}
+                    onValueChange={setSelectedUser}
+                    options={users.map(u => ({ value: u.id, label: u.name }))}
+                    placeholder="Filtrar por usuario"
+                    searchPlaceholder="Buscar usuario..."
+                    emptyText="Sin usuarios"
+                    className="mt-1"
+                  />
                 </div>
                 <div>
                   <Label htmlFor="action-type-filter-audit">Tipo de Acción</Label>
-                  <Select value={selectedActionType} onValueChange={setSelectedActionType}>
-                    <SelectTrigger id="action-type-filter-audit" className="w-full bg-white dark:bg-slate-700"><SelectValue placeholder="Filtrar por acción" /></SelectTrigger>
-                    <SelectContent>
-                      {actionTypesSpanish.map(action => <SelectItem key={action} value={action}>{action}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                  <SearchableSelect
+                    value={selectedActionType}
+                    onValueChange={setSelectedActionType}
+                    options={actionTypesSpanish.map(a => ({ value: a, label: a }))}
+                    placeholder="Filtrar por acción"
+                    searchPlaceholder="Buscar acción..."
+                    emptyText="Sin acciones"
+                    className="mt-1"
+                  />
                 </div>
               </div>
 

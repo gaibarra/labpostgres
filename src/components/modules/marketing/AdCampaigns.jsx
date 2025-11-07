@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import SearchableSelect from '@/components/ui/SearchableSelect';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { motion } from 'framer-motion';
@@ -295,12 +295,14 @@ const AdCampaigns = () => {
                 <div><Label htmlFor="campaignName">Nombre Campaña</Label><Input id="campaignName" value={currentCampaign.name} onChange={(e) => handleInputChange('name', e.target.value)} placeholder="Ej: Promoción Verano"/></div>
                 <div>
                   <Label htmlFor="campaignPlatform">Plataforma</Label>
-                  <Select value={currentCampaign.platform} onValueChange={(value) => handleInputChange('platform', value)}>
-                    <SelectTrigger id="campaignPlatform"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {campaignPlatforms.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                  <SearchableSelect
+                    value={currentCampaign.platform}
+                    onValueChange={(value) => handleInputChange('platform', value)}
+                    options={campaignPlatforms.map(p => ({ value: p, label: p }))}
+                    placeholder="Seleccionar plataforma"
+                    searchPlaceholder="Buscar plataforma..."
+                    emptyText="Sin plataformas"
+                  />
                 </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -311,12 +313,14 @@ const AdCampaigns = () => {
                 <div><Label htmlFor="campaignBudget">Presupuesto Total ($)</Label><Input id="campaignBudget" type="number" value={currentCampaign.budget} onChange={(e) => handleInputChange('budget', e.target.value)} placeholder="Ej: 500.00"/></div>
                 <div>
                   <Label htmlFor="campaignStatus">Estado</Label>
-                  <Select value={currentCampaign.status} onValueChange={(value) => handleInputChange('status', value)}>
-                    <SelectTrigger id="campaignStatus"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {campaignStatuses.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                  <SearchableSelect
+                    value={currentCampaign.status}
+                    onValueChange={(value) => handleInputChange('status', value)}
+                    options={campaignStatuses.map(s => ({ value: s, label: s }))}
+                    placeholder="Seleccionar estado"
+                    searchPlaceholder="Buscar estado..."
+                    emptyText="Sin estados"
+                  />
                 </div>
               </div>
               <div><Label htmlFor="campaignObjectives">Objetivos</Label><Textarea id="campaignObjectives" value={currentCampaign.objectives} onChange={(e) => handleInputChange('objectives', e.target.value)} placeholder="Ej: Aumentar leads, Mejorar reconocimiento de marca"/></div>

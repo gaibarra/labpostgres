@@ -5,7 +5,7 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
     import { Label } from '@/components/ui/label';
     import { Input } from '@/components/ui/input';
     import { Textarea } from '@/components/ui/textarea';
-    import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+    import SearchableSelect from '@/components/ui/SearchableSelect';
     import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
   import { useToast } from "@/components/ui/use-toast";
   import { FileEdit, Beaker, AlertTriangle, Info, Package, HelpCircle } from 'lucide-react';
@@ -465,16 +465,20 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
                 <CardContent className="space-y-4">
                   <div>
                     <Label htmlFor="orderStatus" className="text-slate-700 dark:text-slate-300">Estado de la Orden</Label>
-                    <Select value={orderStatus} onValueChange={setOrderStatus}>
-                      <SelectTrigger className="bg-white/80 dark:bg-slate-700/80"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Pendiente">Pendiente</SelectItem>
-                        <SelectItem value="Procesando">Procesando</SelectItem>
-                        <SelectItem value="Concluida">Concluida (Resultados Parciales)</SelectItem>
-                        <SelectItem value="Reportada">Reportada (Resultados Finales)</SelectItem>
-                        <SelectItem value="Cancelada">Cancelada</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <SearchableSelect
+                      options={[
+                        {value:'Pendiente',label:'Pendiente'},
+                        {value:'Procesando',label:'Procesando'},
+                        {value:'Concluida',label:'Concluida (Resultados Parciales)'},
+                        {value:'Reportada',label:'Reportada (Resultados Finales)'},
+                        {value:'Cancelada',label:'Cancelada'}
+                      ]}
+                      value={orderStatus}
+                      onValueChange={setOrderStatus}
+                      placeholder="Selecciona estado..."
+                      searchPlaceholder="Buscar estado..."
+                      notFoundMessage="Sin estados"
+                    />
                   </div>
                   <div>
                     <Label htmlFor="validationNotes" className="text-slate-700 dark:text-slate-300">Notas de Validación / Observaciones</Label>

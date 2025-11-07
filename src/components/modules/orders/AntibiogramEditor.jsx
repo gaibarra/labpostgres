@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import SearchableSelect from '@/components/ui/SearchableSelect';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { listAntibioticClasses, listAntibiotics, getAntibiogramResults, upsertAntibiogramResults } from '@/lib/antibiogramApi';
 
@@ -125,23 +125,24 @@ export default function AntibiogramEditor({ open, onOpenChange, workOrder, analy
             <CardContent className="grid grid-cols-1 md:grid-cols-5 gap-3">
               <div className="md:col-span-2"><Label>Organismo</Label><Input value={meta.organism} onChange={e=>setMeta(m=>({...m, organism:e.target.value}))} /></div>
               <div><Label>Método</Label>
-                <Select value={meta.method||''} onValueChange={v=>setMeta(m=>({...m, method:v}))}>
-                  <SelectTrigger><SelectValue placeholder="Seleccionar"/></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Kirby-Bauer">Kirby-Bauer (discos)</SelectItem>
-                    <SelectItem value="MIC">MIC (microdilución)</SelectItem>
-                    <SelectItem value="Etest">Etest</SelectItem>
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  value={meta.method||''}
+                  onValueChange={v=>setMeta(m=>({...m, method:v}))}
+                  options={[{value:'Kirby-Bauer',label:'Kirby-Bauer (discos)'},{value:'MIC',label:'MIC (microdilución)'},{value:'Etest',label:'Etest'}]}
+                  placeholder="Seleccionar"
+                  searchPlaceholder="Buscar método..."
+                  emptyText="Sin opciones"
+                />
               </div>
               <div><Label>Estándar</Label>
-                <Select value={meta.standard||'CLSI'} onValueChange={v=>setMeta(m=>({...m, standard:v}))}>
-                  <SelectTrigger><SelectValue/></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="CLSI">CLSI</SelectItem>
-                    <SelectItem value="EUCAST">EUCAST</SelectItem>
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  value={meta.standard||'CLSI'}
+                  onValueChange={v=>setMeta(m=>({...m, standard:v}))}
+                  options={[{value:'CLSI', label:'CLSI'}, {value:'EUCAST', label:'EUCAST'}]}
+                  placeholder="Seleccionar"
+                  searchPlaceholder="Buscar estándar..."
+                  emptyText="Sin opciones"
+                />
               </div>
               <div><Label>Versión</Label><Input value={meta.standard_version} onChange={e=>setMeta(m=>({...m, standard_version:e.target.value}))} placeholder="2024"/></div>
             </CardContent>
@@ -152,22 +153,23 @@ export default function AntibiogramEditor({ open, onOpenChange, workOrder, analy
               <div className="flex gap-3 mb-3 items-end">
                 <div className="w-52"><Label>Buscar</Label><Input value={filters.q} onChange={e=>setFilters(f=>({...f, q:e.target.value}))} placeholder="Código o nombre"/></div>
                 <div className="w-56"><Label>Clase</Label>
-                  <Select value={filters.className} onValueChange={v=>setFilters(f=>({...f, className:v==='__ALL__'?'':v}))}>
-                    <SelectTrigger><SelectValue placeholder="Todas"/></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__ALL__">Todas</SelectItem>
-                      {classes.map(c => (<SelectItem key={c.class} value={c.class}>{c.class} ({c.count})</SelectItem>))}
-                    </SelectContent>
-                  </Select>
+                  <SearchableSelect
+                    value={filters.className || '__ALL__'}
+                    onValueChange={v=>setFilters(f=>({...f, className: v==='__ALL__' ? '' : v}))}
+                    options={[{value:'__ALL__', label:'Todas'}, ...classes.map(c=>({ value: c.class, label: `${c.class} (${c.count})` }))]}
+                    placeholder="Todas"
+                    searchPlaceholder="Buscar clase..."
+                    emptyText="Sin clases"
+                  />
                 </div>
                 <div className="w-40"><Label>Solo activos</Label>
-                  <Select value={filters.activeOnly? '1':'0'} onValueChange={v=>setFilters(f=>({...f, activeOnly: v==='1'}))}>
-                    <SelectTrigger><SelectValue/></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="1">Sí</SelectItem>
-                      <SelectItem value="0">No</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <SearchableSelect
+                    value={filters.activeOnly ? '1' : '0'}
+                    onValueChange={v=>setFilters(f=>({...f, activeOnly: v==='1'}))}
+                    options={[{value:'1', label:'Sí'}, {value:'0', label:'No'}]}
+                    placeholder="Sí/No"
+                    emptyText="Sin opciones"
+                  />
                 </div>
                 <div className="ml-auto text-sm text-muted-foreground">{loading ? 'Cargando...' : `${display.length} antibióticos`}</div>
               </div>
@@ -192,25 +194,24 @@ export default function AntibiogramEditor({ open, onOpenChange, workOrder, analy
                           <td className="py-1 pr-2 whitespace-nowrap align-middle text-muted-foreground">{ab.code}</td>
                           <td className="py-1 pr-2 whitespace-nowrap align-middle">{ab.name}</td>
                           <td className="py-1 pr-2 w-36 align-middle">
-                            <Select value={st.measure_type||''} onValueChange={v=>updateRow(ab.code,{ measure_type: v })}>
-                              <SelectTrigger><SelectValue placeholder="-"/></SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="ZONE">ZONE</SelectItem>
-                                <SelectItem value="MIC">MIC</SelectItem>
-                              </SelectContent>
-                            </Select>
+                            <SearchableSelect
+                              value={st.measure_type||''}
+                              onValueChange={v=>updateRow(ab.code,{ measure_type: v })}
+                              options={[{value:'ZONE', label:'ZONE'}, {value:'MIC', label:'MIC'}]}
+                              placeholder="-"
+                              emptyText="Sin opciones"
+                            />
                           </td>
                           <td className="py-1 pr-2 w-32 align-middle"><Input type="number" step="0.01" value={st.value_numeric||''} onChange={e=>updateRow(ab.code, { value_numeric: e.target.value })}/></td>
                           <td className="py-1 pr-2 w-24 align-middle"><Input value={st.unit||''} onChange={e=>updateRow(ab.code, { unit: e.target.value })} placeholder="mm / ug/mL"/></td>
                           <td className="py-1 pr-2 w-28 align-middle">
-                            <Select value={st.interpretation||''} onValueChange={v=>updateRow(ab.code,{ interpretation: v })}>
-                              <SelectTrigger><SelectValue placeholder="-"/></SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="S">S</SelectItem>
-                                <SelectItem value="I">I</SelectItem>
-                                <SelectItem value="R">R</SelectItem>
-                              </SelectContent>
-                            </Select>
+                            <SearchableSelect
+                              value={st.interpretation||''}
+                              onValueChange={v=>updateRow(ab.code,{ interpretation: v })}
+                              options={[{value:'S', label:'S'}, {value:'I', label:'I'}, {value:'R', label:'R'}]}
+                              placeholder="-"
+                              emptyText="Sin opciones"
+                            />
                           </td>
                           <td className="py-1 pr-2 align-middle"><Input value={st.comments||''} onChange={e=>updateRow(ab.code,{ comments: e.target.value })} placeholder="comentarios"/></td>
                         </tr>

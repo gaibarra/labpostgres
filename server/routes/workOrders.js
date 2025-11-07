@@ -7,6 +7,7 @@ const { requirePermission } = require('../middleware/permissions');
 const { validate } = require('../middleware/validate');
 const { createWorkOrderSchema, updateWorkOrderSchema } = require('../validation/schemas');
 const { audit } = require('../middleware/audit');
+const { sendReportEmail } = require('../services/emailReportSender');
 
 const router = express.Router();
 function activePool(req){ return req.tenantPool || pool; }
@@ -327,6 +328,64 @@ router.post('/:id/send-report', auth, requirePermission('orders','send_report'),
   } catch(e){
     console.error('[ORDER_SEND_REPORT_FAIL]', e);
     return next(new AppError(500,'Error marcando entrega','ORDER_SEND_REPORT_FAIL'));
+  }
+});
+
+// API: generate-and-send report (server-side orchestrator)
+// Body: { channel: 'email'|'whatsapp'|'telegram', emailTo?, phone?, telegramChatId? }
+router.post('/:id/send-report/dispatch', auth, requirePermission('orders','send_report'), async (req,res,next)=>{
+  try {
+    const ap = activePool(req);
+    const { rows } = await ap.query('SELECT * FROM work_orders WHERE id=$1', [req.params.id]);
+    const order = rows[0];
+    if (!order) return next(new AppError(404,'Orden no encontrada','ORDER_NOT_FOUND'));
+    if (!order.results || Object.keys(order.results||{}).length === 0) {
+      return next(new AppError(400,'No hay resultados para enviar','NO_RESULTS_TO_SEND'));
+    }
+    // Compose a lightweight summary and a link to download PDF from client
+    const channel = String(req.body?.channel||'').toLowerCase();
+    const patient = req.body?.patient || {}; // client can pass patient meta (name/email/phone)
+    const labName = (req.body?.labName) || 'Laboratorio Clínico';
+    const summary = `Resultados de Laboratorio - ${labName} | Folio ${order.folio} | Paciente: ${patient.full_name||''}`;
+
+    // NOTE: In this repo we do not have mail/whatsapp/telegram providers wired.
+    // Respond with instructions and mark as attempted.
+    // Later this endpoint can integrate with Nodemailer, Twilio WhatsApp API, Telegram Bot API, etc.
+    const response = { ok: true, channel, summary, instruction: 'Adjunte el PDF generado por el cliente y envíe mediante su proveedor.' };
+    return res.json(response);
+  } catch (e) {
+    console.error('[SEND_REPORT_DISPATCH_FAIL]', e);
+    return next(new AppError(500,'No se pudo preparar el envío','SEND_REPORT_DISPATCH_FAIL'));
+  }
+});
+
+// Automatic email sending with PDF attachment
+// Body: { to: 'correo@destino', smtp: { host, port, secure, user, pass } }
+router.post('/:id/send-report/email', auth, requirePermission('orders','send_report'), async (req,res,next)=>{
+  try {
+    const ap = activePool(req);
+    const { rows } = await ap.query('SELECT * FROM work_orders WHERE id=$1', [req.params.id]);
+    const order = rows[0];
+    if (!order) return next(new AppError(404,'Orden no encontrada','ORDER_NOT_FOUND'));
+    if (!order.results || Object.keys(order.results||{}).length === 0) {
+      return next(new AppError(400,'No hay resultados para enviar','NO_RESULTS_TO_SEND'));
+    }
+    const { to, smtp, patient } = req.body || {};
+    if (!to || !smtp || !smtp.host || !smtp.user || !smtp.pass) {
+      return next(new AppError(400,'Datos SMTP incompletos','SMTP_INCOMPLETE'));
+    }
+    const labName = (req.body && req.body.labName) || 'Laboratorio Clínico';
+    let sendResult;
+    try {
+      sendResult = await sendReportEmail({ smtp, to, order, patient: patient || { full_name: 'Paciente' }, labName });
+    } catch(e) {
+      console.error('[EMAIL_SEND_FAIL]', e.message);
+      return next(new AppError(500,'Fallo envío email','EMAIL_SEND_FAIL'));
+    }
+    return res.json({ ok: true, channel: 'email', sendResult });
+  } catch(e) {
+    console.error('[EMAIL_REPORT_ENDPOINT_FAIL]', e);
+    return next(new AppError(500,'Error procesando envío','EMAIL_REPORT_ENDPOINT_FAIL'));
   }
 });
 
