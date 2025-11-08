@@ -1,5 +1,7 @@
 # labpostgres
 
+> Documento de arquitectura detallada disponible en `docs/architecture_diagram.md` (componentes, capas, flujo IA, multi-tenant, despliegue y métricas).
+
 ## Asistencia IA (Parámetro Individual)
 Endpoint asíncrono para generar un único parámetro de estudio (nombre, unidad y rangos) usando OpenAI (si hay clave) o stub determinista (fallback / entorno test). Contrato, estados del job, banderas de entorno y reglas descritas en `docs/ai_parameter_assist.md`.
 
@@ -115,6 +117,12 @@ Para invalidar todo lo anterior a un evento crítico:
 1. `UPDATE users SET token_version = token_version + 1 WHERE id = <user>;`
 2. Tokens antiguos (tv desfasada) serán rechazados con `TOKEN_VERSION_MISMATCH`.
 3. Opcional: revocar jtis activos listados para acelerar limpieza (aunque ya no son aceptados).
+
+## Referencia Rápida de Arquitectura
+
+Para una visión consolidada (diagramas Mermaid: componentes, capas, flujo IA, multi‑tenant y despliegue con Nginx + systemd + Certbot) consulta: `docs/architecture_diagram.md`.
+
+Incluye además: puntos de extensión futuros, métricas expuestas y normalizaciones clínicas.
 
 ## Multi-Tenancy (una base de datos por laboratorio)
 

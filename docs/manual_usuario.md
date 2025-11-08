@@ -16,6 +16,7 @@ Guía práctica y detallada para usuarios finales (recepción, técnicos, valida
   - [7.1) Crear una orden paso a paso](#71-crear-una-orden-paso-a-paso)
   - [7.2) Estados de la orden y edición](#72-estados-de-la-orden-y-edición)
 - [8) Captura y validación de resultados](#8-captura-y-validación-de-resultados)
+  - [8.1) Antibiograma (microbiología)](#81-antibiograma-microbiología)
 - [9) Reportes finales](#9-reportes-finales)
 - [10) Paquetes](#10-paquetes)
 - [11) Referenciadores](#11-referenciadores)
@@ -25,6 +26,7 @@ Guía práctica y detallada para usuarios finales (recepción, técnicos, valida
 - [15) Resolución de problemas (FAQ)](#15-resolución-de-problemas-faq)
 - [16) Glosario básico](#16-glosario-básico)
 - [17) Soporte](#17-soporte)
+ - [18) Seguridad y sesión](#18-seguridad-y-sesión)
 
 ---
 
@@ -98,6 +100,22 @@ Acciones:
 - Eliminar parámetro: quita el parámetro (si ya existe en DB, puede requerir permisos).
 - Reordenar: usa flechas “arriba/abajo” por fila. El orden se guarda automáticamente y determina el orden de captura y reporte.
 
+### 6.4) Asistencia IA para parámetros
+Puedes acelerar la creación de un nuevo parámetro con la opción de “Asistencia IA” (si está habilitada por el administrador):
+
+1. En el estudio, elige “Añadir parámetro con IA” o la acción equivalente.
+2. Ingresa el nombre deseado (p. ej., “Colesterol HDL”). Opcionalmente, agrega un prompt/nota.
+3. El sistema crea un proceso asíncrono y te muestra el avance; al finalizar, propone:
+  - Nombre, unidad y número de decimales.
+  - Rangos de referencia por sexo/edad. Algunas especialidades (hematología) usan plantillas internas consistentes.
+4. Revisa y ajusta los valores antes de guardar. Si no hay clave de IA, se usa un modo “stub” determinista.
+
+Notas:
+- La IA no usa datos personales del paciente; trabaja con metadatos del estudio.
+- Es responsabilidad del laboratorio validar clínicamente los rangos propuestos.
+
+Tour visual: consulta `docs/tours/ai_param_tour.md` para un recorrido con capturas.
+
 ### 6.3) Valores de referencia (detalle)
 Agrega uno o varios registros por parámetro para reflejar diferencias por sexo y edad.
 
@@ -141,6 +159,26 @@ Nota: según configuración, ciertos cambios pueden quedar bloqueados al validar
 Consejos:
 - Si un parámetro no aplica, déjalo en blanco o sigue el criterio del laboratorio.
 - Revisa los valores de referencia visibles para contexto clínico.
+
+### 8.1) Antibiograma (microbiología)
+Cuando la orden incluye estudios de microbiología, puedes capturar resultados de antibiograma:
+
+1. Abre la orden → “Antibiograma”.
+2. Completa los datos generales del aislamiento:
+  - Organismo, tipo de espécimen, método (p. ej., disco difusión), estándar (CLSI/EUCAST) y su versión.
+3. Agrega resultados por antibiótico:
+  - Código/Nombre del antibiótico (lista del catálogo).
+  - Tipo de medida: ZONA (mm) o MIC (µg/mL).
+  - Valor numérico y unidad.
+  - Interpretación: S (Sensible), I (Intermedio) o R (Resistente).
+  - Comentarios (opcional).
+4. Guarda. Las filas pueden actualizarse (upsert) o eliminarse.
+
+Sugerencias:
+- Usa el buscador para filtrar antibióticos por clase o nombre.
+- Verifica que el estándar y versión correspondan al protocolo vigente del laboratorio.
+
+Tour visual: consulta `docs/tours/antibiograma_tour.md` para un recorrido con capturas.
 
 ## 9) Reportes finales
 - Previsualización: disponible tras validar.
@@ -197,3 +235,12 @@ Consejos:
 ---
 
 Este manual es una guía general; algunas opciones pueden variar según la configuración y permisos de tu cuenta.
+
+## 18) Seguridad y sesión
+
+- Inicio de sesión: puede usar token Bearer y además una cookie de sesión httpOnly. Esto ayuda a proteger la sesión en el navegador.
+- Cerrar sesión: invalida tu token/cookie de inmediato; si la vuelves a enviar, el sistema la rechaza por seguridad.
+- Buenas prácticas:
+  - No compartas credenciales ni dejes la sesión abierta en equipos públicos.
+  - Usa contraseñas robustas y cambia periódicamente según política interna.
+  - Ante sospecha de acceso no autorizado, cierra sesión en todos los dispositivos y contacta a tu administrador.

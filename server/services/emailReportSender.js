@@ -39,14 +39,14 @@ async function createTransport({ host, port, secure, user, pass }) {
   });
 }
 
-async function sendReportEmail({ smtp, to, order, patient, labName }) {
+async function sendReportEmail({ smtp, to, order, patient, labName, from }) {
   if (!to) throw new Error('Destinatario (to) requerido');
   const transporter = await createTransport(smtp);
   const pdfBuffer = Buffer.from(buildReportPdf({ order, patient, labName }));
   const subject = `Resultados Laboratorio - ${patient.full_name} - Folio ${order.folio}`;
   const text = `Adjunto PDF con el reporte de resultados. Folio ${order.folio}. Paciente ${patient.full_name}.`;
   const info = await transporter.sendMail({
-    from: smtp.user,
+  from: from || smtp.from || smtp.user,
     to,
     subject,
     text,
