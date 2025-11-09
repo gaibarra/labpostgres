@@ -108,36 +108,111 @@ const Packages = () => {
     try {
       let savedPackage;
 
-  if (id) {
-        // Update package core fields
+      if (id) {
+        // 1) Actualizar campos básicos del paquete
         await apiClient.put(`/packages/${id}`, dataToSave);
-        // Replace items: delete all existing then re-add
-        // Backend lacks bulk replace endpoint; we'll fetch items and remove individually
-        // Simpler approach: fetch detailed again after insertion
-        // For now, delete items client-side is omitted; assuming update only changes name/description/price
-  await logAuditEvent('PaqueteActualizado', { packageId: id, packageName: dataToSave.name });
+        await logAuditEvent('PaqueteActualizado', { packageId: id, packageName: dataToSave.name });
         toast({ title: '¡Paquete Actualizado!', description: `El paquete ${dataToSave.name} se actualizó con éxito.` });
         savedPackage = { id, ...dataToSave };
       } else {
+        // 1) Crear paquete nuevo
         const created = await apiClient.post('/packages', dataToSave);
         savedPackage = created;
-  await logAuditEvent('PaqueteCreado', { packageId: savedPackage.id, packageName: savedPackage.name });
+        await logAuditEvent('PaqueteCreado', { packageId: savedPackage.id, packageName: savedPackage.name });
         toast({ title: '¡Paquete Registrado!', description: `El paquete ${savedPackage.name} se guardó con éxito.` });
       }
 
-      // Sync items: naive approach delete existing then re-add (need current items if updating)
-      if (id) {
-        // Fetch current items
-        const existingItems = await apiClient.get(`/packages/${id}/items`);
-        for (const it of existingItems) {
-          await apiClient.delete(`/packages/items/${it.id}`);
+      // 2) Sincronizar items de forma no destructiva (diff):
+      //    - agregar los nuevos primero
+      //    - si y sólo si todos los agregados (o duplicados benignos) pasan, eliminar los que sobran
+      //    - finalmente, reordenar según el orden de UI
+      const targetItems = Array.isArray(items) ? items.map(it => ({
+        item_id: it.item_id,
+        item_type: it.item_type === 'study' ? 'analysis' : it.item_type
+      })) : [];
+
+      // Obtener estado actual del backend
+      const existing = id ? await apiClient.get(`/packages/${savedPackage.id}/items`) : [];
+      // Mapear a conjuntos comparables por (item_id,item_type)
+      const keyOf = (it) => `${it.item_type}:${it.item_id}`;
+      const existingByKey = new Map(existing.map(it => [keyOf(it), it]));
+      const targetKeys = new Set(targetItems.map(keyOf));
+
+    const toAdd = targetItems.filter(it => !existingByKey.has(keyOf(it)));
+  // (toKeepKeys se eliminó porque no se usa directamente; mantenemos lógica con toAdd y toRemove)
+    const toRemove = existing.filter(it => !targetKeys.has(keyOf(it)));
+    const keptCount = existing.length - toRemove.length; // ítems que ya existían y se mantienen
+    // Variables para resumen
+    let duplicateAddCount = 0; // intentos de agregar que resultaron ser duplicados benignos
+    let reorderOk = null; // null = no intentado, true/false según resultado
+    let reorderAttempted = false;
+    let removalSuccessCountFinal = 0;
+
+      // 2.a Agregar nuevos
+      const addedItemRecords = [];
+      let addHardFailure = false;
+      for (const it of toAdd) {
+        try {
+          const created = await apiClient.post(`/packages/${savedPackage.id}/items`, { item_id: it.item_id, item_type: it.item_type });
+          addedItemRecords.push(created);
+        } catch (e) {
+          if (e?.status === 409) {
+            // Duplicado u otro conflicto de integridad: continuar, no considerarlo hard failure
+            duplicateAddCount++;
+            toast({ title: 'Ítem ya estaba en el paquete', description: e.message || 'Conflicto al agregar ítem', variant: 'default' });
+          } else {
+            addHardFailure = true;
+            toast({ title: 'Error agregando ítem', description: e.message, variant: 'destructive' });
+          }
         }
       }
-      if (items && items.length > 0) {
-        for (const it of items) {
-          const normalizedType = it.item_type === 'study' ? 'analysis' : it.item_type;
-          await apiClient.post(`/packages/${savedPackage.id}/items`, { item_id: it.item_id, item_type: normalizedType });
+
+      // Si hubo fallo fuerte al agregar, no eliminar nada para no dejar el paquete vacío
+      if (!addHardFailure) {
+        // 2.b Eliminar los que ya no deben estar
+        let removalSuccessCount = 0;
+        for (const it of toRemove) {
+          try { await apiClient.delete(`/packages/items/${it.id}`); }
+          catch (e) {
+            // Si no se encuentra, ignoramos; otros errores informar pero continuar
+            if (e?.status !== 404) {
+              toast({ title: 'Error eliminando ítem', description: e.message, variant: 'destructive' });
+            }
+          }
+          removalSuccessCount++;
         }
+
+        // 2.c Reordenar según el orden de UI (si la tabla soporta position)
+        try {
+          // Necesitamos los IDs actuales (keep + recién agregados) en el orden deseado
+          const refetch = await apiClient.get(`/packages/${savedPackage.id}/items`);
+          const byKey = new Map(refetch.map(it => [keyOf(it), it]));
+          const desiredOrderIds = targetItems
+            .map(it => byKey.get(keyOf(it))?.id)
+            .filter(Boolean);
+          if (desiredOrderIds.length === targetItems.length && desiredOrderIds.length > 0) {
+            try {
+              reorderAttempted = true;
+              await apiClient.patch(`/packages/${savedPackage.id}/items/reorder`, { itemIds: desiredOrderIds });
+              // Resumen toast más abajo
+              reorderOk = true;
+            } catch (innerReorderErr) {
+              console.warn('Reordenamiento falló (inner):', innerReorderErr);
+              reorderOk = false;
+            }
+          }
+        } catch (reorderErr) {
+          // El reordenamiento es best-effort: avisar pero no fallar toda la operación
+          console.warn('Reordenamiento falló:', reorderErr);
+          reorderAttempted = true;
+          reorderOk = false;
+        }
+        // Guardar métricas en scope superior para el resumen
+        removalSuccessCountFinal = typeof removalSuccessCount === 'number' ? removalSuccessCount : 0;
+      } else {
+        removalSuccessCountFinal = 0;
+        reorderAttempted = false;
+        reorderOk = false;
       }
 
       const priceNum = parseFloat(particularPrice);
@@ -152,6 +227,17 @@ const Packages = () => {
       await loadData();
       setIsFormOpen(false);
       setCurrentPackage(initialPackageForm);
+
+      // 3) Resumen final (aunque haya toasts previas):
+      try {
+        toast({
+          title: 'Resumen de cambios',
+          description: `Agregados: ${addedItemRecords.length} | Ya existían: ${keptCount} | Eliminados: ${removalSuccessCountFinal} | Duplicados ignorados: ${duplicateAddCount} | Reordenamiento: ${!reorderAttempted ? 'No aplicó' : (reorderOk ? 'OK' : 'Falló')}`,
+          variant: 'default'
+        });
+      } catch (resumeErr) {
+        console.warn('No se pudo mostrar toast resumen:', resumeErr);
+      }
 
     } catch(error) {
       // Mejorar mensajes de validación Zod desde backend

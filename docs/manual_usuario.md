@@ -188,6 +188,9 @@ Tour visual: consulta `docs/tours/antibiograma_tour.md` para un recorrido con ca
 ## 10) Paquetes
 - Agrupan varios estudios para su venta y registro conjunto.
 - En órdenes, al elegir un paquete se agregan automáticamente sus estudios.
+ - Orden de procesamiento: puedes controlar el orden de los estudios dentro del paquete; ese orden se respeta al agregarlos a la orden y en el flujo de captura/reportes.
+   - Reordenar: usa las flechas o la opción "Reordenar" en la vista del paquete para mover ítems arriba/abajo.
+   - El sistema evita duplicar el mismo estudio dentro del paquete y asigna una posición única por paquete.
 
 ## 11) Referenciadores
 - Alta/edición de médicos e instituciones.

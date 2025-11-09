@@ -31,6 +31,8 @@
     "smoke:reference-ranges:all": "node scripts/smokeReferenceRangesAll.js",
     "check:range-conflicts": "node tools/check-range-conflicts.js",
     "check:missing-units": "node tools/check-missing-units.js",
+  "migrate:packages:position:tenants": "node scripts/migratePackagesPositionAllTenants.js",
+  "audit:package-items:triggers": "node scripts/auditPackageItemsTriggers.js",
     
     "backfill:units": "node scripts/backfillUnits.js",
     "lint": "eslint .",

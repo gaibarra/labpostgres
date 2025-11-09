@@ -385,7 +385,18 @@ router.get('/me', authMiddleware, async (req, res, next) => {
     const joinCondition = PROFILE_HAS_USER_ID ? 'p.user_id=u.id' : 'p.id=u.id';
     const sql = `SELECT u.id, u.email, u.full_name, u.created_at, p.role${profileColsSql} FROM users u LEFT JOIN profiles p ON ${joinCondition} WHERE u.id=$1`;
   const { rows } = await activePool(req).query(sql, [req.user.id]);
-    if (!rows[0]) return next(new AppError(404,'Usuario no encontrado','USER_NOT_FOUND'));
+    if (!rows[0]) {
+      if (process.env.AUTH_ME_DEBUG === '1') {
+        console.warn('[AUTH/ME][USER_NOT_FOUND]', {
+          userId: req.user?.id || null,
+          tenantInfo: {
+            hasTenantPool: !!req.tenantPool,
+            tenantId: req.auth?.tenant_id || req.auth?.tenantId || null
+          }
+        });
+      }
+      return next(new AppError(404,'Usuario no encontrado','USER_NOT_FOUND'));
+    }
     const row = rows[0];
     let fullNameOut = row.full_name;
     if (!fullNameOut) {
