@@ -26,7 +26,7 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
   const [pdfUrl, setPdfUrl] = useState(null);
   // const [aiPreview, setAIPreview] = useState({ order: null, recommendations: null }); // (unused currently)
   const [isAIPreviewOpen, setIsAIPreviewOpen] = useState(false);
-      const { toast } = useToast();
+  const { toast } = useToast();
       const { settings: labSettings } = useSettings();
       const { calculateAgeInUnits, getReferenceRangeText, evaluateResult } = useEvaluationUtils();
       const { getStudiesAndParametersForOrder } = useOrderManagement();
@@ -46,6 +46,31 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
         }
         return { ageYears: 0, unit: 'años', fullMonths: 0, fullDays: 0, fullWeeks: 0, fullHours: 0 };
       }, [patient?.date_of_birth, calculateAgeInUnits]);
+
+      // Preload report logo (to DataURL) so PDF can embed it reliably (avoids async/CORS timing)
+      React.useEffect(() => {
+        try {
+          const uiLogo = labSettings?.uiSettings?.logoUrl || '';
+          const fallbackLogo = labSettings?.labInfo?.logoUrl || '';
+          const logoUrl = uiLogo || fallbackLogo;
+          if (!logoUrl) return;
+          // Expose last logo URL for any other consumers
+          if (typeof window !== 'undefined') {
+            try { window.__LABG40_LAST_LOGO_URL = logoUrl; } catch(_) { /* ignore */ }
+          }
+          // If already loaded for same URL, skip
+          const current = (typeof window !== 'undefined') ? window.__LABG40_LAST_LOGO_URL : null;
+          if (current === logoUrl && typeof generatePdfContent?.__logoDataUrl === 'string' && generatePdfContent.__logoDataUrl.length > 0) {
+            return;
+          }
+          // Fetch and convert to DataURL
+          fetch(logoUrl, { cache: 'force-cache' })
+            .then(r => r.ok ? r.blob() : Promise.reject(new Error('logo fetch failed')))
+            .then(b => new Promise((resolve) => { const fr = new FileReader(); fr.onload = () => resolve(fr.result); fr.readAsDataURL(b); }))
+            .then((dataUrl) => { try { generatePdfContent.__logoDataUrl = dataUrl; } catch(_) { /* ignore */ } })
+            .catch(() => { /* ignore preload errors */ });
+        } catch { /* ignore */ }
+      }, [labSettings?.uiSettings?.logoUrl, labSettings?.labInfo?.logoUrl]);
 
       // Infer studies to display. Prefer selected_items; if absent (e.g., after a PUT/GET race),
       // fallback to detecting studies from order.results by matching study ids or parameter ids.

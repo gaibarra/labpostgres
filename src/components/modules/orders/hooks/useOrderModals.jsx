@@ -153,7 +153,6 @@ export const useOrderModals = ({
           referrer={referrer}
           studiesDetails={studiesDetails}
           packagesData={packagesDetails}
-          onOpenLabelsPreview={() => openModal('labels-preview', order)}
         />
 
         {/* Hoja de trabajo */}
@@ -217,7 +216,7 @@ export const useOrderModals = ({
         />
       </>
     );
-  }, [modalState, getDetails, isType, closeModal, handleFormSubmit, patients, referrers, studiesDetails, packagesDetails, isSubmitting, openModal, handleSaveResults, handleValidateAndPreview, getStudiesAndParametersForOrder, openAIPreviewModal, referrerRef]);
+  }, [modalState, getDetails, isType, closeModal, handleFormSubmit, patients, referrers, studiesDetails, packagesDetails, isSubmitting, handleSaveResults, handleValidateAndPreview, getStudiesAndParametersForOrder, openAIPreviewModal, referrerRef]);
 
   return {
     modalState,

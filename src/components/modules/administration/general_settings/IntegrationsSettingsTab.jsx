@@ -6,6 +6,7 @@ import { BrainCircuit, Mail, MessageSquare, Send } from 'lucide-react';
 
 const IntegrationsSettingsTab = ({ settings, handleInputChange }) => {
   const integrations = settings?.integrations || {};
+  const smtp = integrations.smtp || {};
   const hasOpenAi = !!(integrations.openaiApiKey || integrations.openaiApiKeyPreview);
   const openAiPreview = integrations.openaiApiKeyPreview || (hasOpenAi && integrations.openaiApiKey ? `${integrations.openaiApiKey.slice(0,4)}***${integrations.openaiApiKey.slice(-4)}` : '');
   const meta = integrations._meta || {};
@@ -106,6 +107,68 @@ const IntegrationsSettingsTab = ({ settings, handleInputChange }) => {
             <div>
               <Label htmlFor="emailApiKey">Clave API Email</Label>
               <Input id="emailApiKey" type="password" value={integrations.emailApiKey || ''} onChange={(e) => { console.log('[IntegrationsSettingsTab] onChange emailApiKey'); handleInputChange('integrations', 'emailApiKey', e.target.value); }} placeholder="SG.xxxxxxxx" />
+            </div>
+          </div>
+          <div className="mt-8">
+            <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">SMTP (Email directo por tenant)</h4>
+            <p className="text-xs text-muted-foreground mb-4">Estos datos se almacenan en la configuración del tenant y el backend los usa para enviar reportes automáticamente. Si un campo queda vacío se aplican valores de entorno o defaults.</p>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div>
+                <Label htmlFor="smtpHost">SMTP Host</Label>
+                <Input id="smtpHost" value={smtp.host || ''} onChange={(e)=>{
+                  handleInputChange('integrations','smtp',{ ...smtp, host: e.target.value });
+                }} placeholder="smtp.gmail.com" />
+              </div>
+              <div>
+                <Label htmlFor="smtpPort">Puerto</Label>
+                <Input id="smtpPort" type="number" value={smtp.port || ''} onChange={(e)=>{
+                  const v = e.target.value ? parseInt(e.target.value,10) : '';
+                  handleInputChange('integrations','smtp',{ ...smtp, port: v });
+                }} placeholder="587" />
+              </div>
+              <div className="flex flex-col">
+                <Label htmlFor="smtpSecure">TLS Seguro</Label>
+                <div className="flex items-center h-[38px]">
+                  <input id="smtpSecure" type="checkbox" checked={!!smtp.secure} onChange={(e)=>{
+                    handleInputChange('integrations','smtp',{ ...smtp, secure: e.target.checked });
+                  }} className="mr-2" />
+                  <span className="text-xs text-muted-foreground">Usar STARTTLS/SSL</span>
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="smtpUser">Usuario</Label>
+                <Input id="smtpUser" value={smtp.user || ''} onChange={(e)=>{
+                  handleInputChange('integrations','smtp',{ ...smtp, user: e.target.value });
+                }} placeholder="correo@dominio" />
+              </div>
+              <div>
+                <Label htmlFor="smtpPass">Password / App Password</Label>
+                <Input id="smtpPass" type="password" value={smtp.pass || ''} onChange={(e)=>{
+                  handleInputChange('integrations','smtp',{ ...smtp, pass: e.target.value });
+                }} placeholder="clave" />
+              </div>
+              <div>
+                <Label htmlFor="smtpFrom">From (Nombre Visible)</Label>
+                <Input id="smtpFrom" value={smtp.from || ''} onChange={(e)=>{
+                  handleInputChange('integrations','smtp',{ ...smtp, from: e.target.value });
+                }} placeholder="Laboratorio <correo@dominio>" />
+              </div>
+              <div>
+                <Label htmlFor="smtpReplyTo">Reply-To (Opcional)</Label>
+                <Input id="smtpReplyTo" value={smtp.replyTo || ''} onChange={(e)=>{
+                  handleInputChange('integrations','smtp',{ ...smtp, replyTo: e.target.value });
+                }} placeholder="atencion@dominio" />
+              </div>
+              <div className="flex flex-col justify-end">
+                <button type="button" onClick={()=>handleInputChange('integrations','smtp', null)} className="text-xs text-red-600 hover:underline ml-1">
+                  Borrar SMTP
+                </button>
+                {smtp.host || smtp.user ? (
+                  <span className="text-[10px] text-green-600 dark:text-green-400 mt-1">Configuración aplicada</span>
+                ) : (
+                  <span className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">Usando defaults/env</span>
+                )}
+              </div>
             </div>
           </div>
         </section>

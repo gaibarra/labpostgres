@@ -370,14 +370,62 @@ router.post('/:id/send-report/email', auth, requirePermission('orders','send_rep
     if (!order.results || Object.keys(order.results||{}).length === 0) {
       return next(new AppError(400,'No hay resultados para enviar','NO_RESULTS_TO_SEND'));
     }
-    const { to, smtp, patient } = req.body || {};
-    if (!to || !smtp || !smtp.host || !smtp.user || !smtp.pass) {
-      return next(new AppError(400,'Datos SMTP incompletos','SMTP_INCOMPLETE'));
+    const { to: toRaw, smtp: smtpIn, patient: patientIn } = req.body || {};
+    // Obtener configuración del tenant (si existe) para SMTP: lab_configuration.integrations_settings.smtp
+    let tenantSmtp = null;
+    try {
+      const cfgRes = await ap.query('SELECT integrations_settings FROM lab_configuration ORDER BY created_at ASC LIMIT 1');
+      const integ = cfgRes.rows[0]?.integrations_settings || {};
+      // Se espera que el admin haya guardado vía PATCH /api/config/integrations un objeto { smtp: { host, port, secure, user, pass, from } }
+      tenantSmtp = integ.smtp || null;
+    } catch(cfgErr){
+      console.warn('[EMAIL_ENDPOINT_CFG_FETCH_FAIL]', cfgErr.code || cfgErr.message);
     }
+
+    // 1) Derivar SMTP desde ENV por defecto (opción A: Gmail) si no viene en el body
+    const parseBool = (v) => {
+      if (typeof v === 'boolean') return v;
+      const s = String(v||'').toLowerCase();
+      return s === '1' || s === 'true' || s === 'yes';
+    };
+    // Prioridad de origen SMTP: body > tenant config > ENV > defaults
+    const smtpCandidate = {
+      host: smtpIn?.host ?? tenantSmtp?.host ?? process.env.SMTP_HOST ?? 'smtp.gmail.com',
+      port: Number(smtpIn?.port ?? tenantSmtp?.port ?? process.env.SMTP_PORT ?? 587),
+      secure: (smtpIn && typeof smtpIn.secure !== 'undefined')
+        ? Boolean(smtpIn.secure)
+        : (tenantSmtp && typeof tenantSmtp.secure !== 'undefined')
+          ? Boolean(tenantSmtp.secure)
+          : parseBool(process.env.SMTP_SECURE || '0'),
+      user: smtpIn?.user ?? tenantSmtp?.user ?? process.env.SMTP_USER,
+      pass: smtpIn?.pass ?? tenantSmtp?.pass ?? process.env.SMTP_PASS,
+      from: smtpIn?.from ?? tenantSmtp?.from ?? process.env.SMTP_FROM ?? (smtpIn?.user || tenantSmtp?.user || process.env.SMTP_USER),
+  replyTo: smtpIn?.replyTo ?? tenantSmtp?.replyTo ?? (process.env.SMTP_REPLY_TO || undefined),
+    };
+    const smtp = smtpCandidate;
+    if (!smtp.user || !smtp.pass) {
+      return next(new AppError(400,'SMTP no configurado (faltan USER/PASS). Configure variables SMTP_* o envíe credenciales en el body.','SMTP_NOT_CONFIGURED'));
+    }
+
+    // 2) Derivar destinatario si no se proporciona: usar email del paciente
+    let to = toRaw;
+    let patient = patientIn;
+    if (!to || !patient || !patient.full_name) {
+      try {
+        const { rows: pRows } = await ap.query('SELECT id, full_name, email, sex FROM patients WHERE id=$1', [order.patient_id]);
+        const p = pRows[0] || {};
+        patient = patient || { full_name: p.full_name || 'Paciente' };
+        if (!to && p.email) to = p.email;
+      } catch(_) { /* ignore lookup errors */ }
+    }
+    if (!to) {
+      return next(new AppError(400,'No se proporcionó destinatario y el paciente no tiene email.','NO_RECIPIENT'));
+    }
+
     const labName = (req.body && req.body.labName) || 'Laboratorio Clínico';
     let sendResult;
     try {
-      sendResult = await sendReportEmail({ smtp, to, order, patient: patient || { full_name: 'Paciente' }, labName });
+      sendResult = await sendReportEmail({ smtp, to, order, patient: patient || { full_name: 'Paciente' }, labName, from: smtp.from });
     } catch(e) {
       console.error('[EMAIL_SEND_FAIL]', e.message);
       return next(new AppError(500,'Fallo envío email','EMAIL_SEND_FAIL'));

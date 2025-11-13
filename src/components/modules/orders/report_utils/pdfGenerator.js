@@ -29,9 +29,9 @@ import autoTable from 'jspdf-autotable';
       // Control para no dibujar la grilla de datos del paciente más de una vez por página
       const patientGridDrawnPages = new Set();
 
-      const labInfo = labSettings.labInfo || {};
-      const reportSettings = labSettings.reportSettings || {};
-      const uiSettings = labSettings.uiSettings || {};
+  const labInfo = labSettings.labInfo || {};
+  const reportSettings = labSettings.reportSettings || {};
+  const uiSettings = labSettings.uiSettings || {};
 
   const labName = labInfo.name || "Laboratorio Clínico";
       const fullAddress = [
@@ -47,7 +47,8 @@ import autoTable from 'jspdf-autotable';
 
       const labPhone = labInfo.phone;
       const labEmail = labInfo.email;
-  const labLogo = uiSettings.logoUrl;
+  // Prefer UI logo; fallback to labInfo.logoUrl to avoid regressions if UI setting is empty
+  const labLogo = uiSettings.logoUrl || labInfo.logoUrl || '';
   const logoIncludesName = !!uiSettings.logoIncludesLabName; // if true, omit printing labName text to avoid duplication
       const dateFormat = reportSettings.dateFormat || 'dd/MM/yyyy';
       const timeFormat = reportSettings.timeFormat || 'HH:mm';
@@ -226,8 +227,10 @@ import autoTable from 'jspdf-autotable';
 
       // Construimos el body final
       for (const group of packageGroups) {
-        // Encabezado de Paquete
-        mainContent.push([{ content: group.name, colSpan: 3, styles: { fillColor: [226, 242, 253], textColor: [7, 89, 133], fontStyle: 'bold', fontSize: 11, cellPadding: 2.5 } }]);
+        // Encabezado de Paquete (omitir si nombre es 'Estudios individuales')
+        if (group.name !== 'Estudios individuales') {
+          mainContent.push([{ content: group.name, colSpan: 3, styles: { fillColor: [226, 242, 253], textColor: [7, 89, 133], fontStyle: 'bold', fontSize: 11, cellPadding: 2.5 } }]);
+        }
         for (const study of group.studies) {
           if (shouldShowStudyHeader(study)) {
             mainContent.push([{ content: study.name, colSpan: 3, styles: { fillColor: [241, 245, 249], textColor: [14, 116, 144], fontStyle: 'bold', fontSize: 10.5, cellPadding: 2.0 } }]);
@@ -315,30 +318,55 @@ import autoTable from 'jspdf-autotable';
   const drawHeaderAndFooter = function (data) {
           // Header
           let yPos = compact ? 8 : 10;
-          if (labLogo && reportSettings.showLogoInReport) {
+          // El logo puede no haber terminado de cargar; se inserta luego de dibujar texto base (ver preload).
+          if (!logoIncludesName) {
+            doc.setFontSize(compact ? 12 : 14).setFont(undefined, 'bold').setTextColor(30, 58, 138);
+            doc.text(labName, pageWidth / 2, yPos + 4, { align: 'center' });
+          }
+          // Bandera para insertar logo ya rasterizado si se precargó
+          if (labLogo && reportSettings.showLogoInReport && generatePdfContent.__logoDataUrl) {
             try {
-              const img = new Image();
-              img.src = labLogo;
-              const aspectRatio = img.height > 0 ? (img.width / img.height) : 3.5; // fallback AR if metadata not ready
-              const maxHeight = compact ? 10 : 12; // mm
-              const maxWidth = (pageWidth - 2 * margin) * 0.5; // keep logo at up to 50% width
-              let logoHeight = maxHeight;
-              let logoWidth = logoHeight * aspectRatio;
-              if (logoWidth > maxWidth) {
-                logoWidth = maxWidth;
-                logoHeight = logoWidth / aspectRatio;
-              }
-              // align logo left; allow center with optional flag
               const wantCenter = !!reportSettings.logoAlignCenter;
+              // Intrinsic image properties (jsPDF parses width/height from DataURL)
+              let intrinsicW = 0, intrinsicH = 0;
+              try {
+                const props = doc.getImageProperties(generatePdfContent.__logoDataUrl);
+                intrinsicW = props?.width || 0; intrinsicH = props?.height || 0;
+              } catch(_) { /* ignore */ }
+              const aspectRatio = (intrinsicW > 0 && intrinsicH > 0) ? (intrinsicW / intrinsicH) : 3.5;
+              // Desired height configurable; fallbacks give a bit more presence than previous values
+              const desiredHeight = (reportSettings.logoHeightMm && reportSettings.logoHeightMm > 0)
+                ? reportSettings.logoHeightMm
+                : (compact ? 11 : 13); // mm
+              const maxWidthRatio = (reportSettings.logoMaxWidthRatio && reportSettings.logoMaxWidthRatio > 0 && reportSettings.logoMaxWidthRatio < 1)
+                ? reportSettings.logoMaxWidthRatio
+                : 0.40; // 40% of printable width
+              const widthConstraint = (pageWidth - 2 * margin) * maxWidthRatio;
+              let logoHeight = desiredHeight;
+              let logoWidth = logoHeight * aspectRatio;
+              if (logoWidth > widthConstraint) {
+                const scale = widthConstraint / logoWidth;
+                logoWidth = widthConstraint;
+                logoHeight = logoHeight * scale;
+              }
+              // Optional minimum height to avoid ultra-flattening for very wide logos
+              const minHeight = compact ? 7 : 8;
+              if (logoHeight < minHeight) {
+                // Recompute based on minHeight but still respect width constraint
+                logoHeight = minHeight;
+                logoWidth = logoHeight * aspectRatio;
+                if (logoWidth > widthConstraint) {
+                  const scale2 = widthConstraint / logoWidth;
+                  logoWidth = widthConstraint;
+                  logoHeight = logoHeight * scale2;
+                }
+              }
               const x = wantCenter ? (pageWidth - logoWidth) / 2 : margin;
-              doc.addImage(img, 'PNG', x, yPos, logoWidth, logoHeight);
-            } catch (e) { console.error("Error al cargar logo para PDF:", e); }
+              doc.addImage(generatePdfContent.__logoDataUrl, 'PNG', x, yPos, logoWidth, logoHeight);
+            } catch(e) { console.warn('[PDF][logo-add-failed]', e.message); }
           }
           doc.setFontSize(compact ? 12 : 14).setFont(undefined, 'bold');
           doc.setTextColor(30, 58, 138); 
-          if (!(labLogo && logoIncludesName)) {
-            doc.text(labName, pageWidth / 2, yPos + 4, { align: 'center' });
-          }
           yPos += compact ? 4 : 5;
           doc.setFontSize(compact ? 7 : 8).setFont(undefined, 'normal');
           doc.setTextColor(100, 116, 139);
@@ -864,18 +892,61 @@ import autoTable from 'jspdf-autotable';
       });
   }
 
+      // Si no se generó ninguna tabla ni sección (caso extremo), dibujar al menos el encabezado
+      // y un mensaje para evitar PDF en blanco.
+      try {
+        const pages = doc.internal.getNumberOfPages();
+        const hasTables = !!doc.lastAutoTable;
+        if (pages === 1 && !hasTables) {
+          // Encabezado mínimo independiente de autoTable (texto plano)
+          doc.setFontSize(14).setFont(undefined, 'bold').setTextColor(30,58,138);
+          doc.text(labName || 'Reporte de Resultados', margin, 18);
+          doc.setFontSize(8).setFont(undefined, 'normal').setTextColor(100,116,139);
+          if (fullAddress) doc.text(fullAddress, margin, 24);
+          // Mensaje informativo
+          doc.setFontSize(compact ? 8 : 9).setFont(undefined, 'italic').setTextColor(100, 116, 139);
+          doc.text('No hay estudios o parámetros para mostrar en este reporte.', margin, 34);
+        }
+      } catch (_) { /* safe no-op */ }
+
       // Completar numeración total de páginas
       if (typeof doc.putTotalPages === 'function') {
         doc.putTotalPages(totalPagesExp);
       }
 
-      if (options && (options.mode === 'blob' || options.mode === 'blob+window')) {
+      // Salida: siempre generar blob y abrir ventana robusta si se solicitó.
+      try {
         const blob = doc.output('blob');
-        if (options.mode === 'blob+window') {
-          try { doc.output('dataurlnewwindow'); } catch(_) { /* popup blocked */ }
+        if (options && (options.mode === 'blob' || options.mode === 'blob+window')) {
+          if (options.mode === 'blob+window') {
+            const url = URL.createObjectURL(blob);
+            const w = window.open(url, '_blank');
+            if (!w) {
+              console.warn('[PDF] popup bloqueado, intentando descarga directa');
+              doc.save(`reporte_${order.folio || 'resultados'}.pdf`);
+            }
+          }
+          return blob;
         }
-        return blob;
+        // Comportamiento por defecto: abrir y fallback descarga
+        const url = URL.createObjectURL(blob);
+        const w = window.open(url, '_blank');
+        if (!w) doc.save(`reporte_${order.folio || 'resultados'}.pdf`);
+      } catch(e) {
+        console.error('[PDF] error generando ventana', e);
+  try { doc.save(`reporte_${order.folio || 'resultados'}.pdf`); } catch(_) { /* ignore save fallback error */ }
       }
-      // default legacy behavior
-      doc.output('dataurlnewwindow');
     };
+
+// Preload sincrónico/degradado del logo a DataURL (PNG/JPEG). Guarda en propiedad estática.
+try {
+  if (typeof window !== 'undefined' && typeof generatePdfContent === 'function') {
+    const preLogo = (window.__LABG40_LAST_LOGO_URL || null);
+    // Permitir set externo: window.__LABG40_LAST_LOGO_URL = <url>
+    if (preLogo) {
+      fetch(preLogo, { cache: 'force-cache' }).then(r => r.ok ? r.blob() : null).then(b => {
+        if (!b) return; const fr = new FileReader(); fr.onload = () => { generatePdfContent.__logoDataUrl = fr.result; }; fr.readAsDataURL(b);
+      }).catch(()=>{});
+    }
+  }
+} catch(_) { /* ignore preload errors */ }

@@ -111,13 +111,20 @@ export const OrderReceipt = React.forwardRef(({ order, patient, referrer, studie
 
   return (
     <div ref={ref} className="p-8 font-sans text-sm text-black bg-white">
-      <header className="flex justify-between items-center mb-8 border-b pb-4">
-        {reportSettings.showLogo !== false && (labInfo.logoUrl || uiSettings.logoUrl) && (
-          <div>
-            <img src={labInfo.logoUrl || uiSettings.logoUrl} alt="Logo del Laboratorio" className="h-16 object-contain" />
-          </div>
-        )}
-        <div className="text-right">
+      <header className="flex items-center mb-8 border-b pb-4">
+        {/* Columna izquierda: logo con ancho fijo para mantener el centrado */}
+        <div className="w-32 flex-shrink-0 flex items-center">
+          {reportSettings.showLogo !== false && (labInfo.logoUrl || uiSettings.logoUrl) && (
+            <img
+              src={labInfo.logoUrl || uiSettings.logoUrl}
+              alt="Logo del Laboratorio"
+              className="print-logo"
+              style={{ maxHeight: '64px', height: 'auto', width: 'auto', objectFit: 'contain' }}
+            />
+          )}
+        </div>
+        {/* Centro: datos del laboratorio completamente centrados */}
+        <div className="flex-1 text-center">
           <h1 className="text-2xl font-bold">{labName}</h1>
           <p>{formatAddress(labInfo.address ?? {
             calle: labInfo.calle,
@@ -137,6 +144,8 @@ export const OrderReceipt = React.forwardRef(({ order, patient, referrer, studie
             </p>
           )}
         </div>
+        {/* Columna derecha: separador invisible con el mismo ancho del logo para balancear el centrado */}
+        <div className="w-32 flex-shrink-0" />
       </header>
 
       <div className="mb-8">
