@@ -3,7 +3,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { Upload, Loader2, Image as ImageIcon, XCircle } from 'lucide-react';
+import { Upload, Loader2, Image as ImageIcon, XCircle, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { apiClient } from '@/lib/apiClient';
 
@@ -12,12 +12,58 @@ const LabInfoSettings = ({ settings, handleInputChange }) => {
   const labInfo = settings?.labInfo || {};
   const uiSettings = settings?.uiSettings || {};
   const [isUploading, setIsUploading] = useState(false);
+  const [logoHint] = useState('PNG transparente o SVG recomendado. Tamaño ideal: máximo 240px alto, <= 600px ancho, fondo transparente, peso < 300KB.');
+  const [dimensionWarning, setDimensionWarning] = useState('');
+  const [dragActive, setDragActive] = useState(false);
 
-  const handleLogoUpload = async (event) => {
-    const file = event.target.files[0];
+  const RECOMMENDED_MAX_HEIGHT = 240; // px
+  const RECOMMENDED_MAX_WIDTH = 600; // px
+  const HARD_MAX_SIZE_MB = 2; // MB backend limit
+  const SOFT_TARGET_BYTES = 300 * 1024; // 300KB target
+
+  const optimizeImageIfNeeded = (file) => new Promise((resolve) => {
+    if (!file.type.startsWith('image/') || file.size <= SOFT_TARGET_BYTES) return resolve(file);
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = e => { img.src = e.target.result; };
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        const scale = Math.min(1, Math.sqrt(SOFT_TARGET_BYTES / file.size));
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(b => { if (b && b.size < file.size) { resolve(new File([b], file.name.replace(/\.(png|jpg|jpeg)$/i,'-opt.png'), { type: 'image/png' })); } else { resolve(file); } }, 'image/png', 0.92);
+      } catch { resolve(file); }
+    };
+    reader.readAsDataURL(file);
+  });
+
+  const validateDimensions = (file) => new Promise((resolve) => {
+    if (!file.type.startsWith('image/')) return resolve(file);
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = e => { img.src = e.target.result; };
+    img.onload = () => {
+      const w = img.width, h = img.height;
+      let warn = '';
+      if (h > RECOMMENDED_MAX_HEIGHT || w > RECOMMENDED_MAX_WIDTH) {
+        warn = `Dimensiones grandes (${w}x${h}). Se recomienda <= ${RECOMMENDED_MAX_WIDTH}x${RECOMMENDED_MAX_HEIGHT}px para evitar PDF pesado.`;
+      }
+      const ratio = (w/h).toFixed(2);
+      if (ratio < 0.5 || ratio > 4) {
+        warn += (warn ? ' ' : '') + `Proporción inusual (ratio ${ratio}). Ideal entre 0.5 y 4 para buena escala.`;
+      }
+      setDimensionWarning(warn);
+      resolve(file);
+    };
+    reader.readAsDataURL(file);
+  });
+
+  const processAndUpload = async (file) => {
     if (!file) return;
-
-    if (file.size > 2 * 1024 * 1024) { // 2MB limit
+    if (file.size > HARD_MAX_SIZE_MB * 1024 * 1024) { // hard 2MB limit
       toast({
         title: "Archivo demasiado grande",
         description: "El logo no debe pesar más de 2MB.",
@@ -25,22 +71,34 @@ const LabInfoSettings = ({ settings, handleInputChange }) => {
       });
       return;
     }
-
     setIsUploading(true);
     try {
-    // Enviar al backend y guardar la URL del logo en uiSettings.logoUrl (no en labInfo.logoUrl protegido)
-  const formData = new FormData();
-  formData.append('file', file);
-  // Usar apiClient para adjuntar Authorization si aplica y respetar base URL
-  const data = await apiClient.post('/uploads/logo', formData);
-  const { url } = data || {};
-    // Guardar en uiSettings para evitar 409 por campos protegidos
-    handleInputChange('uiSettings', 'logoUrl', url);
-      toast({ title: '¡Logo subido!', description: 'El logo se ha actualizado correctamente.' });
+      await validateDimensions(file);
+      const optimized = await optimizeImageIfNeeded(file);
+      const formData = new FormData();
+      formData.append('file', optimized);
+      const data = await apiClient.post('/uploads/logo', formData);
+      const { url } = data || {};
+      handleInputChange('uiSettings', 'logoUrl', url);
+      toast({ title: '¡Logo subido!', description: optimized !== file ? 'Se optimizó y subió correctamente.' : 'Se subió correctamente.' });
     } catch (error) {
       toast({ title: 'Error al subir el logo', description: error.message, variant: 'destructive' });
     } finally { setIsUploading(false); }
   };
+
+  const handleLogoUpload = async (event) => {
+    const file = event.target.files[0];
+    processAndUpload(file);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault(); e.stopPropagation(); setDragActive(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      processAndUpload(e.dataTransfer.files[0]);
+    }
+  };
+  const handleDragOver = (e) => { e.preventDefault(); e.stopPropagation(); setDragActive(true); };
+  const handleDragLeave = (e) => { e.preventDefault(); e.stopPropagation(); setDragActive(false); };
 
   const removeLogo = () => {
   // Quitar logo desde uiSettings para evitar tocar labInfo
@@ -73,11 +131,21 @@ const LabInfoSettings = ({ settings, handleInputChange }) => {
             <div>
               <Label>Logo del Laboratorio</Label>
               <div className="flex items-center gap-4">
-                <div className="w-20 h-20 rounded-md border flex items-center justify-center bg-slate-50 dark:bg-slate-800">
+                <div
+                  className={"w-24 h-24 rounded-md border flex items-center justify-center bg-slate-50 dark:bg-slate-800 relative overflow-hidden " + (dragActive ? 'ring-2 ring-sky-500' : '')}
+                  onDrop={handleDrop}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                >
                   {(uiSettings.logoUrl || labInfo.logoUrl) ? (
                     <img src={uiSettings.logoUrl || labInfo.logoUrl} alt="Logo del Laboratorio" className="object-contain w-full h-full rounded-md" />
                   ) : (
                     <ImageIcon className="w-10 h-10 text-slate-400" />
+                  )}
+                  {dimensionWarning && (
+                    <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-[10px] text-white px-1 py-0.5 line-clamp-2">
+                      <AlertTriangle className="inline-block w-3 h-3 mr-1" />{dimensionWarning}
+                    </div>
                   )}
                 </div>
                 <div className="flex-1">
@@ -93,7 +161,9 @@ const LabInfoSettings = ({ settings, handleInputChange }) => {
                       <XCircle className="h-5 w-5" />
                     </Button>
                   )}
-                  <p className="text-xs text-muted-foreground mt-1">PNG, JPG, SVG. Máx 2MB. Se guarda en “Interfaz → URL del Logo”.</p>
+                  <p className="text-xs text-muted-foreground mt-1">{logoHint}</p>
+                  <p className="text-[10px] text-slate-500 mt-1">Consejos: usa fondo transparente, evita texto muy pequeño, mantén un padding interno para no cortar bordes.</p>
+                  <p className="text-[10px] text-slate-500">Si tu imagen pesa más de 300KB intentaremos comprimirla automáticamente.</p>
                 </div>
               </div>
             </div>
