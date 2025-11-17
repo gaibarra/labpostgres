@@ -1,8 +1,7 @@
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-    import { formatInTimeZone } from '@/lib/dateUtils';
+import { formatInTimeZone } from '@/lib/dateUtils';
+import { loadJsPdf } from '@/lib/dynamicImports';
 
-    export const generatePdfContent = (
+    export const generatePdfContent = async (
       order,
       patient,
       referrer,
@@ -18,6 +17,7 @@ import autoTable from 'jspdf-autotable';
       antibiogramPayload = null, // { meta, rows }
       options = { mode: 'window' } // 'window' | 'blob'
     ) => {
+      const { jsPDF, autoTable } = await loadJsPdf();
       const doc = new jsPDF();
     const pageHeight = doc.internal.pageSize.height;
       const pageWidth = doc.internal.pageSize.width;

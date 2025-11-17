@@ -5,7 +5,6 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
     import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
   import SearchableSelect from '@/components/ui/SearchableSelect';
     import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-    import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
     import { Loader2, User, ChevronLeft, AlertCircle, FilterX } from 'lucide-react';
     import { format, parseISO, isValid } from 'date-fns';
     import { es } from 'date-fns/locale';
@@ -13,6 +12,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
     import { Button } from '@/components/ui/button';
     import { useEvaluationUtils } from '@/components/modules/orders/report_utils/evaluationUtils.js';
     import { useAppData } from '@/contexts/AppDataContext';
+    import { useLazyRecharts } from '@/hooks/useLazyRecharts';
 
     const CustomTooltip = ({ active, payload, label }) => {
       if (active && payload && payload.length) {
@@ -52,7 +52,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
         const base = str.replace(/[^a-z0-9]+/gi, ' ').trim();
         if (!base) return '';
         return base.split(/\s+/).sort().join(' ');
-      } catch (_) {
+      } catch (error) {
         return String(s).toLowerCase();
       }
     };
@@ -69,6 +69,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
       const [selectedParameterForChart, setSelectedParameterForChart] = useState('');
       const [chartData, setChartData] = useState([]);
       const [isComponentLoading, setIsComponentLoading] = useState(true);
+      const { recharts, isLoading: isChartLibLoading, error: chartLibError } = useLazyRecharts();
 
       const [selectedStudyFilter, setSelectedStudyFilter] = useState('');
       const [selectedParameterFilter, setSelectedParameterFilter] = useState('');
@@ -266,8 +267,19 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
           if (!patientData) throw new Error('No se pudo cargar la información del paciente.');
           setPatient(patientData);
 
-          const allOrders = await apiClient.get('/work-orders');
-          const ordersData = (allOrders||[])
+          const aggregated = [];
+          let pageCursor = 1;
+          let keepFetching = true;
+          while (keepFetching && pageCursor <= 10) {
+            const params = new URLSearchParams({ page: String(pageCursor), pageSize: '200', search: patientId });
+            const pageData = await apiClient.get(`/work-orders?${params.toString()}`);
+            const rows = Array.isArray(pageData?.data) ? pageData.data : (Array.isArray(pageData) ? pageData : []);
+            aggregated.push(...rows);
+            const meta = pageData?.meta || {};
+            keepFetching = meta.hasMore === true;
+            pageCursor += 1;
+          }
+          const ordersData = aggregated
             .filter(o => String(o.patient_id) === String(patientId) && ['Concluida','Reportada','Entregada'].includes(o.status))
             .sort((a,b)=> new Date(a.order_date)-new Date(b.order_date));
           const allResults = ordersData.flatMap(order => processOrderResults(order, patientData));
@@ -364,6 +376,36 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
          );
       }
 
+      const renderParameterChart = () => {
+        if (isChartLibLoading) {
+          return (
+            <div className="flex h-full w-full items-center justify-center text-muted-foreground">
+              Cargando gráficas...
+            </div>
+          );
+        }
+        if (chartLibError || !recharts) {
+          return (
+            <div className="flex h-full w-full items-center justify-center text-center text-sm text-red-500">
+              No se pudo cargar la librería de gráficas.
+            </div>
+          );
+        }
+        const { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } = recharts;
+        return (
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(128, 128, 128, 0.2)" />
+              <XAxis dataKey="date" />
+              <YAxis />
+              <Tooltip content={<CustomTooltip />} />
+              <Legend />
+              <Line type="monotone" dataKey="value" name={selectedParameterForChart} stroke="#0284c7" strokeWidth={2} activeDot={{ r: 8 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        );
+      };
+
       return (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -414,16 +456,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
               </div>
               <div className="h-80 w-full">
                 {selectedParameterForChart && chartData.length > 1 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(128, 128, 128, 0.2)" />
-                      <XAxis dataKey="date" />
-                      <YAxis />
-                      <Tooltip content={<CustomTooltip />} />
-                      <Legend />
-                      <Line type="monotone" dataKey="value" name={selectedParameterForChart} stroke="#0284c7" strokeWidth={2} activeDot={{ r: 8 }} />
-                    </LineChart>
-                  </ResponsiveContainer>
+                  renderParameterChart()
                 ) : (
                   <div className="flex justify-center items-center h-full text-slate-500 dark:text-slate-400">
                     {selectedParameterForChart ? 'No hay suficientes datos para graficar este parámetro.' : 'Selecciona un parámetro para visualizar la gráfica.'}

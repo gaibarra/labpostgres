@@ -1,10 +1,10 @@
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { loadJsPdf } from '@/lib/dynamicImports';
 
-export const generateBillingReportPDF = (reportData) => {
+export const generateBillingReportPDF = async (reportData) => {
   const { groupedData, grandTotal, institutionName, dateRange } = reportData;
+  const { jsPDF, autoTable } = await loadJsPdf();
   const doc = new jsPDF();
 
   const pageHeight = doc.internal.pageSize.height;

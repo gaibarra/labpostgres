@@ -79,10 +79,85 @@ function normalizeSex(v){
 router.get('/', auth, async (req, res, next) => {
   try {
     const cols = await getPatientCols(req);
-    const select = Array.from(cols).map(c=>c).join(', ');
-    const { rows } = await activePool(req).query(`SELECT ${select} FROM patients ORDER BY created_at DESC LIMIT 200`);
-    res.json(rows.map(projectPatient));
-  } catch (e) { console.error('[PATIENT_LIST_FAIL]', e); next(new AppError(500,'Error listando pacientes','PATIENT_LIST_FAIL')); }
+    const select = Array.from(cols).map((c) => c).join(', ');
+    const parsePositiveInt = (val, fallback) => {
+      const parsed = parseInt(val, 10);
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+    };
+    const maxPageSize = 1000;
+    const defaultPageSize = 50;
+    const page = Math.max(parsePositiveInt(req.query.page, 1), 1);
+    const rawPageSize = parsePositiveInt(req.query.pageSize, defaultPageSize);
+    const pageSize = Math.min(Math.max(rawPageSize, 1), maxPageSize);
+    const offset = (page - 1) * pageSize;
+    const searchTerm = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+    const filters = [];
+    const params = [];
+
+    if (searchTerm) {
+      const collapsed = searchTerm.replace(/\s+/g, ' ').trim();
+      const normalizedLower = `%${collapsed.toLowerCase()}%`;
+      params.push(normalizedLower);
+      const lowerIdx = params.length;
+      const rawPattern = `%${collapsed}%`;
+      params.push(rawPattern);
+      const rawIdx = params.length;
+      const searchClauses = [];
+      const addLowerClause = (column) => {
+        if (!cols.has(column)) return;
+        searchClauses.push(`LOWER(COALESCE(${column}::text,'')) LIKE $${lowerIdx}`);
+      };
+      ['full_name','first_name','last_name','email','document_number','external_id','sex','address','clinical_history'].forEach(addLowerClause);
+      if (cols.has('phone')) searchClauses.push(`COALESCE(phone::text,'') ILIKE $${rawIdx}`);
+      if (cols.has('phone_number')) searchClauses.push(`COALESCE(phone_number::text,'') ILIKE $${rawIdx}`);
+      if (cols.has('id')) searchClauses.push(`LOWER(id::text) LIKE $${lowerIdx}`);
+      const digitsOnly = collapsed.replace(/\D+/g, '');
+      if (digitsOnly && (cols.has('phone') || cols.has('phone_number'))) {
+        params.push(`%${digitsOnly}%`);
+        const digitsIdx = params.length;
+        if (cols.has('phone')) searchClauses.push(`REGEXP_REPLACE(phone::text,'\\D','','g') LIKE $${digitsIdx}`);
+        if (cols.has('phone_number')) searchClauses.push(`REGEXP_REPLACE(phone_number::text,'\\D','','g') LIKE $${digitsIdx}`);
+      }
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (uuidRegex.test(collapsed)) {
+        params.push(collapsed);
+        const uuidIdx = params.length;
+        searchClauses.push(`id::text = $${uuidIdx}`);
+      }
+      if (searchClauses.length) filters.push(`(${searchClauses.join(' OR ')})`);
+    }
+
+    const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
+    const ap = activePool(req);
+    const countQuery = `SELECT COUNT(*)::int AS total FROM patients ${whereClause}`;
+    const { rows: countRows } = await ap.query(countQuery, params);
+    const total = countRows[0]?.total || 0;
+
+    const orderClauses = [];
+    if (cols.has('updated_at')) orderClauses.push('updated_at DESC');
+    if (cols.has('created_at')) orderClauses.push('created_at DESC');
+    orderClauses.push('id DESC');
+    const orderBy = orderClauses.join(', ');
+
+    const dataQuery = `SELECT ${select} FROM patients ${whereClause} ORDER BY ${orderBy} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+    const { rows } = await ap.query(dataQuery, [...params, pageSize, offset]);
+    const data = rows.map(projectPatient);
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    res.json({
+      data,
+      meta: {
+        page,
+        pageSize,
+        total,
+        totalPages,
+        hasMore: page * pageSize < total,
+        search: searchTerm || null
+      }
+    });
+  } catch (e) {
+    console.error('[PATIENT_LIST_FAIL]', e);
+    next(new AppError(500,'Error listando pacientes','PATIENT_LIST_FAIL'));
+  }
 });
 
 // Simple count endpoint for dashboard efficiency (keep /count and /count/all for compatibility)

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
     import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
     import { Button } from '@/components/ui/button';
     import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
@@ -15,6 +15,7 @@ import React from 'react';
       DropdownMenuTrigger,
     } from "@/components/ui/dropdown-menu";
     import { formatInTimeZone } from '@/lib/dateUtils';
+    import { useVirtualizer } from '@tanstack/react-virtual';
 
     const OrdersTable = ({ 
       orders, 
@@ -24,6 +25,30 @@ import React from 'react';
       onOpenModal,
       highlightId = null
     }) => {
+
+      const scrollParentRef = useRef(null);
+      const rowVirtualizer = useVirtualizer({
+        count: Array.isArray(orders) ? orders.length : 0,
+        getScrollElement: () => scrollParentRef.current,
+        estimateSize: () => 64,
+        overscan: 8
+      });
+
+      useEffect(() => {
+        if (!highlightId || !Array.isArray(orders) || !orders.length) return;
+        const highlightIndex = orders.findIndex(order => order.id === highlightId);
+        if (highlightIndex === -1) return;
+        try {
+          rowVirtualizer.scrollToIndex(highlightIndex, { align: 'center' });
+        } catch (_) {}
+        const timeout = setTimeout(() => {
+          const el = document.getElementById(`order-${highlightId}`);
+          if (el && el.classList.contains('animate-pulse-[1.5s_ease-in-out_2]')) {
+            el.classList.remove('animate-pulse-[1.5s_ease-in-out_2]');
+          }
+        }, 3000);
+        return () => clearTimeout(timeout);
+      }, [highlightId, orders, rowVirtualizer]);
 
       if (isLoading) {
         return (
@@ -45,7 +70,13 @@ import React from 'react';
         );
       }
 
+      const virtualRows = rowVirtualizer.getVirtualItems();
+      const totalHeight = rowVirtualizer.getTotalSize();
+      const paddingTop = virtualRows.length > 0 ? virtualRows[0].start : 0;
+      const paddingBottom = virtualRows.length > 0 ? totalHeight - virtualRows[virtualRows.length - 1].end : 0;
+
       return (
+        <div ref={scrollParentRef} className="max-h-[70vh] overflow-auto">
         <Table className="min-w-full">
           <TableHeader>
             <TableRow>
@@ -59,7 +90,14 @@ import React from 'react';
             </TableRow>
           </TableHeader>
           <TableBody>
-            {orders.map((order) => {
+            {paddingTop > 0 && (
+              <TableRow key="pad-top" style={{ height: paddingTop }}>
+                <TableCell colSpan={7} className="p-0 border-0" />
+              </TableRow>
+            )}
+            {virtualRows.map((virtualRow) => {
+              const order = orders[virtualRow.index];
+              if (!order) return null;
               const isHighlighted = highlightId && order.id === highlightId;
               return (
               <TableRow 
@@ -157,8 +195,14 @@ import React from 'react';
                 </TableCell>
               </TableRow>
             );})}
+            {paddingBottom > 0 && (
+              <TableRow key="pad-bottom" style={{ height: paddingBottom }}>
+                <TableCell colSpan={7} className="p-0 border-0" />
+              </TableRow>
+            )}
           </TableBody>
         </Table>
+        </div>
       );
     };
 

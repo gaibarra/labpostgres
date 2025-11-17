@@ -3,7 +3,6 @@ import apiClient from '@/lib/apiClient';
 import { motion } from 'framer-motion';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Loader2, AlertCircle, Users, FlaskConical, Package, Stethoscope, FileText, BarChart2, ListOrdered, ArrowRight, UserCircle } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { format, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
@@ -11,6 +10,7 @@ import { Link } from 'react-router-dom';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAuth } from '@/contexts/AuthContext';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { useLazyRecharts } from '@/hooks/useLazyRecharts';
 
 // Helper fuera del componente para reutilizar y testear aisladamente si se desea.
 function getPatientDisplayName(order) {
@@ -76,6 +76,7 @@ const DashboardPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [enrichedPatientMap, setEnrichedPatientMap] = useState({}); // id -> full_name
+  const { recharts, isLoading: isChartLibLoading, error: chartLibError } = useLazyRecharts();
 
   // Evitar doble fetch en StrictMode; recargar cuando cambia el usuario
   const loadedForUserRef = useRef(null);
@@ -151,6 +152,40 @@ const DashboardPage = () => {
     loadedForUserRef.current = userKey;
     fetchDashboardData();
   }, [user]);
+
+  const renderOrdersChart = () => {
+    if (isChartLibLoading) {
+      return (
+        <div className="flex h-64 w-full items-center justify-center text-muted-foreground">
+          Cargando gráficas...
+        </div>
+      );
+    }
+    if (chartLibError || !recharts) {
+      return (
+        <div className="flex h-64 w-full items-center justify-center text-center text-sm text-red-500">
+          No se pudo cargar la librería de gráficas.
+        </div>
+      );
+    }
+    const { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } = recharts;
+    return (
+      <ResponsiveContainer width="100%" height={300}>
+        <BarChart data={ordersLast7Days}>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} />
+          <XAxis dataKey="name" tick={{ fill: 'hsl(var(--muted-foreground))' }} fontSize={12} />
+          <YAxis allowDecimals={false} tick={{ fill: 'hsl(var(--muted-foreground))' }} fontSize={12} />
+          <Tooltip
+            contentStyle={{
+              backgroundColor: 'hsl(var(--background))',
+              borderColor: 'hsl(var(--border))'
+            }}
+          />
+          <Bar dataKey="orders" name="Órdenes" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+        </BarChart>
+      </ResponsiveContainer>
+    );
+  };
   
   const ordersLast7Days = useMemo(() => {
     const data = Array.from({ length: 7 }, (_, i) => {
@@ -317,20 +352,7 @@ const DashboardPage = () => {
                     <CardTitle className="flex items-center"><BarChart2 className="mr-2 h-5 w-5 text-sky-500" /> Órdenes en los Últimos 7 Días</CardTitle>
                 </CardHeader>
                 <CardContent>
-                    <ResponsiveContainer width="100%" height={300}>
-                        <BarChart data={ordersLast7Days}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                            <XAxis dataKey="name" tick={{ fill: 'hsl(var(--muted-foreground))' }} fontSize={12} />
-                            <YAxis allowDecimals={false} tick={{ fill: 'hsl(var(--muted-foreground))' }} fontSize={12} />
-                            <Tooltip
-                                contentStyle={{
-                                    backgroundColor: 'hsl(var(--background))',
-                                    borderColor: 'hsl(var(--border))'
-                                }}
-                            />
-                            <Bar dataKey="orders" name="Órdenes" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                        </BarChart>
-                    </ResponsiveContainer>
+                  {renderOrdersChart()}
                 </CardContent>
             </Card>
         </motion.div>

@@ -1,10 +1,10 @@
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import { loadJsPdf } from '@/lib/dynamicImports';
 
 const LINE_HEIGHT = 1.25;
 const P_SPACING = 10;
 
-export const generateUserManualPDF = () => {
+export const generateUserManualPDF = async () => {
+    const { jsPDF } = await loadJsPdf();
     const doc = new jsPDF('p', 'pt', 'a4');
     const pageHeight = doc.internal.pageSize.height;
     const pageWidth = doc.internal.pageSize.width;

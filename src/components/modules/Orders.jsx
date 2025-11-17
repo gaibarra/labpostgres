@@ -1,20 +1,19 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
     import { useLocation, useNavigate } from 'react-router-dom';
     import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-    import { useToast } from "@/components/ui/use-toast";
+  import { Button } from '@/components/ui/button';
     import { FileText } from 'lucide-react';
     import { AnimatePresence } from 'framer-motion';
     import OrdersHeader from '@/components/modules/orders/OrdersHeader';
     import OrdersTable from '@/components/modules/orders/OrdersTable';
     import { useOrderManagement } from '@/components/modules/orders/hooks/useOrderManagement';
-    import { useOrderModals } from '@/components/modules/orders/hooks/useOrderModals.jsx';
-    import { useAuth } from '@/contexts/AuthContext';
+      import { useOrderModals } from '@/components/modules/orders/hooks/useOrderModals.jsx';
     import OrderHelpDialog from '@/components/modules/orders/OrderHelpDialog';
+  import { useDebounce } from 'use-debounce';
 
   const Orders = () => {
-      const { toast } = useToast();
-      const { user } = useAuth();
       const [searchTerm, setSearchTerm] = useState('');
+      const [debouncedSearchTerm] = useDebounce(searchTerm, 400);
       const [isHelpDialogOpen, setIsHelpDialogOpen] = useState(false);
       const location = useLocation();
       const navigate = useNavigate();
@@ -22,6 +21,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
       
       const {
         orders,
+        ordersMeta,
         patients,
         referrers,
         studies,
@@ -33,6 +33,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
         handleSaveResults,
         getStudiesAndParametersForOrder,
         loadData,
+        loadOrders,
       } = useOrderManagement();
 
       const { modalState, openModal, modalComponent } = useOrderModals({
@@ -48,22 +49,22 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
       });
 
       useEffect(() => {
-        if(loadData && user) {
-          loadData().catch(error => {
-            toast({ title: "Error cargando datos iniciales", description: error.message, variant: "destructive" });
-          });
-        }
-      }, [loadData, toast, user]);
+        if ((ordersMeta?.search || '') === (debouncedSearchTerm || '')) return;
+        loadOrders({ page: 1, search: debouncedSearchTerm });
+      }, [debouncedSearchTerm, loadOrders, ordersMeta?.search]);
+
+      const newPatientId = location.state?.newPatientId;
 
       useEffect(() => {
-        if (location.state?.newPatientId && patients.length > 0) {
-          const newPatientId = location.state.newPatientId;
-          const orderWithNewPatient = { ...initialOrderForm, patient_id: newPatientId };
-          openModal('form', orderWithNewPatient);
-          
-          navigate(location.pathname, { replace: true, state: {} });
-        }
-      }, [location.state, patients, openModal, initialOrderForm, navigate, location.pathname]);
+        if (!newPatientId || patients.length === 0) return;
+        const orderWithNewPatient = { ...initialOrderForm, patient_id: newPatientId };
+        openModal('form', orderWithNewPatient);
+      }, [newPatientId, patients.length, initialOrderForm, openModal]);
+
+      useEffect(() => {
+        if (!newPatientId) return;
+        navigate(location.pathname, { replace: true, state: {} });
+      }, [newPatientId, navigate, location.pathname]);
       
       const handleEdit = useCallback((order) => {
         openModal('form', order);
@@ -78,31 +79,22 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
       const params = new URLSearchParams(location.search);
       const highlightId = params.get('highlight');
 
-      // Scroll suave al elemento resaltado la primera vez que exista
-      const scrolledRef = useRef(false);
-      useEffect(() => {
-        if (highlightId && !scrolledRef.current) {
-          const el = document.getElementById(`order-${highlightId}`);
-          if (el) {
-            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            scrolledRef.current = true;
-            // Remover animación pulsante después de 3s (mantener resaltado base)
-            setTimeout(() => {
-              try {
-                if (el.classList.contains('animate-pulse-[1.5s_ease-in-out_2]')) {
-                  el.classList.remove('animate-pulse-[1.5s_ease-in-out_2]');
-                }
-              } catch(_) {}
-            }, 3000);
-          }
-        }
-      }, [highlightId, safeOrders]);
-      const filteredOrders = searchTerm
-        ? safeOrders.filter(order =>
-            (order?.patient_name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-            (order?.folio?.toLowerCase() || '').includes(searchTerm.toLowerCase())
-          )
-        : safeOrders;
+      const currentPage = ordersMeta?.page || 1;
+      const totalPages = ordersMeta?.totalPages || 1;
+      const pageSize = ordersMeta?.pageSize || (safeOrders.length || 1);
+      const totalOrders = ordersMeta?.total ?? safeOrders.length;
+      const startIndex = totalOrders && safeOrders.length ? (currentPage - 1) * pageSize + 1 : 0;
+      const endIndex = totalOrders && safeOrders.length ? startIndex + safeOrders.length - 1 : 0;
+      const rangeDescription = !totalOrders
+        ? 'Sin órdenes registradas'
+        : safeOrders.length
+          ? `Mostrando ${startIndex}-${endIndex} de ${totalOrders} órdenes`
+          : 'Sin coincidencias para los filtros aplicados.';
+
+      const handlePageChange = useCallback((nextPage) => {
+        if (nextPage < 1 || nextPage > totalPages || nextPage === currentPage) return;
+        loadOrders({ page: nextPage, search: debouncedSearchTerm });
+      }, [currentPage, totalPages, loadOrders, debouncedSearchTerm]);
 
       return (
         <div className="space-y-6">
@@ -123,13 +115,37 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
               />
               <div className="overflow-x-auto">
                 <OrdersTable 
-                  orders={filteredOrders}
+                  orders={safeOrders}
                   isLoading={isLoading}
                   onEdit={handleEdit}
                   onDelete={handleDeleteOrder}
                   onOpenModal={openModal}
                   highlightId={highlightId}
                 />
+              </div>
+              <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <p className="text-sm text-muted-foreground">{rangeDescription}</p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    disabled={currentPage <= 1 || isLoading}
+                  >
+                    Anterior
+                  </Button>
+                  <span className="text-sm font-medium">
+                    Página {currentPage} de {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    disabled={currentPage >= totalPages || isLoading}
+                  >
+                    Siguiente
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>

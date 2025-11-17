@@ -23,19 +23,24 @@ export const AppDataProvider = ({ children }) => {
   const [packages, setPackages] = useState([]);
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
+  const patientsSearchRef = useRef('');
 
-  const loadPatients = useCallback(async (page = 0) => {
+  const loadPatients = useCallback(async (page = 0, search = patientsSearchRef.current) => {
     if (!user) {
       setLoadingPatients(false);
       return;
     }
     setLoadingPatients(true);
     try {
-      // Backend currently returns up to 200; implement client-side pagination simulation
-      const data = await apiClient.get('/patients');
-      setPatients(data.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE));
-      setPatientsCount(data.length);
-      setPatientsPage(page);
+      patientsSearchRef.current = search || '';
+      const params = new URLSearchParams({ page: String(page + 1), pageSize: String(PAGE_SIZE) });
+      if (patientsSearchRef.current) params.set('search', patientsSearchRef.current);
+      const data = await apiClient.get(`/patients?${params.toString()}`);
+      const rows = Array.isArray(data?.data) ? data.data : (Array.isArray(data) ? data : []);
+      setPatients(rows);
+      setPatientsCount(data?.meta?.total ?? rows.length);
+      const resolvedPage = data?.meta?.page ? data.meta.page - 1 : page;
+      setPatientsPage(resolvedPage);
     } catch (error) {
       toast({ title: 'Error cargando pacientes', description: error.message, variant: 'destructive' });
     } finally {
@@ -89,7 +94,7 @@ export const AppDataProvider = ({ children }) => {
   const refreshData = useCallback(async (dataType) => {
     if (!user) return;
     if (dataType === 'patients') {
-      await loadPatients(patientsPage); // Refresh current page
+      await loadPatients(patientsPage, patientsSearchRef.current); // Refresh current page
     }
     // Can be extended for other data types
   }, [user, loadPatients, patientsPage]);

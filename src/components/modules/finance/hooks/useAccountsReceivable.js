@@ -33,7 +33,7 @@ export const useAccountsReceivable = () => {
     setIsLoading(true);
     try {
       const [patientsRes, referrersRes] = await Promise.all([
-        apiClient.get('/patients?limit=1000').catch(e=>{ throw e; }),
+        apiClient.get('/patients?page=1&pageSize=1000').catch(e=>{ throw e; }),
         apiClient.get('/referrers?limit=1000').catch(e=>{ throw e; })
       ]);
       const patientsArr = Array.isArray(patientsRes?.data) ? patientsRes.data : (Array.isArray(patientsRes) ? patientsRes : []);

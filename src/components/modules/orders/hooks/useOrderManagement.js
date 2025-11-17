@@ -1,10 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-        import { useToast } from "@/components/ui/use-toast";
-        import { format, differenceInYears, differenceInMonths, differenceInDays, parseISO } from 'date-fns';
-        import { logAuditEvent } from '@/lib/auditUtils';
-        import apiClient from '@/lib/apiClient';
-        import { useAuth } from '@/contexts/AuthContext';
-        import { toISOStringWithTimeZone } from '@/lib/dateUtils';
+    import { useToast } from "@/components/ui/use-toast";
+    import { format, differenceInYears, differenceInMonths, differenceInDays, parseISO } from 'date-fns';
+    import { logAuditEvent } from '@/lib/auditUtils';
+    import apiClient from '@/lib/apiClient';
+    import { useAuth } from '@/contexts/AuthContext';
+    import { toISOStringWithTimeZone } from '@/lib/dateUtils';
+
+  const ORDERS_PAGE_SIZE = 25;
+  const PATIENT_SELECTOR_PAGE = 500;
 
   const initialOrderForm = {
           id: null,
@@ -43,72 +46,125 @@ import { useState, useEffect, useCallback, useRef } from 'react';
           return { ageYears, ageMonths, ageDays };
         };
 
+        const buildSnapshotPatient = (snapshot) => {
+          if (!snapshot || typeof snapshot !== 'object') return null;
+          const normalized = {
+            ...snapshot,
+            phone_number: snapshot.phone_number || snapshot.phone || null,
+            full_name: snapshot.full_name || snapshot.fullName || [snapshot.first_name, snapshot.last_name].filter(Boolean).join(' ').trim()
+          };
+          normalized.age = calculateAge(snapshot.date_of_birth || snapshot.dateOfBirth || null);
+          return normalized;
+        };
+
         export const useOrderManagement = () => {
           const { toast } = useToast();
           const { user } = useAuth();
           const [orders, setOrders] = useState([]);
+          const [ordersMeta, setOrdersMeta] = useState({ page: 1, pageSize: ORDERS_PAGE_SIZE, total: 0, totalPages: 1, hasMore: false, search: '' });
           const [patients, setPatients] = useState([]);
           const [referrers, setReferrers] = useState([]);
           const [studies, setStudies] = useState([]);
           const [packages, setPackages] = useState([]);
           const [currentOrder, setCurrentOrder] = useState(initialOrderForm);
-          const [isLoading, setIsLoading] = useState(true);
+          const [isDirectoryLoading, setIsDirectoryLoading] = useState(true);
+          const [isOrdersLoading, setIsOrdersLoading] = useState(true);
 
-          const loadData = useCallback(async () => {
-            setIsLoading(true);
+          const ordersSearchRef = useRef('');
+          const latestPatientsRef = useRef([]);
+
+          const loadDirectories = useCallback(async () => {
+            setIsDirectoryLoading(true);
             try {
-              const [ordersData, patientsData, referrersResp, studiesResp, packagesResp] = await Promise.all([
-                apiClient.get('/work-orders'),
-                apiClient.get('/patients'),
+              const patientParams = new URLSearchParams({ page: '1', pageSize: String(PATIENT_SELECTOR_PAGE) });
+              const [patientsResp, referrersResp, studiesResp, packagesResp] = await Promise.all([
+                apiClient.get(`/patients?${patientParams.toString()}`),
                 apiClient.get('/referrers?limit=200'),
                 apiClient.get('/analysis/detailed?limit=5000'),
                 apiClient.get('/packages/detailed?limit=5000')
               ]);
-
-              const safePatients = (patientsData || []).map(p => ({
+              const rawPatients = Array.isArray(patientsResp?.data) ? patientsResp.data : (Array.isArray(patientsResp) ? patientsResp : []);
+              const safePatients = rawPatients.map(p => ({
                 ...p,
                 age: calculateAge(p.date_of_birth)
               }));
-              const patientsMap = new Map(safePatients.map(p => [p.id, p]));
-
-              const populatedOrders = (ordersData || []).map(order => {
-                const patient = patientsMap.get(order.patient_id);
-                // Mezcla sin pisar results/validation_notes reales: primero base inicial, luego datos de order, luego reinyectar los campos sensibles por si initialOrderForm los sobreescribe.
-                const base = {
-                  ...initialOrderForm,
-                  ...order,
-                };
-                if (order.results !== undefined) base.results = order.results; // preservar
-                if (order.validation_notes !== undefined) base.validation_notes = order.validation_notes;
-                base.order_date = order.order_date ? new Date(order.order_date) : new Date();
-                base.patient_name = patient ? patient.full_name : 'Paciente no encontrado';
-                base.patient = patient || null;
-                return base;
-              });
-
-              setOrders(populatedOrders);
+              latestPatientsRef.current = safePatients;
               setPatients(safePatients);
-              setReferrers((referrersResp?.data) ? referrersResp.data : referrersResp || []);
-
-              const studiesData = (studiesResp?.data) ? studiesResp.data : studiesResp;
+              setReferrers(referrersResp?.data ? referrersResp.data : referrersResp || []);
+              const studiesData = studiesResp?.data ? studiesResp.data : studiesResp;
               const formattedStudies = (studiesData || []).map(s => ({
                 ...s,
                 parameters: (s.parameters || []).map(p => ({ ...p, reference_ranges: p.reference_ranges || [] }))
               }));
               setStudies(formattedStudies);
-
-              const packagesData = (packagesResp?.data) ? packagesResp.data : packagesResp;
+              const packagesData = packagesResp?.data ? packagesResp.data : packagesResp;
               setPackages(packagesData || []);
+              return safePatients;
             } catch (error) {
               if (error?.status === 429) {
                 toast({ title: 'Demasiadas peticiones', description: 'Has alcanzado el límite de solicitudes. Espera unos segundos o recarga la página.', variant: 'destructive' });
               } else {
-                toast({ title: 'Error al cargar datos de órdenes', description: error.message, variant: 'destructive' });
+                toast({ title: 'Error al cargar catálogos para órdenes', description: error.message, variant: 'destructive' });
               }
+              return latestPatientsRef.current;
             } finally {
-              setIsLoading(false);
+              setIsDirectoryLoading(false);
             }
           }, [toast]);
+
+          const loadOrders = useCallback(async ({ page = 1, search = ordersSearchRef.current, patientDirectory } = {}) => {
+            setIsOrdersLoading(true);
+            try {
+              ordersSearchRef.current = search || '';
+              const params = new URLSearchParams({ page: String(page), pageSize: String(ORDERS_PAGE_SIZE) });
+              if (ordersSearchRef.current) params.set('search', ordersSearchRef.current);
+              const resp = await apiClient.get(`/work-orders?${params.toString()}`);
+              const payload = Array.isArray(resp?.data) ? resp.data : (Array.isArray(resp) ? resp : []);
+              const meta = resp?.meta || {};
+              const directorySource = Array.isArray(patientDirectory) ? patientDirectory : (latestPatientsRef.current.length ? latestPatientsRef.current : patients);
+              const patientMap = new Map(directorySource.map(p => [p.id, p]));
+              const populatedOrders = payload.map(order => {
+                const patientFromDir = order.patient_id ? patientMap.get(order.patient_id) : null;
+                const snapshotPatient = buildSnapshotPatient(order.patient_snapshot);
+                let patient = patientFromDir ? { ...patientFromDir } : null;
+                if (!patient && snapshotPatient) patient = snapshotPatient;
+                if (patient && !patient.age) {
+                  patient.age = calculateAge(patient.date_of_birth || patient.dateOfBirth || null);
+                }
+                const base = {
+                  ...initialOrderForm,
+                  ...order,
+                };
+                if (order.results !== undefined) base.results = order.results;
+                if (order.validation_notes !== undefined) base.validation_notes = order.validation_notes;
+                base.order_date = order.order_date ? new Date(order.order_date) : new Date();
+                base.patient = patient || null;
+                base.patient_name = order.patient_name || patient?.full_name || patient?.name || 'Paciente no encontrado';
+                return base;
+              });
+              setOrders(populatedOrders);
+              const total = meta.total ?? populatedOrders.length;
+              const pageSize = meta.pageSize ?? ORDERS_PAGE_SIZE;
+              const totalPages = meta.totalPages ?? Math.max(1, Math.ceil(total / pageSize));
+              setOrdersMeta({
+                page: meta.page ?? page,
+                pageSize,
+                total,
+                totalPages,
+                hasMore: meta.hasMore ?? (meta.page ?? page) < totalPages,
+                search: ordersSearchRef.current
+              });
+            } catch (error) {
+              toast({ title: 'Error al cargar órdenes', description: error.message, variant: 'destructive' });
+            } finally {
+              setIsOrdersLoading(false);
+            }
+          }, [toast, patients]);
+
+          const loadData = useCallback(async () => {
+            const latest = await loadDirectories();
+            await loadOrders({ page: 1, search: ordersSearchRef.current, patientDirectory: latest });
+          }, [loadDirectories, loadOrders]);
 
           // Evita doble llamada en StrictMode (montaje/desmontaje inmediato en DEV)
           const mountedOnceRef = useRef(false);
@@ -358,8 +414,11 @@ import { useState, useEffect, useCallback, useRef } from 'react';
           }, []);
 
 
+          const isLoading = isDirectoryLoading || isOrdersLoading;
+
           return {
             orders,
+            ordersMeta,
             patients,
             referrers,
             studies,
@@ -375,6 +434,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
             getReferrerName,
             getStudiesAndParametersForOrder,
             isLoading,
-            loadData
+            loadData,
+            loadOrders
           };
         };

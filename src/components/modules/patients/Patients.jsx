@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useToast } from "@/components/ui/use-toast";
@@ -45,15 +45,16 @@ const Patients = () => {
   const navigate = useNavigate();
   const isMobile = useMediaQuery("(max-width: 768px)");
 
-  const filteredPatients = useMemo(() => {
-    if (!patients) return [];
-    if (!debouncedSearchTerm) return patients;
-    return patients.filter(p =>
-      (p.full_name && p.full_name.toLowerCase().includes(debouncedSearchTerm.toLowerCase())) ||
-      (p.email && p.email.toLowerCase().includes(debouncedSearchTerm.toLowerCase())) ||
-      (p.phone_number && p.phone_number.includes(debouncedSearchTerm))
-    );
-  }, [patients, debouncedSearchTerm]);
+  const searchAppliedRef = useRef(false);
+  useEffect(() => {
+    if (!searchAppliedRef.current) {
+      searchAppliedRef.current = true;
+      return;
+    }
+    loadPatients(0, debouncedSearchTerm);
+  }, [debouncedSearchTerm, loadPatients]);
+
+  const renderedPatients = patients || [];
 
   const openForm = useCallback((patient = null) => {
     setCurrentPatient(patient);
@@ -115,7 +116,7 @@ const Patients = () => {
           currentPage={patientsPage}
           totalCount={patientsCount}
           pageSize={PAGE_SIZE}
-          onPageChange={loadPatients}
+          onPageChange={(page) => loadPatients(page, debouncedSearchTerm)}
         />
         <CardContent className="flex-grow p-2 md:p-6 pt-0">
           {loadingPatients ? (
@@ -126,7 +127,7 @@ const Patients = () => {
             <ScrollArea className="h-[calc(100vh-250px)]">
               {isMobile ? (
                 <PatientsCardView
-                  patients={filteredPatients}
+                  patients={renderedPatients}
                   onEdit={openForm}
                   onDelete={openDeleteDialog}
                   onViewHistory={handleViewHistory}
@@ -134,7 +135,7 @@ const Patients = () => {
               ) : (
                 <div className="overflow-x-auto">
                   <PatientsTable
-                    patients={filteredPatients}
+                    patients={renderedPatients}
                     onEdit={openForm}
                     onDelete={openDeleteDialog}
                     onViewHistory={handleViewHistory}

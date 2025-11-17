@@ -35,8 +35,19 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
         if(!dateRange?.from || !dateRange?.to) return;
         setIsLoading(true);
         try {
-          // 1. Obtener work orders base
-          const workOrders = await apiClient.get('/work-orders');
+          // 1. Obtener work orders base con paginación para evitar recortes
+          const aggregatedOrders = [];
+          let pageCursor = 1;
+          let keepFetching = true;
+          while (keepFetching && pageCursor <= 5) {
+            const params = new URLSearchParams({ page: String(pageCursor), pageSize: '200' });
+            const resp = await apiClient.get(`/work-orders?${params.toString()}`);
+            const rows = Array.isArray(resp?.data) ? resp.data : (Array.isArray(resp) ? resp : []);
+            aggregatedOrders.push(...rows);
+            keepFetching = resp?.meta?.hasMore === true;
+            pageCursor += 1;
+          }
+          const workOrders = aggregatedOrders;
           const fromISO = new Date(dateRange.from).toISOString();
             const toISO = new Date(dateRange.to).toISOString();
           // 2. Filtrar por rango y estados relevantes (reportadas / concluidas / entregadas / pendiente si ya está pagada)

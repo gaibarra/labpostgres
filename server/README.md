@@ -10,14 +10,14 @@ Auth:
 - GET  /api/auth/me (Bearer token)
 
 Pacientes:
-- GET /api/patients?limit&offset&search
+- GET /api/patients?page&pageSize&search
 - POST /api/patients
 - GET /api/patients/:id
 - PUT /api/patients/:id
 - DELETE /api/patients/:id
 
 Work Orders:
-- GET /api/work-orders?limit&offset&search
+- GET /api/work-orders?page&pageSize&search
 - POST /api/work-orders
 - GET /api/work-orders/:id
 - PUT /api/work-orders/:id

@@ -10,7 +10,7 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
     import { useEvaluationUtils } from './report_utils/evaluationUtils.js';
     import { useSettings } from '@/contexts/SettingsContext';
 
-    const AIRecommendationsModal = ({ isOpen, onOpenChange, order, patient, studiesToDisplay, onOpenPreview }) => {
+    const AIRecommendationsModal = ({ isOpen, onOpenChange, order, patient, studiesToDisplay, onOpenPreview, isPreviewGenerating = false }) => {
       const { toast } = useToast();
       const [recommendations, setRecommendations] = useState(null);
       const [isLoading, setIsLoading] = useState(false);
@@ -111,9 +111,9 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
         fetchRecommendations();
       }, [isOpen, order, patient, studiesToDisplay, toast, patientAgeData, evaluateResult, getReferenceRangeText, settings]);
 
-      const handlePreview = () => {
-        if (!order || !recommendations) return;
-        onOpenPreview(order, recommendations);
+      const handlePreview = async () => {
+        if (!order || !recommendations || isPreviewGenerating) return;
+        await onOpenPreview(order, recommendations);
       };
 
       const renderContent = () => {
@@ -235,13 +235,13 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
             </ScrollArea>
             <DialogFooter className="flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
                 <Button
-                    variant="default"
-                    onClick={handlePreview}
-                    disabled={!recommendations || isLoading}
-                    className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700"
+                  variant="default"
+                  onClick={handlePreview}
+                  disabled={!recommendations || isLoading || isPreviewGenerating}
+                  className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700"
                 >
-                    <Printer className="mr-2 h-4 w-4" />
-                    Previsualizar e Imprimir
+                  {isPreviewGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Printer className="mr-2 h-4 w-4" />}
+                  {isPreviewGenerating ? 'Generando...' : 'Previsualizar e Imprimir'}
                 </Button>
                 <DialogClose asChild>
                     <Button variant="outline" className="w-full sm:w-auto">Cerrar</Button>

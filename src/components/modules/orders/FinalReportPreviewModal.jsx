@@ -1,9 +1,5 @@
-// ...existing code...
-import jsPDF from 'jspdf';
-import { Button } from '@/components/ui/button';
-import autoTable from 'jspdf-autotable';
-// ...existing code...
 import React, { useMemo, useState } from 'react';
+import { Button } from '@/components/ui/button';
 import { useResultWorkflow } from './hooks/useResultWorkflow.js';
 import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
     import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
@@ -21,6 +17,7 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
     import AIRecommendationsModal from './AIRecommendationsModal.jsx';
     import AntibiogramReportSection from './report_utils/AntibiogramReportSection.jsx';
     import { getAntibiogramResults } from '@/lib/antibiogramApi';
+    import { loadJsPdf } from '@/lib/dynamicImports';
 
   const FinalReportPreviewModal = ({ isOpen, onOpenChange, order, patient, referrer, studiesDetails, packagesData, onSend }) => {
   const [pdfUrl, setPdfUrl] = useState(null);
@@ -31,6 +28,7 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
       const { calculateAgeInUnits, getReferenceRangeText, evaluateResult } = useEvaluationUtils();
       const { getStudiesAndParametersForOrder } = useOrderManagement();
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
+  const [isAiPdfGenerating, setIsAiPdfGenerating] = useState(false);
   const [antibiogramData, setAntibiogramData] = useState({ meta: {}, rows: [], hasData: false });
       // Modo compacto para ahorro de papel (predeterminado según settings, o true si no está configurado)
       const [isCompact, setIsCompact] = useState(() => {
@@ -158,9 +156,9 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
         return isNaN(num) ? null : num;
       };
 
-      const handleGeneratePDF = () => {
+      const handleGeneratePDF = async () => {
         try {
-          generatePdfContent(
+          await generatePdfContent(
             order,
             patient,
             referrer,
@@ -193,26 +191,27 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
         const reportSummary = `Resultados de Laboratorio - ${labName}\nFolio: ${order.folio}\nPaciente: ${patient.full_name}`;
         const reminder = `\n\n(Adjunto: Reporte de Resultados en PDF)`;
         // Generate PDF Blob and create object URL (for browser attachment manual flow)
-        const pdfBlob = (()=>{
-          try {
-            return generatePdfContent(
-              order,
-              patient,
-              referrer,
-              studiesDetails,
-              packagesData,
-              patientAgeData,
-              labSettings,
-              getReferenceRangeText,
-              evaluateResult,
-              cleanNumericValueForStorage,
-              getStudiesAndParametersForOrder,
-              isCompact,
-              (antibiogramData && antibiogramData.hasData) ? antibiogramData : null,
-              { mode: 'blob+window' }
-            );
-          } catch(e){ console.error('Failed to build PDF blob', e); return null; }
-        })();
+        let pdfBlob = null;
+        try {
+          pdfBlob = await generatePdfContent(
+            order,
+            patient,
+            referrer,
+            studiesDetails,
+            packagesData,
+            patientAgeData,
+            labSettings,
+            getReferenceRangeText,
+            evaluateResult,
+            cleanNumericValueForStorage,
+            getStudiesAndParametersForOrder,
+            isCompact,
+            (antibiogramData && antibiogramData.hasData) ? antibiogramData : null,
+            { mode: 'blob+window' }
+          );
+        } catch (error) {
+          console.error('Failed to build PDF blob', error);
+        }
         let pdfObjectUrl = null;
         if (pdfBlob) {
           try { pdfObjectUrl = URL.createObjectURL(pdfBlob); } catch(_) { /* ignore URL blob creation failure */ }
@@ -409,64 +408,82 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
           order={order}
           patient={patient}
           studiesToDisplay={studiesToDisplayInReport}
-          onOpenPreview={(order, recommendations) => {
-            const doc = new jsPDF();
-            let y = 20;
-            doc.setFontSize(18);
-            doc.text('Informe de Recomendaciones de Laboratorio', 15, y);
-            y += 12;
-            doc.setFontSize(12);
-            if (recommendations?.summary) {
-              doc.setTextColor(33, 150, 243);
-              doc.text('Resumen del Asistente IA', 15, y);
-              y += 7;
-              doc.setTextColor(0,0,0);
-              doc.text(doc.splitTextToSize(recommendations.summary, 180), 15, y);
+          isPreviewGenerating={isAiPdfGenerating}
+          onOpenPreview={async (_order, recommendations) => {
+            if (isAiPdfGenerating) return;
+            setIsAiPdfGenerating(true);
+            try {
+              const { jsPDF, autoTable } = await loadJsPdf();
+              const doc = new jsPDF();
+              let y = 20;
+              doc.setFontSize(18);
+              doc.text('Informe de Recomendaciones de Laboratorio', 15, y);
               y += 12;
-            }
-            if (recommendations?.outOfRangeRecommendations?.length) {
-              autoTable(doc, {
-                startY: y,
-                head: [['Resultados a Revisar', '', '', '']],
-                body: recommendations.outOfRangeRecommendations.map(item => [
-                  `${item.parameterName}: ${item.result}`,
-                  item.explanation,
-                  (item.recommendations || []).map(r => `• ${r}`).join('\n'),
-                  `Estado: ${item.status}`
-                ]),
-                styles: { fillColor: [255, 236, 179], textColor: [0,0,0], halign: 'left', fontSize: 11 },
-                headStyles: { fillColor: [255, 193, 7], textColor: [0,0,0], fontSize: 13 },
-                columnStyles: { 0: { cellWidth: 35 }, 1: { cellWidth: 50 }, 2: { cellWidth: 50 }, 3: { cellWidth: 20 } }
+              doc.setFontSize(12);
+              if (recommendations?.summary) {
+                doc.setTextColor(33, 150, 243);
+                doc.text('Resumen del Asistente IA', 15, y);
+                y += 7;
+                doc.setTextColor(0,0,0);
+                doc.text(doc.splitTextToSize(recommendations.summary, 180), 15, y);
+                y += 12;
+              }
+              if (recommendations?.outOfRangeRecommendations?.length) {
+                autoTable(doc, {
+                  startY: y,
+                  head: [['Resultados a Revisar', '', '', '']],
+                  body: recommendations.outOfRangeRecommendations.map(item => [
+                    `${item.parameterName}: ${item.result}`,
+                    item.explanation,
+                    (item.recommendations || []).map(r => `• ${r}`).join('\n'),
+                    `Estado: ${item.status}`
+                  ]),
+                  styles: { fillColor: [255, 236, 179], textColor: [0,0,0], halign: 'left', fontSize: 11 },
+                  headStyles: { fillColor: [255, 193, 7], textColor: [0,0,0], fontSize: 13 },
+                  columnStyles: { 0: { cellWidth: 35 }, 1: { cellWidth: 50 }, 2: { cellWidth: 50 }, 3: { cellWidth: 20 } }
+                });
+                y = doc.lastAutoTable.finalY + 8;
+              }
+              if (recommendations?.inRangeComments?.length) {
+                autoTable(doc, {
+                  startY: y,
+                  head: [['Resultados en Rango Saludable', '', '']],
+                  body: recommendations.inRangeComments.map(item => [
+                    item.parameterName,
+                    item.comment,
+                    ''
+                  ]),
+                  styles: { fillColor: [200, 230, 201], textColor: [0,0,0], halign: 'left', fontSize: 11 },
+                  headStyles: { fillColor: [56, 142, 60], textColor: [255,255,255], fontSize: 13 },
+                  columnStyles: { 0: { cellWidth: 40 }, 1: { cellWidth: 70 }, 2: { cellWidth: 15 } }
+                });
+                y = doc.lastAutoTable.finalY + 8;
+              }
+              if (recommendations?.finalDisclaimer) {
+                doc.setFontSize(10);
+                doc.setTextColor(100,100,100);
+                doc.text('Nota:', 15, y);
+                y += 6;
+                doc.text(doc.splitTextToSize(recommendations.finalDisclaimer, 180), 15, y);
+                doc.setTextColor(0,0,0);
+              }
+              const pdfData = doc.output('blob');
+              const nextUrl = URL.createObjectURL(pdfData);
+              if (pdfUrl) {
+                try { URL.revokeObjectURL(pdfUrl); } catch (_) { /* ignore */ }
+              }
+              setPdfUrl(nextUrl);
+              setIsAIPreviewOpen(true);
+            } catch (error) {
+              console.error('Error al generar PDF de recomendaciones IA', error);
+              toast({
+                title: 'No se pudo generar el PDF',
+                description: 'Intenta nuevamente en unos segundos.',
+                variant: 'destructive',
               });
-              y = doc.lastAutoTable.finalY + 8;
+            } finally {
+              setIsAiPdfGenerating(false);
             }
-            if (recommendations?.inRangeComments?.length) {
-              autoTable(doc, {
-                startY: y,
-                head: [['Resultados en Rango Saludable', '', '']],
-                body: recommendations.inRangeComments.map(item => [
-                  item.parameterName,
-                  item.comment,
-                  ''
-                ]),
-                styles: { fillColor: [200, 230, 201], textColor: [0,0,0], halign: 'left', fontSize: 11 },
-                headStyles: { fillColor: [56, 142, 60], textColor: [255,255,255], fontSize: 13 },
-                columnStyles: { 0: { cellWidth: 40 }, 1: { cellWidth: 70 }, 2: { cellWidth: 15 } }
-              });
-              y = doc.lastAutoTable.finalY + 8;
-            }
-            if (recommendations?.finalDisclaimer) {
-              doc.setFontSize(10);
-              doc.setTextColor(100,100,100);
-              doc.text('Nota:', 15, y);
-              y += 6;
-              doc.text(doc.splitTextToSize(recommendations.finalDisclaimer, 180), 15, y);
-              doc.setTextColor(0,0,0);
-            }
-            const pdfData = doc.output('blob');
-            const url = URL.createObjectURL(pdfData);
-            setPdfUrl(url);
-            setIsAIPreviewOpen(true);
           }}
         />
         <Dialog open={isAIPreviewOpen} onOpenChange={(open) => {

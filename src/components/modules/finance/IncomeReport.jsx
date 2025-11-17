@@ -1,5 +1,4 @@
 import React, { useState, useMemo } from 'react';
-    import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
     import { format, startOfDay, endOfDay } from 'date-fns';
     import { es } from 'date-fns/locale';
     import { apiClient } from '@/lib/apiClient';
@@ -12,6 +11,7 @@ import React, { useState, useMemo } from 'react';
     import { useToast } from "@/components/ui/use-toast";
     import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
     import { toISOStringWithTimeZone } from '@/lib/dateUtils';
+    import { useLazyRecharts } from '@/hooks/useLazyRecharts';
 
     const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658'];
 
@@ -22,6 +22,7 @@ import React, { useState, useMemo } from 'react';
         const [loading, setLoading] = useState(false);
         const [error, setError] = useState(null);
         const { toast } = useToast();
+        const { recharts, isLoading: isChartLibLoading, error: chartLibError } = useLazyRecharts();
 
         const handleGenerateReport = async () => {
             setLoading(true);
@@ -86,6 +87,24 @@ import React, { useState, useMemo } from 'react';
 
             return { totalIncome: total, chartData: finalChartData };
         }, [reportData, groupBy]);
+
+        const renderWithRecharts = (heightClass, renderer) => {
+            if (isChartLibLoading) {
+                return (
+                    <div className={`flex ${heightClass} w-full items-center justify-center text-muted-foreground`}>
+                        Cargando gráficas...
+                    </div>
+                );
+            }
+            if (chartLibError || !recharts) {
+                return (
+                    <div className={`flex ${heightClass} w-full items-center justify-center text-center text-sm text-red-500`}>
+                        No se pudo cargar la librería de gráficas.
+                    </div>
+                );
+            }
+            return renderer(recharts);
+        };
 
         return (
             <div className="space-y-6">
@@ -165,55 +184,61 @@ import React, { useState, useMemo } from 'react';
                                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
                                     <div>
                                         <h3 className="font-semibold mb-4 flex items-center"><BarChart2 className="mr-2 h-5 w-5 text-blue-500" />Ingresos por {groupBy === 'day' ? 'Día' : groupBy === 'referrer' ? 'Referente' : 'Agrupación'}</h3>
-                                        <ResponsiveContainer width="100%" height={400}>
-                                            <BarChart data={chartData} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                                                <CartesianGrid strokeDasharray="3 3" />
-                                                <XAxis type="number" tickFormatter={(value) => `$${value.toLocaleString('es-MX')}`} />
-                                                <YAxis dataKey="name" type="category" width={150} tick={{fontSize: 12}} />
-                                                <Tooltip formatter={(value) => `$${value.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`} />
-                                                <Legend />
-                                                <Bar dataKey="value" name="Ingresos" fill="#3b82f6" />
-                                            </BarChart>
-                                        </ResponsiveContainer>
+                                        {renderWithRecharts('h-[400px]', ({ ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend }) => (
+                                            <ResponsiveContainer width="100%" height={400}>
+                                                <BarChart data={chartData} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                                                    <CartesianGrid strokeDasharray="3 3" />
+                                                    <XAxis type="number" tickFormatter={(value) => `$${value.toLocaleString('es-MX')}`} />
+                                                    <YAxis dataKey="name" type="category" width={150} tick={{fontSize: 12}} />
+                                                    <Tooltip formatter={(value) => `$${value.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`} />
+                                                    <Legend />
+                                                    <Bar dataKey="value" name="Ingresos" fill="#3b82f6" />
+                                                </BarChart>
+                                            </ResponsiveContainer>
+                                        ))}
                                     </div>
                                     <div>
                                         <h3 className="font-semibold mb-4 flex items-center"><PieChartIcon className="mr-2 h-5 w-5 text-purple-500" />Distribución de Ingresos</h3>
-                                        <ResponsiveContainer width="100%" height={400}>
-                                            <PieChart>
-                                                <Pie
-                                                    data={chartData}
-                                                    cx="50%"
-                                                    cy="50%"
-                                                    labelLine={false}
-                                                    outerRadius={150}
-                                                    fill="#8884d8"
-                                                    dataKey="value"
-                                                    nameKey="name"
-                                                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                                                >
-                                                    {chartData.map((entry, index) => (
-                                                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                                    ))}
-                                                </Pie>
-                                                <Tooltip formatter={(value) => `$${value.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`} />
-                                                <Legend />
-                                            </PieChart>
-                                        </ResponsiveContainer>
+                                        {renderWithRecharts('h-[400px]', ({ ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend }) => (
+                                            <ResponsiveContainer width="100%" height={400}>
+                                                <PieChart>
+                                                    <Pie
+                                                        data={chartData}
+                                                        cx="50%"
+                                                        cy="50%"
+                                                        labelLine={false}
+                                                        outerRadius={150}
+                                                        fill="#8884d8"
+                                                        dataKey="value"
+                                                        nameKey="name"
+                                                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                                                    >
+                                                        {chartData.map((entry, index) => (
+                                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                                        ))}
+                                                    </Pie>
+                                                    <Tooltip formatter={(value) => `$${value.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`} />
+                                                    <Legend />
+                                                </PieChart>
+                                            </ResponsiveContainer>
+                                        ))}
                                     </div>
                                 </div>
                                 {groupBy === 'day' && (
                                      <div className="mt-8">
                                         <h3 className="font-semibold mb-4 flex items-center"><LineChartIcon className="mr-2 h-5 w-5 text-teal-500" />Tendencia de Ingresos Diarios</h3>
-                                        <ResponsiveContainer width="100%" height={300}>
-                                            <LineChart data={chartData.sort((a, b) => new Date(a.name) - new Date(b.name))}>
-                                                <CartesianGrid strokeDasharray="3 3" />
-                                                <XAxis dataKey="name" tickFormatter={(str) => format(new Date(str), 'MMM d', { locale: es })} />
-                                                <YAxis tickFormatter={(value) => `$${value.toLocaleString()}`} />
-                                                <Tooltip formatter={(value) => `$${value.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`} />
-                                                <Legend />
-                                                <Line type="monotone" dataKey="value" name="Ingresos" stroke="#14b8a6" strokeWidth={2} />
-                                            </LineChart>
-                                        </ResponsiveContainer>
+                                        {renderWithRecharts('h-[300px]', ({ ResponsiveContainer, LineChart, Line, CartesianGrid, Tooltip, Legend, XAxis, YAxis }) => (
+                                            <ResponsiveContainer width="100%" height={300}>
+                                                <LineChart data={chartData.slice().sort((a, b) => new Date(a.name) - new Date(b.name))}>
+                                                    <CartesianGrid strokeDasharray="3 3" />
+                                                    <XAxis dataKey="name" tickFormatter={(str) => format(new Date(str), 'MMM d', { locale: es })} />
+                                                    <YAxis tickFormatter={(value) => `$${value.toLocaleString()}`} />
+                                                    <Tooltip formatter={(value) => `$${value.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`} />
+                                                    <Legend />
+                                                    <Line type="monotone" dataKey="value" name="Ingresos" stroke="#14b8a6" strokeWidth={2} />
+                                                </LineChart>
+                                            </ResponsiveContainer>
+                                        ))}
                                     </div>
                                 )}
                                 <div className="mt-8">

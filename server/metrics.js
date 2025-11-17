@@ -71,9 +71,11 @@ const dbPoolWaiting = new client.Gauge({ name: 'db_pool_waiting_clients', help: 
 const tokenRevocations = new client.Counter({ name: 'auth_token_revocations_total', help: 'Total de revocaciones explícitas (logout, admin, blacklist)' , labelNames: ['reason']});
 const tokenVersionMismatch = new client.Counter({ name: 'auth_token_version_mismatch_total', help: 'Tokens rechazados por versionado (token_version desincronizado)' });
 const tokenJtiBlacklistHits = new client.Counter({ name: 'auth_token_jti_blacklist_hits_total', help: 'Tokens rechazados por jti en blacklist' });
+const tenantPoolEvictions = new client.Counter({ name: 'tenant_pool_evictions_total', help: 'Cantidad de pools de tenants cerrados por límite/rotación', labelNames: ['reason'] });
 
 function incRevocation(reason='unknown'){ tokenRevocations.inc({ reason }); }
 function incVersionMismatch(){ tokenVersionMismatch.inc(); }
 function incJtiBlacklistHit(){ tokenJtiBlacklistHits.inc(); }
+function incTenantPoolEviction(reason='unknown'){ tenantPoolEvictions.inc({ reason }); }
 
-module.exports = { metricsMiddleware, metricsEndpoint, incRevocation, incVersionMismatch, incJtiBlacklistHit };
+module.exports = { metricsMiddleware, metricsEndpoint, incRevocation, incVersionMismatch, incJtiBlacklistHit, incTenantPoolEviction };

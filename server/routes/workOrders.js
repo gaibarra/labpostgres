@@ -25,23 +25,133 @@ async function ensureWorkOrderColumns(req) {
     workOrderColumns = new Set(rows.map(r => r.column_name));
   } catch (e) {
     console.warn('[work_orders] No se pudieron detectar columnas, usando conjunto mínimo por defecto.', e.code || e.message);
-    // Fallback ampliado para soportar nuevos campos usados por el frontend
+    // Fallback mínimo para no romper listados aunque la introspección falle (p.ej., falta de permisos).
     workOrderColumns = new Set([
       'id','folio','patient_id','referring_entity_id','referring_doctor_id','order_date','status',
-      'selected_items','subtotal','descuento','anticipo','total_price','notas','results','validation_notes',
-      'results_finalized','receipt_generated','institution_reference','created_at'
+      'selected_items','subtotal','descuento','anticipo','total_price','notas','created_at'
     ]);
   }
   return workOrderColumns;
 }
 
-// List work orders (basic, limit for now)
-// Basic listing (will later add filtering/pagination). Includes recent first.
+function assertSchemaColumns(cols, payload, ctx = 'work_orders') {
+  const critical = ['institution_reference', 'results', 'validation_notes'];
+  const missing = critical.filter((field) => Object.prototype.hasOwnProperty.call(payload || {}, field) && !cols.has(field));
+  if (missing.length) {
+    throw new AppError(400,
+      `Campos faltantes en ${ctx}: ${missing.join(', ')}. Ejecuta las migraciones pendientes.`,
+      'WORK_ORDER_SCHEMA_OUT_OF_SYNC'
+    );
+  }
+}
+
+function invalidateWorkOrderColumns() {
+  workOrderColumns = null;
+}
+
+// List work orders with pagination + search (patient-aware)
 router.get('/', auth, async (req, res, next) => {
+  const parsePositiveInt = (val, fallback) => {
+    const parsed = parseInt(val, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  };
+  const maxPageSize = 1000;
+  const defaultPageSize = 50;
+  const page = Math.max(parsePositiveInt(req.query.page, 1), 1);
+  const rawSize = parsePositiveInt(req.query.pageSize, defaultPageSize);
+  const pageSize = Math.min(Math.max(rawSize, 1), maxPageSize);
+  const offset = (page - 1) * pageSize;
+  const searchTerm = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+  const params = [];
+  const filters = [];
+
+  if (searchTerm) {
+    const collapsed = searchTerm.replace(/\s+/g, ' ').trim();
+    const normalizedLower = `%${collapsed.toLowerCase()}%`;
+    params.push(normalizedLower);
+    const lowerIdx = params.length;
+    const rawPattern = `%${collapsed}%`;
+    params.push(rawPattern);
+    const rawIdx = params.length;
+    const searchClauses = [
+      `LOWER(COALESCE(wo.folio,'')) LIKE $${lowerIdx}`,
+      `LOWER(COALESCE(wo.status,'')) LIKE $${lowerIdx}`,
+      `LOWER(COALESCE(wo.institution_reference,'')) LIKE $${lowerIdx}`,
+      `LOWER(COALESCE(patient.patient_json->>'full_name','')) LIKE $${lowerIdx}`,
+      `LOWER(CONCAT_WS(' ', NULLIF(patient.patient_json->>'first_name',''), NULLIF(patient.patient_json->>'last_name',''))) LIKE $${lowerIdx}`,
+      `LOWER(COALESCE(patient.patient_json->>'external_id','')) LIKE $${lowerIdx}`,
+      `LOWER(COALESCE(patient.patient_json->>'document_number','')) LIKE $${lowerIdx}`,
+      `COALESCE(patient.patient_json->>'phone','') ILIKE $${rawIdx}`,
+      `COALESCE(patient.patient_json->>'phone_number','') ILIKE $${rawIdx}`
+    ];
+    const digitsOnly = collapsed.replace(/\D+/g, '');
+    if (digitsOnly) {
+      params.push(`%${digitsOnly}%`);
+      const digitsIdx = params.length;
+      searchClauses.push(`REGEXP_REPLACE(COALESCE(patient.patient_json->>'phone',''),'\\D','','g') LIKE $${digitsIdx}`);
+      searchClauses.push(`REGEXP_REPLACE(COALESCE(patient.patient_json->>'phone_number',''),'\\D','','g') LIKE $${digitsIdx}`);
+    }
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (uuidRegex.test(collapsed)) {
+      params.push(collapsed);
+      const uuidIdx = params.length;
+      searchClauses.push(`wo.id::text = $${uuidIdx}`);
+      searchClauses.push(`wo.patient_id::text = $${uuidIdx}`);
+    }
+    if (/^\d+$/.test(collapsed)) {
+      params.push(collapsed);
+      const numIdx = params.length;
+      searchClauses.push(`wo.order_number::text = $${numIdx}`);
+    }
+    filters.push(`(${searchClauses.join(' OR ')})`);
+  }
+
+  const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
+  const fromClause = `
+    FROM work_orders wo
+    LEFT JOIN LATERAL (
+      SELECT to_jsonb(p.*) AS patient_json
+      FROM patients p
+      WHERE p.id = wo.patient_id
+    ) patient ON true
+  `;
   try {
-    const { rows } = await activePool(req).query('SELECT * FROM work_orders ORDER BY order_date DESC, created_at DESC LIMIT 200');
-    res.json(rows);
-  } catch (e) { console.error(e); next(new AppError(500,'Error listando órdenes','ORDER_LIST_FAIL')); }
+    const ap = activePool(req);
+    const countSql = `SELECT COUNT(*)::int AS total ${fromClause} ${whereClause}`;
+    const { rows: countRows } = await ap.query(countSql, params);
+    const total = countRows[0]?.total || 0;
+    const orderSql = `
+      SELECT wo.*,
+             patient.patient_json AS patient_snapshot,
+             COALESCE(
+               NULLIF(patient.patient_json->>'full_name',''),
+               NULLIF(CONCAT_WS(' ', NULLIF(patient.patient_json->>'first_name',''), NULLIF(patient.patient_json->>'last_name','')), ''),
+               NULLIF(patient.patient_json->>'external_id',''),
+               NULLIF(patient.patient_json->>'document_number','')
+             ) AS patient_name
+      ${fromClause}
+      ${whereClause}
+      ORDER BY wo.order_date DESC NULLS LAST, wo.created_at DESC NULLS LAST
+      LIMIT $${params.length + 1}
+      OFFSET $${params.length + 2}
+    `;
+    const { rows } = await ap.query(orderSql, [...params, pageSize, offset]);
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    res.json({
+      data: rows,
+      meta: {
+        page,
+        pageSize,
+        total,
+        totalPages,
+        hasMore: page * pageSize < total,
+        search: searchTerm || null
+      }
+    });
+  } catch (e) {
+    console.error('[ORDER_LIST_FAIL]', e);
+    next(new AppError(500,'Error listando órdenes','ORDER_LIST_FAIL'));
+  }
 });
 
 // Generate next folio: pattern YYYYMMDD-XXX
@@ -86,42 +196,16 @@ router.get('/recent', auth, requirePermission('work_orders','read'), async (req,
 router.post('/', auth, validate(createWorkOrderSchema), audit('create','work_order', (req,r)=>r.locals?.createdId, (req)=>({ body: req.body })), async (req, res, next) => {
   const { folio, patient_id, referring_entity_id, referring_doctor_id, institution_reference, status, selected_items, total_price, subtotal, descuento, anticipo, notas, results, validation_notes, order_date } = req.body || {};
   try {
-    let cols = await ensureWorkOrderColumns(req);
-    // Crear columna institution_reference si el payload la trae y no existe todavía
-    if (institution_reference !== undefined && !cols.has('institution_reference')) {
-      try {
-        await activePool(req).query('ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS institution_reference text');
-        workOrderColumns = null; // invalidar cache
-        cols = await ensureWorkOrderColumns(req); // refrescar set local
-        console.log('[WORK_ORDERS_ADD_COLUMN] institution_reference añadida');
-      } catch (e) { console.warn('[WORK_ORDERS_ADD_COLUMN_FAIL] institution_reference', e.code || e.message); }
-    }
-    // Crear columna results jsonb si llega en el payload y no existe
-    if (results !== undefined && !cols.has('results')) {
-      try {
-        await activePool(req).query('ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS results jsonb');
-        workOrderColumns = null;
-        cols = await ensureWorkOrderColumns(req);
-        console.log('[WORK_ORDERS_ADD_COLUMN] results añadida');
-      } catch (e) { console.warn('[WORK_ORDERS_ADD_COLUMN_FAIL] results', e.code || e.message); }
-    }
-    // Crear columna validation_notes si llega y no existe
-    if (validation_notes !== undefined && !cols.has('validation_notes')) {
-      try {
-        await activePool(req).query('ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS validation_notes text');
-        workOrderColumns = null;
-        cols = await ensureWorkOrderColumns(req);
-        console.log('[WORK_ORDERS_ADD_COLUMN] validation_notes añadida');
-      } catch (e) { console.warn('[WORK_ORDERS_ADD_COLUMN_FAIL] validation_notes', e.code || e.message); }
-    }
+    const cols = await ensureWorkOrderColumns(req);
+    assertSchemaColumns(cols, req.body);
     const jsonbFields = new Set(['selected_items','results']);
     // Campos posibles que podríamos insertar desde el payload
     const possibleFields = {
       folio,
       patient_id,
       referring_entity_id,
-  referring_doctor_id,
-  institution_reference,
+      referring_doctor_id,
+      institution_reference,
       order_date,
       status,
       selected_items,
@@ -156,47 +240,9 @@ router.post('/', auth, validate(createWorkOrderSchema), audit('create','work_ord
     res.locals.createdId = created.id;
     res.status(201).json(created);
   } catch (e) {
+    invalidateWorkOrderColumns();
     console.error('[ORDER_CREATE_FAIL]', e);
-    // Intento de fallback mínimo si falló por columnas (por ejemplo, migraciones no corridas)
-    try {
-      const cols = await ensureWorkOrderColumns(req);
-      const jsonbFields = new Set(['selected_items','results']);
-      const fallbackCandidates = {
-        folio,
-        patient_id,
-        referring_entity_id,
-  referring_doctor_id,
-  institution_reference,
-        order_date,
-        status,
-        selected_items,
-        total_price,
-      };
-      const names = [];
-      const values = [];
-      const placeholders = [];
-      Object.entries(fallbackCandidates).forEach(([k, v]) => {
-        if (cols.has(k)) {
-          names.push(k);
-          if (jsonbFields.has(k)) {
-            values.push(v == null ? null : JSON.stringify(v));
-            placeholders.push(`$${values.length}::jsonb`);
-          } else {
-            values.push(v ?? null);
-            placeholders.push(`$${values.length}`);
-          }
-        }
-      });
-      if (!names.length) throw new Error('No fallback columns available');
-      const sql = `INSERT INTO work_orders(${names.join(',')}) VALUES(${placeholders.join(',')}) RETURNING *`;
-      const { rows } = await activePool(req).query(sql, values);
-      const created = rows[0];
-      res.locals.createdId = created.id;
-      return res.status(201).json(created);
-    } catch (e2) {
-      console.error('[ORDER_CREATE_FALLBACK_FAIL]', e2);
-      return next(new AppError(500,'Error creando orden','ORDER_CREATE_FAIL'));
-    }
+    return next(new AppError(500,'Error creando orden','ORDER_CREATE_FAIL'));
   }
 });
 
@@ -215,33 +261,9 @@ router.put('/:id', auth, (req, res, next) => {
   return permMw(req, res, next);
 }, validate(updateWorkOrderSchema), audit('update','work_order', req=>req.params.id, (req)=>({ body: req.body })), async (req, res, next) => {
   const attempt = async (retry=false) => {
-    let cols = await ensureWorkOrderColumns(req);
+    const cols = await ensureWorkOrderColumns(req);
     if (retry) console.warn('[WORK_ORDER_UPDATE_RETRY] refreshed columns:', Array.from(cols));
-    // Si llega institution_reference y la columna falta, intentar crearla on-demand
-    if (Object.prototype.hasOwnProperty.call(req.body,'institution_reference') && !cols.has('institution_reference')) {
-      try {
-        await activePool(req).query('ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS institution_reference text');
-        workOrderColumns = null;
-        cols = await ensureWorkOrderColumns(req);
-        console.log('[WORK_ORDERS_ADD_COLUMN] institution_reference añadida durante UPDATE');
-      } catch(e){ console.warn('[WORK_ORDERS_ADD_COLUMN_FAIL][UPDATE]', e.code || e.message); }
-    }
-    if (Object.prototype.hasOwnProperty.call(req.body,'results') && !cols.has('results')) {
-      try {
-        await activePool(req).query('ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS results jsonb');
-        workOrderColumns = null;
-        cols = await ensureWorkOrderColumns(req);
-        console.log('[WORK_ORDERS_ADD_COLUMN] results añadida durante UPDATE');
-      } catch(e){ console.warn('[WORK_ORDERS_ADD_COLUMN_FAIL][UPDATE][results]', e.code || e.message); }
-    }
-    if (Object.prototype.hasOwnProperty.call(req.body,'validation_notes') && !cols.has('validation_notes')) {
-      try {
-        await activePool(req).query('ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS validation_notes text');
-        workOrderColumns = null;
-        cols = await ensureWorkOrderColumns(req);
-        console.log('[WORK_ORDERS_ADD_COLUMN] validation_notes añadida durante UPDATE');
-      } catch(e){ console.warn('[WORK_ORDERS_ADD_COLUMN_FAIL][UPDATE][validation_notes]', e.code || e.message); }
-    }
+    assertSchemaColumns(cols, req.body);
     const fields = ['folio','patient_id','referring_entity_id','referring_doctor_id','institution_reference','order_date','status','selected_items','subtotal','descuento','anticipo','total_price','notas','results','validation_notes','results_finalized','receipt_generated'];
     const updates = [];
     const values = [];
@@ -274,9 +296,9 @@ router.put('/:id', auth, (req, res, next) => {
     const updated = await attempt(false);
     if (updated) return res.json(updated);
   } catch (e) {
-    if (e.code === '42703') { // columna no existe -> refrescar caché y reintentar sin ese campo
+    if (e.code === '42703') {
       console.warn('[WORK_ORDER_UPDATE_RETRY_COLUMN]', e.column || e.message);
-      workOrderColumns = null; // invalidar caché
+      invalidateWorkOrderColumns();
       try {
         const updated = await attempt(true);
         if (updated) return res.json(updated);

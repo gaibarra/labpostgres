@@ -1,26 +1,27 @@
 import React, { useEffect, useState } from 'react';
-    import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-    import { Button } from '@/components/ui/button';
-    import { Loader2, FileText } from 'lucide-react';
-    import jsPDF from 'jspdf';
-    import autoTable from 'jspdf-autotable';
+  import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+  import { Button } from '@/components/ui/button';
+  import { Loader2, FileText } from 'lucide-react';
+  import { loadJsPdf } from '@/lib/dynamicImports';
 
     const ReferrerPriceListPDFModal = ({ isOpen, onOpenChange, referrer, studies, packagesData }) => {
       const [pdfUrl, setPdfUrl] = useState('');
       const [isLoading, setIsLoading] = useState(false);
 
       useEffect(() => {
-        if (isOpen && referrer && studies && packagesData) {
+        if (!(isOpen && referrer && studies && packagesData)) return undefined;
+        let isMounted = true;
+        let objectUrl = null;
+        const generatePriceList = async () => {
           setIsLoading(true);
           try {
+            const { jsPDF, autoTable } = await loadJsPdf();
+            if (!isMounted) return;
             const doc = new jsPDF();
-            
             doc.setFontSize(18);
             doc.text(`Lista de Precios: ${referrer.name}`, 14, 22);
             doc.setFontSize(11);
             doc.setTextColor(100);
-
-            const particularPriceList = referrer.name === 'Particular' ? referrer.listaprecios : null;
 
             const studyData = (referrer.listaprecios?.studies || [])
               .map(priceItem => {
@@ -43,7 +44,7 @@ import React, { useEffect, useState } from 'react';
               doc.text("Estudios", 14, startY);
               startY += 6;
               autoTable(doc, {
-                startY: startY,
+                startY,
                 head: [['Clave', 'Nombre', 'Precio']],
                 body: studyData,
                 theme: 'striped',
@@ -57,33 +58,36 @@ import React, { useEffect, useState } from 'react';
               doc.text("Paquetes", 14, startY);
               startY += 6;
               autoTable(doc, {
-                startY: startY,
+                startY,
                 head: [['Nombre', 'Precio']],
                 body: packageData,
                 theme: 'striped',
                 headStyles: { fillColor: [41, 128, 185] },
               });
             }
-            
-            if(studyData.length === 0 && packageData.length === 0) {
-                doc.setFontSize(12);
-                doc.text("Este referente no tiene precios asignados.", 14, 40);
+
+            if (studyData.length === 0 && packageData.length === 0) {
+              doc.setFontSize(12);
+              doc.text("Este referente no tiene precios asignados.", 14, 40);
             }
 
             const pdfBlob = doc.output('blob');
-            const url = URL.createObjectURL(pdfBlob);
-            setPdfUrl(url);
-
+            objectUrl = URL.createObjectURL(pdfBlob);
+            setPdfUrl(objectUrl);
           } catch (error) {
             console.error("Error generating PDF:", error);
+            setPdfUrl('');
           } finally {
-            setIsLoading(false);
+            if (isMounted) setIsLoading(false);
           }
-        }
+        };
+
+        generatePriceList();
 
         return () => {
-          if (pdfUrl) {
-            URL.revokeObjectURL(pdfUrl);
+          isMounted = false;
+          if (objectUrl) {
+            try { URL.revokeObjectURL(objectUrl); } catch (_) { /* ignore */ }
           }
         };
       }, [isOpen, referrer, studies, packagesData]);

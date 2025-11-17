@@ -34,9 +34,11 @@ export const useOrderModals = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const getDetails = useCallback((order) => {
-    if (!order || !order.patient_id) return { patient: null, referrer: null };
-    const patient = patients.find(p => p.id === order.patient_id);
-    const referrer = referrers.find(r => r.id === order.referring_entity_id);
+    if (!order) return { patient: null, referrer: null };
+    const patientFromList = order.patient_id ? patients.find(p => p.id === order.patient_id) : null;
+    const snapshotPatient = order.patient || order.patient_snapshot || null;
+    const patient = patientFromList || snapshotPatient || null;
+    const referrer = referrers.find(r => r.id === order.referring_entity_id) || null;
     return { patient, referrer };
   }, [patients, referrers]);
 

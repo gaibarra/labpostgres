@@ -19,6 +19,7 @@ const BillingReport = () => {
   const [reportData, setReportData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isFetchingInstitutions, setIsFetchingInstitutions] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
 
   const fetchInstitutions = useCallback(async () => {
     setIsFetchingInstitutions(true);
@@ -93,12 +94,20 @@ const BillingReport = () => {
     toast({ title: "Reporte Generado", description: `Se encontraron ${orders.length} órdenes.` });
   };
 
-  const handleDownloadPDF = () => {
-    if (!reportData) {
+  const handleDownloadPDF = async () => {
+    if (!reportData || reportData.orders.length === 0) {
       toast({ title: "Sin datos", description: "Genera un reporte antes de descargarlo.", variant: "destructive" });
       return;
     }
-    generateBillingReportPDF(reportData);
+    try {
+      setIsExporting(true);
+      await generateBillingReportPDF(reportData);
+    } catch (error) {
+      console.error('No se pudo generar el PDF de facturación', error);
+      toast({ title: 'Error al exportar', description: 'Intenta nuevamente en unos segundos.', variant: 'destructive' });
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (
@@ -185,8 +194,8 @@ const BillingReport = () => {
               )}
             </CardContent>
             <CardFooter className="flex justify-end">
-              <Button onClick={handleDownloadPDF} variant="outline" className="border-purple-500 text-purple-500 hover:bg-purple-500/10" disabled={!reportData || reportData.orders.length === 0}>
-                <Download className="mr-2 h-4 w-4" /> Descargar PDF
+              <Button onClick={handleDownloadPDF} variant="outline" className="border-purple-500 text-purple-500 hover:bg-purple-500/10" disabled={!reportData || reportData.orders.length === 0 || isExporting}>
+                {isExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />} {isExporting ? 'Generando...' : 'Descargar PDF'}
               </Button>
             </CardFooter>
           </Card>

@@ -1,12 +1,7 @@
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-// Debug: verify plugin import mode
-// (Will be removed once stable)
-// eslint-disable-next-line no-console
-console.debug('[receiptGenerator] Loaded module. typeof autoTable =', typeof autoTable);
-    import { format, isValid } from 'date-fns';
+import { format, isValid } from 'date-fns';
     import { apiClient } from '@/lib/apiClient';
     import { amountToWords } from '@/lib/amountToWords';
+import { loadJsPdf } from '@/lib/dynamicImports';
 
     const getDetailedItems = (orderItems) => {
       return (orderItems || []).map(item => ({
@@ -50,9 +45,8 @@ console.debug('[receiptGenerator] Loaded module. typeof autoTable =', typeof aut
         // fallback to defaults silently
       }
 
+  const { jsPDF, autoTable } = await loadJsPdf();
   const doc = new jsPDF();
-  // eslint-disable-next-line no-console
-  console.debug('[receiptGenerator] New jsPDF instance created. Has doc.autoTable?', typeof doc.autoTable);
       doc.setFontSize(18);
       doc.text(labInfo.razonSocial || labInfo.name || "Laboratorio Clínico", 14, 22);
       doc.setFontSize(10);
@@ -86,7 +80,7 @@ console.debug('[receiptGenerator] Loaded module. typeof autoTable =', typeof aut
       });
 
       if (tableRows.length > 0) {
-  if (typeof autoTable !== 'function') {
+        if (typeof autoTable !== 'function') {
           // Fallback: plugin failed to load; avoid crashing and still return a minimal PDF
           console.error('jspdf-autotable plugin not loaded; skipping items table');
         } else {
@@ -97,8 +91,6 @@ console.debug('[receiptGenerator] Loaded module. typeof autoTable =', typeof aut
           theme: 'striped',
           headStyles: { fillColor: [22, 160, 133] },
           });
-          // eslint-disable-next-line no-console
-          console.debug('[receiptGenerator] Table generated. lastAutoTable?', !!doc.lastAutoTable);
           finalY = doc.lastAutoTable.finalY + 10;
         }
       } else {

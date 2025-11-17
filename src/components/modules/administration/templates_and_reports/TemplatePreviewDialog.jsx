@@ -33,8 +33,10 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
       const fetchPatients = useCallback(async () => {
         setIsFetchingData(true);
         try {
-          const data = await apiClient.get('/patients');
-          setPatients((data || []).map(p => ({ value: p.id, label: p.full_name })));
+          const params = new URLSearchParams({ page: '1', pageSize: '200' });
+          const data = await apiClient.get(`/patients?${params.toString()}`);
+          const rows = Array.isArray(data?.data) ? data.data : (Array.isArray(data) ? data : []);
+          setPatients(rows.map(p => ({ value: p.id, label: p.full_name })));
         } catch(e) {
           toast({ title: 'Error', description: 'No se pudieron cargar los pacientes.', variant: 'destructive' });
         } finally {
@@ -46,9 +48,11 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
         if (!patientId) { setWorkOrders([]); return; }
         setIsFetchingData(true);
         try {
-          // Basic fetch all & filter client-side until backend filter endpoint is added
-          const data = await apiClient.get('/work-orders');
-          setWorkOrders((data || []).filter(w=>w.patient_id === patientId).map(wo => ({ value: wo.id, label: wo.folio })));
+          const params = new URLSearchParams({ page: '1', pageSize: '200', search: patientId });
+          const data = await apiClient.get(`/work-orders?${params.toString()}`);
+          const rows = Array.isArray(data?.data) ? data.data : (Array.isArray(data) ? data : []);
+          const onlyPatient = rows.filter(w => String(w.patient_id) === String(patientId));
+          setWorkOrders(onlyPatient.map(wo => ({ value: wo.id, label: wo.folio })));
         } catch(e) {
           toast({ title: 'Error', description: 'No se pudieron cargar las órdenes de trabajo.', variant: 'destructive' });
         } finally { setIsFetchingData(false); }

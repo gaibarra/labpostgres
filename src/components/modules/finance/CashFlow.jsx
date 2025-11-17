@@ -8,13 +8,14 @@ import { Banknote, ArrowUpCircle, ArrowDownCircle, Loader2, AlertCircle } from '
 import { useToast } from "@/components/ui/use-toast";
 import { format, startOfDay, endOfDay, eachDayOfInterval, parseISO } from 'date-fns';
 import { apiClient } from '@/lib/apiClient';
-import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
+import { useLazyRecharts } from '@/hooks/useLazyRecharts';
 
 const CashFlow = () => {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [dateRange, setDateRange] = useState({ from: new Date(new Date().setDate(new Date().getDate() - 30)), to: new Date() });
   const [transactions, setTransactions] = useState([]);
+  const { recharts, isLoading: isChartLibLoading, error: chartLibError } = useLazyRecharts();
   
   const fetchTransactions = useCallback(async () => {
     if (!dateRange?.from || !dateRange?.to) return;
@@ -99,6 +100,37 @@ const CashFlow = () => {
 
   const formatCurrency = (value) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(value);
 
+  const renderCashFlowChart = () => {
+    if (isChartLibLoading) {
+      return (
+        <div className="flex h-[300px] w-full items-center justify-center text-muted-foreground">
+          Cargando gráficas...
+        </div>
+      );
+    }
+    if (chartLibError || !recharts) {
+      return (
+        <div className="flex h-[300px] w-full items-center justify-center text-center text-sm text-red-500">
+          No se pudo cargar la librería de gráficas.
+        </div>
+      );
+    }
+    const { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } = recharts;
+    return (
+      <ResponsiveContainer>
+        <LineChart data={chartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(128, 128, 128, 0.3)" />
+          <XAxis dataKey="date" />
+          <YAxis tickFormatter={formatCurrency} />
+          <Tooltip contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.8)', border: '1px solid #ccc' }} />
+          <Legend />
+          <Line type="monotone" dataKey="Ingresos" stroke="#22c55e" strokeWidth={2} />
+          <Line type="monotone" dataKey="Gastos" stroke="#ef4444" strokeWidth={2} />
+        </LineChart>
+      </ResponsiveContainer>
+    );
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -165,17 +197,7 @@ const CashFlow = () => {
             </CardHeader>
             <CardContent>
               <div style={{ width: '100%', height: 300 }}>
-                <ResponsiveContainer>
-                  <LineChart data={chartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(128, 128, 128, 0.3)" />
-                    <XAxis dataKey="date" />
-                    <YAxis tickFormatter={formatCurrency} />
-                    <Tooltip contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.8)', border: '1px solid #ccc' }} />
-                    <Legend />
-                    <Line type="monotone" dataKey="Ingresos" stroke="#22c55e" strokeWidth={2} />
-                    <Line type="monotone" dataKey="Gastos" stroke="#ef4444" strokeWidth={2} />
-                  </LineChart>
-                </ResponsiveContainer>
+                {renderCashFlowChart()}
               </div>
             </CardContent>
           </Card>

@@ -8,6 +8,29 @@
 // Converted to CommonJS to match rest of codebase.
 const { Pool } = require('pg');
 
+const DEFAULT_CACHE_LIMIT = 20;
+const DEFAULT_CACHE_TTL_MS = 60_000; // 1 min metadata refresh
+const MAX_CACHE_SIZE = Math.max(parseInt(process.env.TENANT_POOL_CACHE_MAX || `${DEFAULT_CACHE_LIMIT}`, 10) || DEFAULT_CACHE_LIMIT, 1);
+const CACHE_TTL_MS = Math.max(parseInt(process.env.TENANT_POOL_CACHE_TTL_MS || `${DEFAULT_CACHE_TTL_MS}`, 10) || DEFAULT_CACHE_TTL_MS, 5_000);
+
+let metricsModule = null;
+function emitEvictionMetric(reason) {
+  if (!metricsModule) {
+    try {
+      metricsModule = require('../metrics');
+    } catch (err) {
+      metricsModule = {};
+    }
+  }
+  if (typeof metricsModule.incTenantPoolEviction === 'function') {
+    try {
+      metricsModule.incTenantPoolEviction(reason);
+    } catch (_) {
+      /* ignore metric errors */
+    }
+  }
+}
+
 // Master DB config (DO NOT point these to a tenant DB)
 const masterPool = new Pool({
   host: process.env.MASTER_PGHOST || process.env.PGHOST,
@@ -19,9 +42,54 @@ const masterPool = new Pool({
   idleTimeoutMillis: 30000
 });
 
-// Cache: tenantId -> { pool, dbName, status, dbVersion }
+// Cache: tenantId -> { pool, dbName, status, dbVersion, cachedAt, lastUsed }
 const tenantCache = new Map();
-const CACHE_TTL_MS = 60_000; // 1 min basic TTL (can be tuned)
+const evictionStats = { total: 0, byReason: {} };
+
+function recordEviction(reason, tenantId, entry) {
+  evictionStats.total += 1;
+  evictionStats.byReason[reason] = (evictionStats.byReason[reason] || 0) + 1;
+  emitEvictionMetric(reason);
+  if (entry?.pool) {
+    entry.pool.end().catch(err => {
+      console.warn('[tenantResolver] pool.end() falló para', tenantId, reason, err?.message || err);
+    });
+  }
+}
+
+function evictTenantEntry(tenantId, reason = 'lru') {
+  const entry = tenantCache.get(tenantId);
+  if (!entry) return;
+  tenantCache.delete(tenantId);
+  recordEviction(reason, tenantId, entry);
+}
+
+function touchTenantEntry(tenantId, entry) {
+  entry.lastUsed = Date.now();
+  tenantCache.delete(tenantId);
+  tenantCache.set(tenantId, entry);
+}
+
+function enforcePoolLimit(guardTenantId) {
+  if (!Number.isFinite(MAX_CACHE_SIZE) || MAX_CACHE_SIZE <= 0) return;
+  while (tenantCache.size > MAX_CACHE_SIZE) {
+    const iterator = tenantCache.entries().next();
+    if (iterator.done) break;
+    const [oldestId] = iterator.value;
+    if (oldestId === guardTenantId && tenantCache.size === 1) break;
+    evictTenantEntry(oldestId, 'lru');
+  }
+}
+
+function getTenantPoolStats() {
+  return {
+    size: tenantCache.size,
+    maxSize: MAX_CACHE_SIZE,
+    ttlMs: CACHE_TTL_MS,
+    evictions: evictionStats.total,
+    evictionsByReason: { ...evictionStats.byReason }
+  };
+}
 
 async function fetchTenantRecord(tenantId) {
   const { rows } = await masterPool.query(
@@ -47,14 +115,29 @@ function buildTenantPool(dbName) {
 }
 
 async function getTenantPool(tenantId) {
-  const cached = tenantCache.get(tenantId);
+  let cached = tenantCache.get(tenantId);
   const now = Date.now();
   if (cached && (now - cached.cachedAt) < CACHE_TTL_MS) {
+    touchTenantEntry(tenantId, cached);
     return cached.pool;
   }
   const rec = await fetchTenantRecord(tenantId);
-  const pool = cached?.pool || buildTenantPool(rec.db_name);
-  tenantCache.set(tenantId, { pool, dbName: rec.db_name, status: rec.status, dbVersion: rec.db_version, cachedAt: now });
+  if (cached && cached.dbName === rec.db_name && cached.status === rec.status) {
+    cached.cachedAt = now;
+    cached.dbVersion = rec.db_version;
+    touchTenantEntry(tenantId, cached);
+    return cached.pool;
+  }
+  if (cached) {
+    const reason = cached.dbName !== rec.db_name ? 'db_changed' : 'status_changed';
+    evictTenantEntry(tenantId, reason);
+    cached = null;
+  }
+  const pool = buildTenantPool(rec.db_name);
+  const entry = { pool, dbName: rec.db_name, status: rec.status, dbVersion: rec.db_version, cachedAt: now, lastUsed: now };
+  tenantCache.set(tenantId, entry);
+  touchTenantEntry(tenantId, entry);
+  enforcePoolLimit(tenantId);
   return pool;
 }
 
@@ -122,7 +205,12 @@ function tenantMiddleware() {
 // Graceful shutdown helper
 async function closeAllTenantPools() {
   const closes = [];
-  for (const { pool } of tenantCache.values()) closes.push(pool.end());
+  for (const [tenantId, entry] of tenantCache.entries()) {
+    closes.push(entry.pool.end().catch(err => {
+      console.warn('[tenantResolver] pool.end() falló en shutdown para', tenantId, err?.message || err);
+    }));
+  }
+  tenantCache.clear();
   await Promise.allSettled(closes);
   await masterPool.end();
 }
@@ -155,5 +243,6 @@ module.exports = {
     const rec = await fetchTenantRecord(tenantId);
     return { id: rec.id, slug: rec.slug, dbName: rec.db_name, status: rec.status, dbVersion: rec.db_version };
   },
-  __getCache: () => tenantCache
+  __getCache: () => tenantCache,
+  getTenantPoolStats
 };
