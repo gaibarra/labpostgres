@@ -42,11 +42,17 @@ router.get('/', auth, requirePermission('packages','read'), async (req,res,next)
 router.get('/detailed', auth, requirePermission('packages','read'), async (req,res,next)=>{
   try {
     const { limit, offset } = parsePagination(req.query);
+    const pool = activePool(req);
     const { clause, params } = buildSearchFilter(req.query.search,['name','description']);
     const where = clause ? ` WHERE ${clause}` : '';
     // Detectar si existe la tabla items
-    const { rows: existsRows } = await activePool(req).query(`SELECT 1 FROM information_schema.tables WHERE table_name='analysis_package_items' LIMIT 1`);
+    const { rows: existsRows } = await pool.query(`SELECT 1 FROM information_schema.tables WHERE table_name='analysis_package_items' LIMIT 1`);
     const hasItems = existsRows.length === 1;
+    let hasPosition = false;
+    if (hasItems) {
+      const { rows: colRows } = await pool.query(`SELECT 1 FROM information_schema.columns WHERE table_name='analysis_package_items' AND column_name='position' LIMIT 1`);
+      hasPosition = colRows.length === 1;
+    }
     let data = [];
     let total = 0;
     if (hasItems) {
@@ -59,9 +65,9 @@ router.get('/detailed', auth, requirePermission('packages','read'), async (req,r
               'id', i.id,
               'item_id', i.item_id,
               'item_type', i.item_type,
-              'position', i.position,
+              'position', ${hasPosition ? 'i.position' : 'NULL::int'},
               'name', CASE WHEN i.item_type='analysis' THEN a.name ELSE NULL END
-            ) ORDER BY i.position NULLS LAST, i.created_at
+            ) ${hasPosition ? 'ORDER BY i.position NULLS LAST, i.created_at' : 'ORDER BY i.created_at'}
           ) AS items
           FROM analysis_package_items i
           LEFT JOIN analysis a ON a.id = i.item_id AND i.item_type='analysis'
