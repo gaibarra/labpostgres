@@ -1,12 +1,13 @@
 import React from 'react';
     import { Link, useLocation, useNavigate } from 'react-router-dom';
-    import { Home, Settings, Users, TestTube as TestTubeDiagonal, Package, ClipboardList, ShieldCheck, DollarSign, Target, FlaskConical, X, ChevronsLeft, ChevronsRight, HelpCircle } from 'lucide-react';
+    import { Home, Settings, Users, TestTube as TestTubeDiagonal, Package, ClipboardList, ShieldCheck, DollarSign, Target, X, ChevronsLeft, ChevronsRight, HelpCircle } from 'lucide-react';
     import { cn } from '@/lib/utils';
     import { Button } from '@/components/ui/button';
     import { motion, AnimatePresence } from 'framer-motion';
     import { useSidebar } from '@/contexts/SidebarContext';
   import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
     import { useToast } from './ui/use-toast';
+    import BrandLogo from '@/components/BrandLogo';
 
     const navItems = [
       { href: '/', label: 'Inicio', icon: Home },
@@ -45,23 +46,13 @@ import React from 'react';
 
       return (
         <div className="flex flex-col h-full">
-          <div className={cn("flex items-center justify-between p-2 mb-4", isCollapsed && "justify-center")}>
-            <div className={cn("flex items-center space-x-2", isCollapsed && "justify-center")}>
-              <FlaskConical className="h-8 w-8 text-sky-500 flex-shrink-0" />
-              <AnimatePresence>
-                {!isCollapsed && (
-                  <motion.h1
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -20 }}
-                    transition={{ duration: 0.2 }}
-                    className="text-2xl font-bold text-slate-800 dark:text-slate-100 origin-left"
-                  >
-                    LabG40
-                  </motion.h1>
-                )}
-              </AnimatePresence>
-            </div>
+          <div className={cn("flex items-center justify-between p-2 mb-4", isCollapsed && "justify-center gap-0")}>
+            <BrandLogo
+              showName={!isCollapsed}
+              shouldAnimateText
+              size="md"
+              className={cn("flex-1", isCollapsed && "justify-center")}
+            />
             <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setSidebarOpen(false)}>
               <X className="h-6 w-6"/>
             </Button>

@@ -12,21 +12,29 @@ import { MailQuestion, ArrowLeft } from 'lucide-react';
 const ForgotPasswordPage = () => {
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [devPreviewLink, setDevPreviewLink] = useState('');
   const { resetPasswordForEmail } = useAuth();
   const { toast } = useToast();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
-    const { error } = await resetPasswordForEmail(email);
+    const { error, data } = await resetPasswordForEmail(email);
     setIsLoading(false);
     if (!error) {
+      if (data?.previewLink) {
+        setDevPreviewLink(data.previewLink);
+      } else {
+        setDevPreviewLink('');
+      }
       toast({
         title: "Correo Enviado",
         description: "Si existe una cuenta con ese correo, recibirás un enlace para restablecer tu contraseña.",
         variant: "success",
         duration: 7000,
       });
+    } else {
+      setDevPreviewLink('');
     }
   };
 
@@ -91,6 +99,12 @@ const ForgotPasswordPage = () => {
               <ArrowLeft size={16} className="mr-1" />
               Volver a Iniciar Sesión
             </Link>
+            {devPreviewLink && (
+              <p className="text-xs text-slate-500 dark:text-slate-400 text-center break-all">
+                Enlace temporal (solo entornos de prueba):<br />
+                <span className="font-mono">{devPreviewLink}</span>
+              </p>
+            )}
           </CardFooter>
         </Card>
       </motion.div>

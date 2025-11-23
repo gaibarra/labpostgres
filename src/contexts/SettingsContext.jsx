@@ -7,7 +7,7 @@ import { apiClient } from '@/lib/apiClient';
 
 const defaultSettings = {
   labInfo: {
-    name: "Mi Laboratorio",
+    name: "LabG40",
     razonSocial: "",
     taxId: "",
     logoUrl: "",

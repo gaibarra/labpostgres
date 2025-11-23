@@ -178,6 +178,15 @@ export const apiClient = {
       if (data?.token) setToken(data.token);
       return data;
     },
+    async forgotPassword({ email }) {
+      return await apiClient.post('/auth/forgot-password', { email }, { auth: false });
+    },
+    async resetPassword({ token, password }) {
+      return await apiClient.post('/auth/reset-password', { token, password }, { auth: false });
+    },
+    async changePassword({ currentPassword, newPassword }) {
+      return await apiClient.patch('/auth/password', { currentPassword, newPassword });
+    },
     async me() {
       try {
         return await apiClient.get('/auth/me');

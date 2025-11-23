@@ -11,6 +11,20 @@ import UserFormDialog from './user_management/UserFormDialog';
 import UsersTable from './user_management/UsersTable';
 import DeleteUserDialog from './user_management/DeleteUserDialog';
 
+const normalizeUserRecord = (user = {}) => {
+  const first = user.first_name || '';
+  const last = user.last_name || '';
+  const hasName = first || last;
+  return {
+    id: user.id,
+    email: user.email,
+    first_name: first,
+    last_name: last,
+    display_name: user.display_name || (hasName ? `${first} ${last}`.trim() : user.email),
+    role: user.role || '',
+  };
+};
+
 const UserManagement = () => {
   const { user: authUser, loading: authLoading } = useAuth();
   const { toast } = useToast();
@@ -28,14 +42,7 @@ const UserManagement = () => {
     setLoading(true);
     try {
       const profiles = await apiClient.get('/users');
-      setUsers((profiles || []).map(p => ({
-        id: p.id,
-        email: p.email,
-        first_name: p.first_name || '',
-        last_name: p.last_name || '',
-        display_name: (p.first_name || p.last_name) ? `${p.first_name || ''} ${p.last_name || ''}`.trim() : p.email,
-        role: p.role || '',
-      })));
+      setUsers((profiles || []).map(normalizeUserRecord));
     } catch (err) {
       console.error('fetchUsers error:', err);
       toast({ variant: 'destructive', title: 'Error al cargar usuarios', description: err.message });
@@ -49,22 +56,24 @@ const UserManagement = () => {
   const openFormForCreate = () => { setSelectedUser(null); setIsFormOpen(true); };
   const openFormForEdit = (user) => { setSelectedUser(user); setIsFormOpen(true); };
   const openDeleteConfirm = (user) => { setSelectedUser(user); setIsDeleteConfirmOpen(true); };
+  const upsertLocalUser = useCallback((payload) => {
+    if (!payload) return;
+    const normalized = normalizeUserRecord(payload);
+    setUsers(prev => {
+      const exists = prev.some(user => user.id === normalized.id);
+      if (exists) {
+        return prev.map(user => (user.id === normalized.id ? normalized : user));
+      }
+      return [...prev, normalized];
+    });
+  }, [setUsers]);
+
   // Handle form submission; if editing, update local state, else refetch
   const handleFormSubmit = (updatedUser) => {
     setIsFormOpen(false);
     setSelectedUser(null);
-    if (updatedUser && selectedUser) {
-      // Update the specific user in local state
-      setUsers(prev => prev.map(u => u.id === updatedUser.id
-        ? {
-            ...u,
-            first_name: updatedUser.first_name,
-            last_name: updatedUser.last_name,
-            display_name: updatedUser.display_name,
-            role: updatedUser.role,
-          }
-        : u
-      ));
+    if (updatedUser) {
+      upsertLocalUser(updatedUser);
     } else {
       // For creation or missing data, refetch all users
       fetchUsers();

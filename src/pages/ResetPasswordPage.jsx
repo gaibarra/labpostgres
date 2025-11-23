@@ -16,23 +16,35 @@ const ResetPasswordPage = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isPasswordUpdated, setIsPasswordUpdated] = useState(false);
-  const { updatePassword, user } = useAuth();
+  const [token, setToken] = useState('');
+  const [emailFromLink, setEmailFromLink] = useState('');
+  const { completePasswordReset } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const location = useLocation();
 
   useEffect(() => {
-    const hash = location.hash;
-    if (!hash.includes('type=recovery') && !user) {
-        toast({
-            title: "Acceso Inválido",
-            description: "Este enlace de restablecimiento no es válido o ha expirado. Por favor, solicita uno nuevo.",
-            variant: "destructive",
-            duration: 7000,
-        });
-        navigate('/login');
+    const params = new URLSearchParams(location.search);
+    let tokenFromQuery = params.get('token');
+    let emailParam = params.get('email');
+    if (!tokenFromQuery && location.hash) {
+      const hashParams = new URLSearchParams(location.hash.replace('#', ''));
+      tokenFromQuery = hashParams.get('token');
+      emailParam = emailParam || hashParams.get('email');
     }
-  }, [location, navigate, toast, user]);
+    if (!tokenFromQuery) {
+      toast({
+        title: "Acceso Inválido",
+        description: "Este enlace de restablecimiento no es válido o ha expirado. Por favor, solicita uno nuevo.",
+        variant: "destructive",
+        duration: 7000,
+      });
+      navigate('/forgot-password', { replace: true });
+      return;
+    }
+    setToken(tokenFromQuery);
+    setEmailFromLink(emailParam || '');
+  }, [location.search, location.hash, navigate, toast]);
 
 
   const handleSubmit = async (e) => {
@@ -53,8 +65,16 @@ const ResetPasswordPage = () => {
       });
       return;
     }
+    if (!token) {
+      toast({
+        title: "Token faltante",
+        description: "Vuelve a solicitar un enlace de restablecimiento.",
+        variant: "destructive",
+      });
+      return;
+    }
     setIsLoading(true);
-    const { error } = await updatePassword(password);
+    const { error } = await completePasswordReset({ token, password });
     setIsLoading(false);
     if (!error) {
       toast({
@@ -115,6 +135,11 @@ const ResetPasswordPage = () => {
             </CardTitle>
             <CardDescription className="text-slate-600 dark:text-slate-400">
               Ingresa tu nueva contraseña a continuación.
+              {emailFromLink && (
+                <span className="block text-xs text-slate-500 mt-1">
+                  Correo: {emailFromLink}
+                </span>
+              )}
             </CardDescription>
           </CardHeader>
           <CardContent>

@@ -1,10 +1,33 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
+const nodemailer = require('nodemailer');
 const { pool } = require('../db');
 function activePool(req){ return req.tenantPool || pool; }
 // Master DB (multi-tenant) optional: if MULTI_TENANT=1 use master for auth lookups
 let masterPool = null;
+let ensureTenantPool = (_req, _res, next) => next();
+const MULTI_TENANT_ENABLED = process.env.MULTI_TENANT === '1';
+if (process.env.MULTI_TENANT === '1') {
+  try {
+    const tenantResolver = require('../services/tenantResolver');
+    ensureTenantPool = async (req, _res, next) => {
+      if (req.tenantPool) return next();
+      const tenantId = req.auth?.tenant_id || req.auth?.tenantId;
+      if (!tenantId) return next();
+      try {
+        req.tenantPool = await tenantResolver.getTenantPool(tenantId);
+        return next();
+      } catch (err) {
+        console.error('[AUTH][TENANT_ATTACH] no se pudo obtener pool para', tenantId, err.message);
+        return next(err);
+      }
+    };
+  } catch (e) {
+    console.error('[AUTH] No se pudo cargar tenantResolver para ensureTenantPool:', e.message);
+  }
+}
 if (process.env.MULTI_TENANT === '1') {
   try {
     const { Pool } = require('pg');
@@ -21,6 +44,56 @@ if (process.env.MULTI_TENANT === '1') {
     console.error('[AUTH] No se pudo inicializar masterPool:', e.message);
   }
 }
+const defaultTenantHints = [];
+if (process.env.DEFAULT_TENANT_ID) defaultTenantHints.push({ type: 'id', value: process.env.DEFAULT_TENANT_ID.trim() });
+if (process.env.SINGLE_TENANT_SLUG) defaultTenantHints.push({ type: 'slug', value: process.env.SINGLE_TENANT_SLUG.trim().toLowerCase() });
+if (process.env.DEFAULT_TENANT_DB) defaultTenantHints.push({ type: 'db', value: process.env.DEFAULT_TENANT_DB.trim() });
+if (process.env.PGDATABASE) defaultTenantHints.push({ type: 'db', value: process.env.PGDATABASE.trim() });
+let cachedDefaultTenantMeta = null;
+async function resolveDefaultTenantMeta() {
+  if (!MULTI_TENANT_ENABLED || !masterPool) return null;
+  if (cachedDefaultTenantMeta) return cachedDefaultTenantMeta;
+  for (const hint of defaultTenantHints) {
+    if (!hint?.value) continue;
+    try {
+      let sql;
+      switch (hint.type) {
+        case 'id':
+          sql = 'SELECT id, slug, db_name FROM tenants WHERE id=$1 LIMIT 1';
+          break;
+        case 'slug':
+          sql = 'SELECT id, slug, db_name FROM tenants WHERE slug=$1 LIMIT 1';
+          break;
+        default:
+          sql = 'SELECT id, slug, db_name FROM tenants WHERE db_name=$1 LIMIT 1';
+      }
+      const { rows } = await masterPool.query(sql, [hint.value]);
+      if (rows[0]) {
+        cachedDefaultTenantMeta = rows[0];
+        if (process.env.TENANT_DEBUG) {
+          console.log('[AUTH][TENANT_DETECT] default tenant resuelto', {
+            via: hint.type,
+            slug: rows[0].slug,
+            db: rows[0].db_name
+          });
+        }
+        return cachedDefaultTenantMeta;
+      }
+    } catch (err) {
+      console.warn('[AUTH][TENANT_DETECT] fallo buscando tenant por', hint.type, err.message);
+    }
+  }
+  if (process.env.TENANT_DEBUG) console.warn('[AUTH][TENANT_DETECT] ningún hint permitió resolver tenant por defecto');
+  return null;
+}
+async function touchTenantAdminLogin(tenantId, email) {
+  if (!tenantId || !masterPool) return;
+  try {
+    await masterPool.query('UPDATE tenant_admins SET last_login_at=now() WHERE tenant_id=$1 AND LOWER(email)=LOWER($2)', [tenantId, email]);
+  } catch (err) {
+    if (process.env.DEBUG_AUTH) console.warn('[AUTH][TENANT_ADMIN_TOUCH] no se pudo actualizar last_login', err.message);
+  }
+}
 const authMiddleware = require('../middleware/auth');
 const { AppError } = require('../utils/errors');
 const { add: blacklistAdd, registerActiveToken, blacklistJti, revokeActive } = require('../services/tokenStore');
@@ -30,6 +103,85 @@ const router = express.Router();
 const { validate } = require('../middleware/validate');
 const { registerSchema, loginSchema } = require('../validation/schemas');
 const { audit } = require('../middleware/audit');
+
+const RESET_TOKEN_TTL_MINUTES = Number(process.env.PASSWORD_RESET_TOKEN_MINUTES || 60);
+const RESET_TOKEN_BYTES = Number(process.env.PASSWORD_RESET_TOKEN_BYTES || 32);
+
+function resolveAppBaseUrl() {
+  const candidate = process.env.APP_BASE_URL || process.env.FRONTEND_BASE_URL || process.env.VITE_APP_URL;
+  if (candidate && typeof candidate === 'string') return candidate.replace(/\/$/, '');
+  if (process.env.NODE_ENV === 'test') return 'http://localhost';
+  return 'http://localhost:5173';
+}
+
+function shouldExposePreviewToken() {
+  return process.env.NODE_ENV !== 'production' || process.env.ALLOW_RESET_TOKEN_PREVIEW === '1' || process.env.TEST_MODE === '1';
+}
+
+function resolveSmtpConfig() {
+  const host = process.env.PASSWORD_RESET_SMTP_HOST || process.env.SMTP_HOST;
+  const user = process.env.PASSWORD_RESET_SMTP_USER || process.env.SMTP_USER;
+  const pass = process.env.PASSWORD_RESET_SMTP_PASS || process.env.SMTP_PASS;
+  if (!host || !user || !pass) return null;
+  const port = Number(process.env.PASSWORD_RESET_SMTP_PORT || process.env.SMTP_PORT || 587);
+  const secureFlag = process.env.PASSWORD_RESET_SMTP_SECURE ?? process.env.SMTP_SECURE ?? 'false';
+  const secure = ['1','true','yes','on'].includes(String(secureFlag).toLowerCase());
+  return {
+    host,
+    port,
+    secure,
+    auth: { user, pass },
+    from: process.env.PASSWORD_RESET_EMAIL_FROM || process.env.SMTP_FROM || user
+  };
+}
+
+async function sendPasswordResetEmail({ to, link, labName }) {
+  const smtp = resolveSmtpConfig();
+  if (!smtp) {
+    console.warn('[AUTH][RESET] SMTP no configurado; se omite envío. Link:', link);
+    return { delivered: false, reason: 'smtp_not_configured' };
+  }
+  try {
+    const transporter = nodemailer.createTransport({
+      host: smtp.host,
+      port: smtp.port,
+      secure: smtp.secure,
+      auth: smtp.auth
+    });
+    const subject = `${labName || 'Laboratorio Clínico'} - Restablecimiento de contraseña`;
+    const text = `Recibimos una solicitud para restablecer tu contraseña. Abre el siguiente enlace o cópialo en tu navegador:\n\n${link}\n\nSi no solicitaste este cambio, ignora este correo.`;
+    const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;line-height:1.5;color:#111"><p>Recibimos una solicitud para restablecer tu contraseña de <strong>${labName || 'Laboratorio Clínico'}</strong>.</p><p>Haz clic en el siguiente botón (o copia el enlace en tu navegador) para continuar:</p><p><a href="${link}" style="display:inline-block;padding:12px 18px;background:#0284c7;color:#fff;text-decoration:none;border-radius:6px">Restablecer contraseña</a></p><p style="margin-top:16px;font-size:14px;word-break:break-all;">${link}</p><p>Si no solicitaste este cambio, puedes ignorar este correo.</p></body></html>`;
+    const info = await transporter.sendMail({
+      from: smtp.from,
+      to,
+      subject,
+      text,
+      html
+    });
+    return { delivered: true, messageId: info.messageId };
+  } catch (err) {
+    console.error('[AUTH][RESET] Error enviando correo', err.message);
+    return { delivered: false, reason: err.message };
+  }
+}
+
+async function getLabName(req) {
+  try {
+    const { rows } = await activePool(req).query("SELECT lab_info->>'name' AS name FROM lab_configuration ORDER BY created_at ASC LIMIT 1");
+    return rows[0]?.name || 'Laboratorio Clínico';
+  } catch (e) {
+    if (process.env.DEBUG_AUTH) console.warn('[AUTH][RESET] No se pudo obtener nombre del laboratorio', e.message);
+    return 'Laboratorio Clínico';
+  }
+}
+
+function hashToken(token) {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+function generateResetToken() {
+  return crypto.randomBytes(Math.max(16, RESET_TOKEN_BYTES)).toString('hex');
+}
 
 // Ensure users & profiles tables exist (supports legacy profiles variants)
 let PROFILE_HAS_USER_ID = false;
@@ -87,6 +239,19 @@ async function ensureAuthStructures() {
         created_at timestamptz DEFAULT now()
       );
       CREATE INDEX IF NOT EXISTS idx_roles_permissions_role ON roles_permissions(role_name);
+
+      CREATE TABLE IF NOT EXISTS password_reset_tokens (
+        id uuid PRIMARY KEY ${usersDefault},
+        user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        token_hash text NOT NULL,
+        expires_at timestamptz NOT NULL,
+        used_at timestamptz,
+        request_ip text,
+        request_user_agent text,
+        created_at timestamptz DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user ON password_reset_tokens(user_id);
+      CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_hash ON password_reset_tokens(token_hash);
     `;
   await pool.query(sqlCreate); // estructuras base en pool principal (no por-tenant aquí)
   } catch (tblErr) {
@@ -123,6 +288,19 @@ async function ensureAuthStructures() {
             created_at timestamptz DEFAULT now()
           );
           CREATE INDEX IF NOT EXISTS idx_roles_permissions_role ON roles_permissions(role_name);
+
+          CREATE TABLE IF NOT EXISTS password_reset_tokens (
+            id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+            user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            token_hash text NOT NULL,
+            expires_at timestamptz NOT NULL,
+            used_at timestamptz,
+            request_ip text,
+            request_user_agent text,
+            created_at timestamptz DEFAULT now()
+          );
+          CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user ON password_reset_tokens(user_id);
+          CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_hash ON password_reset_tokens(token_hash);
         `);
       } catch (fallbackErr) {
         console.error('[AUTH INIT] Falla al crear tablas de auth (fallback)', fallbackErr);
@@ -257,6 +435,7 @@ router.post('/login', validate(loginSchema), audit('login','auth_user', req=>req
   // Multi-tenant: buscar credenciales en master si habilitado
   let rows;
   let tenantId = null;
+  let loginSource = 'master';
   if (masterPool) {
     // master users table expected: tenant_admins or a view; fallback to users in tenant DB if not found
     try {
@@ -269,9 +448,19 @@ router.post('/login', validate(loginSchema), audit('login','auth_user', req=>req
     }
   }
   if (!rows || rows.length === 0) {
+  loginSource = 'tenant';
   const r2 = await activePool(req).query('SELECT id, email, password_hash, full_name, token_version, created_at FROM users WHERE LOWER(email)=LOWER($1)', [email]);
     rows = r2.rows;
     if (process.env.DEBUG_AUTH) console.log('[LOGIN][TENANT_FALLBACK]', { email, found: !!rows[0] });
+  }
+  if (!tenantId && loginSource === 'tenant' && MULTI_TENANT_ENABLED) {
+    const fallbackTenant = await resolveDefaultTenantMeta();
+    if (fallbackTenant) {
+      tenantId = fallbackTenant.id;
+      if (process.env.TENANT_DEBUG) {
+        console.log('[LOGIN][TENANT_HINT_MATCH]', { email, slug: fallbackTenant.slug, db: fallbackTenant.db_name });
+      }
+    }
   }
     const user = rows[0];
   if (!user) return next(new AppError(401,'Credenciales inválidas','BAD_CREDENTIALS'));
@@ -348,6 +537,7 @@ router.post('/login', validate(loginSchema), audit('login','auth_user', req=>req
       if (process.env.DEBUG_AUTH) console.warn('[LOGIN] no se pudo establecer cookie', cookieErr.message);
     }
   try { const decoded = jwt.decode(token); if (decoded?.exp) registerActiveToken({ jti, userId: user.id, exp: decoded.exp, tokenVersion: user.token_version }); } catch(_) {}
+  try { await touchTenantAdminLogin(tenantId, user.email); } catch (_) {}
   res.json({ user: { id: payload.id, email: user.email, full_name: user.full_name, created_at: user.created_at, role, token_version: user.token_version, tenant_id: tenantId }, token });
   } catch (e) {
   // Logging detallado si DEBUG_AUTH
@@ -359,6 +549,93 @@ router.post('/login', validate(loginSchema), audit('login','auth_user', req=>req
     return res.status(500).json({ error: 'LOGIN_FAIL', message: e.message, code: e.code || null });
   }
   next(new AppError(500,'Error iniciando sesión','LOGIN_FAIL'));
+  }
+});
+
+router.post('/forgot-password', audit('forgot_password','auth_user', () => null, (req) => ({ email: req.body?.email ? String(req.body.email).toLowerCase() : null })), async (req, res, next) => {
+  const emailRaw = (req.body?.email || '').trim();
+  if (!emailRaw) return next(new AppError(400, 'Email requerido', 'EMAIL_REQUIRED'));
+  const normalizedEmail = emailRaw.toLowerCase();
+  let previewToken;
+  let deliveryInfo;
+  try {
+    const { rows } = await activePool(req).query('SELECT id, email FROM users WHERE LOWER(email)=LOWER($1) LIMIT 1', [normalizedEmail]);
+    const user = rows[0];
+    if (user) {
+      // Limpieza preventiva de tokens expirados para el usuario
+      await activePool(req).query('DELETE FROM password_reset_tokens WHERE user_id=$1 AND (expires_at < now() OR used_at IS NOT NULL)', [user.id]).catch(() => {});
+      const rawToken = generateResetToken();
+      previewToken = rawToken;
+      const tokenHash = hashToken(rawToken);
+      const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MINUTES * 60 * 1000);
+      await activePool(req).query(
+        'INSERT INTO password_reset_tokens (user_id, token_hash, expires_at, request_ip, request_user_agent) VALUES ($1,$2,$3,$4,$5)',
+        [user.id, tokenHash, expiresAt, req.ip || null, req.get('user-agent') || null]
+      );
+      const labName = await getLabName(req);
+      const baseUrl = resolveAppBaseUrl();
+      const resetLink = `${baseUrl}/reset-password?token=${rawToken}&email=${encodeURIComponent(user.email)}`;
+      deliveryInfo = await sendPasswordResetEmail({ to: user.email, link: resetLink, labName });
+    } else {
+      // Evitar revelar si existe el correo
+      await new Promise(resolve => setTimeout(resolve, 350));
+    }
+    const response = { success: true };
+    if (deliveryInfo) response.delivered = deliveryInfo.delivered;
+    if (shouldExposePreviewToken() && previewToken) {
+      response.previewToken = previewToken;
+      response.previewLink = `${resolveAppBaseUrl()}/reset-password?token=${previewToken}&email=${encodeURIComponent(emailRaw)}`;
+    }
+    return res.json(response);
+  } catch (error) {
+    console.error('[AUTH][RESET] forgot-password error', error);
+    return next(new AppError(500, 'No se pudo iniciar el restablecimiento', 'FORGOT_PASSWORD_FAIL'));
+  }
+});
+
+router.post('/reset-password', audit('reset_password','auth_user', () => null, () => ({ via: 'token' })), async (req, res, next) => {
+  const token = (req.body?.token || '').trim();
+  const password = req.body?.password || '';
+  if (!token || !password) return next(new AppError(400, 'Token y contraseña requeridos', 'RESET_TOKEN_REQUIRED'));
+  if (password.length < 6) return next(new AppError(400, 'La contraseña debe tener al menos 6 caracteres.', 'PASSWORD_TOO_SHORT'));
+  try {
+    const tokenHash = hashToken(token);
+    const { rows } = await activePool(req).query(
+      'SELECT id, user_id FROM password_reset_tokens WHERE token_hash=$1 AND used_at IS NULL AND expires_at > now() ORDER BY created_at DESC LIMIT 1',
+      [tokenHash]
+    );
+    const record = rows[0];
+    if (!record) return next(new AppError(400, 'Token inválido o expirado', 'RESET_TOKEN_INVALID'));
+    const newHash = await bcrypt.hash(password, 10);
+    await activePool(req).query('UPDATE users SET password_hash=$1, token_version=COALESCE(token_version,1)+1 WHERE id=$2', [newHash, record.user_id]);
+    await activePool(req).query('UPDATE password_reset_tokens SET used_at=now() WHERE id=$1', [record.id]);
+    await activePool(req).query('DELETE FROM password_reset_tokens WHERE user_id=$1 AND (used_at IS NOT NULL OR expires_at < now())', [record.user_id]).catch(() => {});
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('[AUTH][RESET] reset-password error', error);
+    return next(new AppError(500, 'No se pudo completar el restablecimiento', 'RESET_PASSWORD_FAIL'));
+  }
+});
+
+router.patch('/password', authMiddleware, ensureTenantPool, audit('password_change','auth_user', req => req.user?.id || null, () => ({ via: 'self-service' })), async (req, res, next) => {
+  const currentPassword = req.body?.currentPassword || '';
+  const newPassword = req.body?.newPassword || '';
+  if (!currentPassword) return next(new AppError(400, 'Contraseña actual requerida', 'CURRENT_PASSWORD_REQUIRED'));
+  if (!newPassword) return next(new AppError(400, 'Nueva contraseña requerida', 'NEW_PASSWORD_REQUIRED'));
+  if (newPassword.length < 6) return next(new AppError(400, 'La contraseña debe tener al menos 6 caracteres.', 'PASSWORD_TOO_SHORT'));
+  try {
+    const { rows } = await activePool(req).query('SELECT id, password_hash FROM users WHERE id=$1 LIMIT 1', [req.user.id]);
+    const user = rows[0];
+    if (!user) return next(new AppError(404, 'Usuario no encontrado', 'USER_NOT_FOUND'));
+    const matches = await bcrypt.compare(currentPassword, user.password_hash || '');
+    if (!matches) return next(new AppError(401, 'Contraseña actual incorrecta', 'PASSWORD_INVALID'));
+    const newHash = await bcrypt.hash(newPassword, 10);
+    await activePool(req).query('UPDATE users SET password_hash=$1, token_version=COALESCE(token_version,1)+1 WHERE id=$2', [newHash, req.user.id]);
+    await activePool(req).query('DELETE FROM password_reset_tokens WHERE user_id=$1', [req.user.id]).catch(() => {});
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('[AUTH][RESET] password change error', error);
+    return next(new AppError(500, 'No se pudo actualizar la contraseña', 'PASSWORD_CHANGE_FAIL'));
   }
 });
 
@@ -375,7 +652,7 @@ if (process.env.DEBUG_AUTH_DIAG === '1') {
   });
 }
 
-router.get('/me', authMiddleware, async (req, res, next) => {
+router.get('/me', authMiddleware, ensureTenantPool, async (req, res, next) => {
   try {
     // Construir dinámicamente columnas existentes para evitar errores de columnas inexistentes
     const profileCols = [];
@@ -410,7 +687,7 @@ router.get('/me', authMiddleware, async (req, res, next) => {
   }
 });
 
-router.post('/logout', authMiddleware, audit('logout','auth_token', req=>req.user?.id), async (req, res, next) => {
+router.post('/logout', authMiddleware, ensureTenantPool, audit('logout','auth_token', req=>req.user?.id), async (req, res, next) => {
   try {
     // Siempre intentar revocar el token usado (Bearer o cookie) gracias a req.authToken
     const token = req.authToken;

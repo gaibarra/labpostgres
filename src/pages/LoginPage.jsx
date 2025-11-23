@@ -7,7 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
 import { motion } from 'framer-motion';
-import { Eye, EyeOff, LogIn } from 'lucide-react';
+import { Eye, EyeOff } from 'lucide-react';
+import BrandLogo from '@/components/BrandLogo';
 
 const LoginPage = () => {
   const [email, setEmail] = useState('');
@@ -55,15 +56,24 @@ const LoginPage = () => {
       >
         <Card className="w-full max-w-md shadow-2xl bg-white/90 dark:bg-slate-900/90 backdrop-blur-lg">
           <CardHeader className="text-center">
-            <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.2, type: "spring", stiffness: 120 }}>
-              <LogIn className="mx-auto h-16 w-16 text-sky-600 mb-4" />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.1, type: "spring", stiffness: 120 }}
+              className="mb-4"
+            >
+              <BrandLogo
+                size="lg"
+                orientation="column"
+                className="items-center text-center"
+                shouldAnimateText={false}
+              />
             </motion.div>
             <CardTitle className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-sky-500 to-indigo-500">
               ¡Bienvenido de Vuelta!
             </CardTitle>
             <CardDescription className="text-slate-600 dark:text-slate-400">
-              Ingresa tus credenciales para acceder a tu LIS.
-            </CardDescription>
+              Ingresa tus credenciales para acceder.  </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
@@ -119,12 +129,6 @@ const LoginPage = () => {
              <Link to="/forgot-password" className="text-sm text-sky-600 hover:text-sky-700 dark:text-sky-400 dark:hover:text-sky-300 transition-colors">
               ¿Olvidaste tu contraseña?
             </Link>
-            <p className="text-sm text-slate-600 dark:text-slate-400">
-              ¿No tienes una cuenta?{' '}
-              <Link to="/signup" className="font-medium text-sky-600 hover:text-sky-700 dark:text-sky-400 dark:hover:text-sky-300 transition-colors">
-                Regístrate
-              </Link>
-            </p>
           </CardFooter>
         </Card>
       </motion.div>

@@ -12,6 +12,42 @@ function activePool(req){ return req.tenantPool || pool; }
 // Eliminados validate, analysisCreateSchema, analysisUpdateSchema (no usados) para limpiar lint.
 const { audit } = require('../middleware/audit');
 
+// --- Per-pool schema cache -------------------------------------------------
+const toPositiveInt = (val, fallback) => {
+  const parsed = Number(val);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+const SCHEMA_CACHE_TTL_MS = toPositiveInt(process.env.ANALYSIS_SCHEMA_CACHE_MS, 5 * 60 * 1000);
+const SEX_CONSTRAINT_CACHE_TTL_MS = toPositiveInt(process.env.ANALYSIS_SEX_CONSTRAINT_CACHE_MS, 60 * 1000);
+const schemaCacheByPool = new WeakMap();
+
+function ensureCacheBucketForPool(poolRef) {
+  let bucket = schemaCacheByPool.get(poolRef);
+  if (!bucket) {
+    bucket = { columns: null, sexConstraint: null };
+    schemaCacheByPool.set(poolRef, bucket);
+  }
+  return bucket;
+}
+
+function getCacheBucketForReq(req) {
+  return schemaCacheByPool.get(activePool(req));
+}
+
+function ensureCacheBucketForReq(req) {
+  return ensureCacheBucketForPool(activePool(req));
+}
+
+function invalidateSexConstraintCache(req) {
+  const bucket = ensureCacheBucketForReq(req);
+  bucket.sexConstraint = null;
+}
+
+function getSexConstraintState(req) {
+  const bucket = getCacheBucketForReq(req);
+  return bucket?.sexConstraint?.data || null;
+}
+
 // --- Sex tokens dynamic normalization ---------------------------------------
 // La base de datos puede tener distintas variantes históricas del constraint
 // sobre reference_ranges.sex (lowercase vs capitalizado, diferentes nombres
@@ -23,9 +59,10 @@ let _sexTokensDetected = ['Ambos','Masculino','Femenino'];
 
 // Bridge temporal: si la BD solamente tiene constraint legacy (M/F/O) y aún no se ha aplicado
 // la migración canónica, convertimos antes de insertar. Una vez migrado, este bloque se puede retirar.
-function bridgeToLegacyIfNeeded(sex){
+function bridgeToLegacyIfNeeded(req, sex){
   try {
-    if (sexConstraintCache && sexConstraintCache.legacyPresent && !sexConstraintCache.canonicalPresent) {
+    const constraintState = getSexConstraintState(req);
+    if (constraintState && constraintState.legacyPresent && !constraintState.canonicalPresent) {
       if (sex === _sexTokensStyle.Ambos) return 'O';
       if (sex === _sexTokensStyle.Masculino) return 'M';
       if (sex === _sexTokensStyle.Femenino) return 'F';
@@ -289,11 +326,11 @@ async function assertNoSexOverlapOrAmbosConflict(db, rTable, paramId, normalized
 }
 
 // --- Dynamic schema adaptation (simplificado; sex mode deprecated) -----------
-let analysisColumnsCache = null;
-let sexConstraintCache = null; // { tokens:[], meta:[], ts }
 async function loadAnalysisSchema(req){
   const db = activePool(req);
-  if (!analysisColumnsCache) {
+  const bucket = ensureCacheBucketForPool(db);
+  const now = Date.now();
+  if (!bucket.columns || (now - bucket.columns.ts) > SCHEMA_CACHE_TTL_MS) {
     const colSet = async (table)=>{
       const { rows } = await db.query(`SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name=$1`, [table]);
       return new Set(rows.map(r=>r.column_name));
@@ -304,12 +341,22 @@ async function loadAnalysisSchema(req){
       colSet('reference_ranges'),
       colSet('analysis_reference_ranges').catch(()=> new Set())
     ]);
-    analysisColumnsCache = { aCols, pCols, rCols: modernRCols.size ? modernRCols : legacyRCols, modernRanges: modernRCols.size>0, legacyRanges: legacyRCols.size>0 };
-    console.info('[ANALYSIS][SCHEMA] cached columns (analysis, parameters, ranges=%s source=%s)', analysisColumnsCache.rCols.size, analysisColumnsCache.modernRanges?'modern':'legacy');
+    bucket.columns = {
+      ts: now,
+      data: {
+        aCols,
+        pCols,
+        rCols: modernRCols.size ? modernRCols : legacyRCols,
+        modernRanges: modernRCols.size > 0,
+        legacyRanges: legacyRCols.size > 0
+      }
+    };
+    console.info('[ANALYSIS][SCHEMA] cached columns (analysis, parameters, ranges=%s source=%s)', bucket.columns.data.rCols.size, bucket.columns.data.modernRanges ? 'modern' : 'legacy');
   }
-  // Refrescar constraint (cada 60s máximo) para soportar migraciones en caliente.
-  const now = Date.now();
-  if (!sexConstraintCache || (now - sexConstraintCache.ts) > 60000) {
+  let constraintState = bucket.sexConstraint && (now - bucket.sexConstraint.ts) <= SEX_CONSTRAINT_CACHE_TTL_MS
+    ? bucket.sexConstraint.data
+    : null;
+  if (!constraintState) {
     try {
       const { rows } = await db.query(`
         SELECT c.conname, pg_get_constraintdef(c.oid) AS def
@@ -320,38 +367,33 @@ async function loadAnalysisSchema(req){
           AND c.contype='c'
           AND pg_get_constraintdef(c.oid) ILIKE '%sex%'
       `);
-  const meta = rows;
-  let tokens = null;
+      const meta = rows;
+      let tokens = null;
       const extractQuoted = (def)=>{
         const found = [];
         const re = /'([^']+)'/g; let m;
         while ((m = re.exec(def))) { found.push(m[1]); }
         return [...new Set(found)];
       };
-      // Reordenar priorizando constraints que ya tengan 'Ambos'
       const ordered = [...meta].sort((a,b)=>{
         const aCanon = /'ambos'/i.test(a.def) ? 0 : 1;
         const bCanon = /'ambos'/i.test(b.def) ? 0 : 1;
         return aCanon - bCanon;
       });
       for (const m of ordered) {
-        // 1) Intento patrón directo IN (...)
         const matchIn = m.def.match(/sex\s+IN\s*\(([^)]+)\)/i);
         if (matchIn) {
           const rawList = matchIn[1];
           const parts = rawList.split(',').map(p=>p.trim().replace(/^'(.*)'$/,'$1').replace(/'::text$/,'')).filter(Boolean);
           if (parts.length >= 2) { tokens = parts; break; }
         }
-        // 2) Intento patrón ANY(ARRAY['a'::text,'b'::text,...])
         if (!tokens && /ANY\s*\(ARRAY/i.test(m.def)) {
           const quoted = extractQuoted(m.def);
-          // Heurística: quedarnos con strings cuyo lowercase está entre {ambos, masculino, femenino}
           const candidates = quoted.filter(v=>['ambos','masculino','femenino'].includes(v.toLowerCase()))
             .sort((a,b)=> a.toLowerCase().localeCompare(b.toLowerCase()));
           if (candidates.length >= 2) { tokens = candidates; break; }
         }
       }
-      // 3) Último recurso: tomar cualquier triple única amb|mas|fem encontrada en constraints con sex
       if (!tokens) {
         for (const m of meta) {
           const quoted = extractQuoted(m.def);
@@ -359,23 +401,25 @@ async function loadAnalysisSchema(req){
           if (triples.length) { tokens = triples; break; }
         }
       }
-      if (tokens) {
-        adoptSexTokens(tokens);
-      }
-  const legacyPresent = meta.some(m=> /'M'::text/.test(m.def) && /'F'::text/.test(m.def) && /'O'::text/.test(m.def));
-  const canonicalPresent = meta.some(m=> /'Ambos'|'ambos'/.test(m.def));
-  sexConstraintCache = { tokens: _sexTokensDetected.slice(), meta, ts: now, legacyPresent, canonicalPresent };
+      const resolvedTokens = (tokens && tokens.length >= 2) ? tokens : _sexTokensDetected.slice();
+      adoptSexTokens(resolvedTokens);
+      const legacyPresent = meta.some(m=> /'M'::text/.test(m.def) && /'F'::text/.test(m.def) && /'O'::text/.test(m.def));
+      const canonicalPresent = meta.some(m=> /'Ambos'|'ambos'/.test(m.def));
+      constraintState = { tokens: resolvedTokens.slice(), meta, legacyPresent, canonicalPresent };
     } catch (e) {
       console.warn('[ANALYSIS][SCHEMA] no se pudo introspectar constraint sex', e.message);
-      sexConstraintCache = { tokens: _sexTokensDetected.slice(), meta: [], ts: now };
+      constraintState = { tokens: _sexTokensDetected.slice(), meta: [], legacyPresent: false, canonicalPresent: false };
     }
+    bucket.sexConstraint = { ts: now, data: constraintState };
+  } else if (constraintState?.tokens?.length) {
+    adoptSexTokens(constraintState.tokens);
   }
   return {
-    ...analysisColumnsCache,
+    ...bucket.columns.data,
     sexMode: 'dynamic',
     sexModeReason: 'constraint-introspection',
-    sexConstraintsMeta: sexConstraintCache.meta,
-    allowedSexTokens: _sexTokensDetected.slice()
+    sexConstraintsMeta: constraintState?.meta || [],
+    allowedSexTokens: (constraintState?.tokens || _sexTokensDetected).slice()
   };
 }
 
@@ -641,7 +685,7 @@ router.get('/sex-diagnostics', auth, requirePermission('studies','read'), async 
 router.get('/sex-constraints-audit', auth, requirePermission('studies','read'), async (req,res)=>{
   try {
     // Fuerza refresco de constraints ignorando TTL
-    sexConstraintCache = null;
+    invalidateSexConstraintCache(req);
     const schema = await loadAnalysisSchema(req);
     const meta = schema.sexConstraintsMeta || [];
     // Clasificar constraints
@@ -764,7 +808,7 @@ router.post('/:id/parameters-sync', auth, requirePermission('studies','update'),
       catch(expErr){ await client.query('ROLLBACK'); if (expErr instanceof AppError) return next(expErr); return next(new AppError(400,'Error normalizando rangos','REFERENCE_RANGE_NORMALIZATION_FAIL',{ message: expErr.message })); }
       // Pre-validación adicional: evitar conflictos Ambos vs M/F dentro del mismo payload
       try {
-        const tokens = (sexConstraintCache?.tokens || _sexTokensDetected);
+        const tokens = (schema.allowedSexTokens && schema.allowedSexTokens.length ? schema.allowedSexTokens : _sexTokensDetected);
         const Ambos = tokens.find(t=>/^a/i.test(t)) || 'Ambos';
         const Masculino = tokens.find(t=>/^m/i.test(t)) || 'Masculino';
         const Femenino = tokens.find(t=>/^f/i.test(t)) || 'Femenino';
@@ -805,7 +849,7 @@ router.post('/:id/parameters-sync', auth, requirePermission('studies','update'),
             continue;
           }
         }
-        const bridgedSex = bridgeToLegacyIfNeeded(sex);
+        const bridgedSex = bridgeToLegacyIfNeeded(req, sex);
   const rTableIns = schema.modernRanges ? 'analysis_reference_ranges' : 'reference_ranges';
   const cols = ['parameter_id','sex','age_min','age_max'];
         const vals = [paramId, bridgedSex, age_min, age_max];
@@ -847,7 +891,15 @@ router.post('/:id/parameters-sync', auth, requirePermission('studies','update'),
           }
           if (dbErr.code === '23514') {
             const allowed = (schema.allowedSexTokens || []).join(',');
-            try { sexConstraintCache = null; await loadAnalysisSchema(req); } catch(refreshErr){ /* ignore */ }
+            let postRefreshTokens = schema.allowedSexTokens || [];
+            let legacyBridgeActive = false;
+            try {
+              invalidateSexConstraintCache(req);
+              const refreshedSchema = await loadAnalysisSchema(req);
+              postRefreshTokens = refreshedSchema.allowedSexTokens || postRefreshTokens;
+              const refreshedState = getSexConstraintState(req);
+              legacyBridgeActive = !!(refreshedState && refreshedState.legacyPresent && !refreshedState.canonicalPresent);
+            } catch(refreshErr){ /* ignore refresh errors */ }
             let liveConstraints = [];
             try {
               const { rows: crows } = await activePool(req).query(`SELECT c.conname, pg_get_constraintdef(c.oid) AS def FROM pg_constraint c JOIN pg_class t ON c.conrelid=t.oid JOIN pg_namespace n ON n.oid=t.relnamespace WHERE t.relname='reference_ranges' AND c.contype='c'`);
@@ -858,8 +910,9 @@ router.post('/:id/parameters-sync', auth, requirePermission('studies','update'),
             const hexInputRaw = typeof sexInputRaw === 'string' ? Buffer.from(sexInputRaw,'utf8').toString('hex') : null;
             const dbDetail = dbErr.detail || null;
             const dbWhere = dbErr.where || null;
-            console.warn(`[ANALYSIS][SYNC][${requestId}] Violación constraint sexo`, { constraint: dbErr.constraint, allowed, rawSexInput: vr.gender||vr.sexo||vr.sex||null, normalizedSex: sex, postRefreshAllowed: (sexConstraintCache?.tokens||[]).join(','), ...contextMeta });
-            return next(new AppError(400,'Rango inválido (constraint)','REFERENCE_RANGE_CONSTRAINT_FAIL', { constraint: dbErr.constraint, allowed, postRefreshAllowed: (sexConstraintCache?.tokens||[]).join(','), rawSexInput: sexInputRaw, normalizedSex: sex, hexNormalizedSex: hexSex, hexRawSexInput: hexInputRaw, liveConstraints, dbDetail, dbWhere, legacyBridgeActive: !!(sexConstraintCache && sexConstraintCache.legacyPresent && !sexConstraintCache.canonicalPresent), ...contextMeta }));
+            const postRefreshAllowed = (postRefreshTokens || []).join(',');
+            console.warn(`[ANALYSIS][SYNC][${requestId}] Violación constraint sexo`, { constraint: dbErr.constraint, allowed, rawSexInput: vr.gender||vr.sexo||vr.sex||null, normalizedSex: sex, postRefreshAllowed, ...contextMeta });
+            return next(new AppError(400,'Rango inválido (constraint)','REFERENCE_RANGE_CONSTRAINT_FAIL', { constraint: dbErr.constraint, allowed, postRefreshAllowed, rawSexInput: sexInputRaw, normalizedSex: sex, hexNormalizedSex: hexSex, hexRawSexInput: hexInputRaw, liveConstraints, dbDetail, dbWhere, legacyBridgeActive, ...contextMeta }));
           }
           console.error(`[ANALYSIS][SYNC][${requestId}] Error insert range`, dbErr, contextMeta);
           return next(new AppError(500,'Error insertando rango','REFERENCE_RANGE_INSERT_FAIL', contextMeta));
@@ -870,7 +923,7 @@ router.post('/:id/parameters-sync', auth, requirePermission('studies','update'),
       if (Array.isArray(rawRanges) && rawRanges.length > 0 && insertedForParam === 0) {
         try {
           const cols = ['parameter_id','sex','age_min','age_max'];
-          const vals = [paramId, bridgeToLegacyIfNeeded(null), null, null];
+          const vals = [paramId, bridgeToLegacyIfNeeded(req, null), null, null];
           if (schema.rCols.has('age_min_unit')) { cols.push('age_min_unit'); vals.push(null); }
           if (schema.rCols.has('lower')) { cols.push('lower','upper'); vals.push(null, null); }
           else if (schema.rCols.has('min_value')) { cols.push('min_value','max_value'); vals.push(null, null); }
@@ -1117,7 +1170,7 @@ router.post('/parameters/:paramId/reference-ranges', auth, requirePermission('st
     const schema = await loadAnalysisSchema(req);
     const rTable = schema.modernRanges ? 'analysis_reference_ranges' : 'reference_ranges';
     let sex = normalizeSex(body.sex || body.gender || null);
-    sex = bridgeToLegacyIfNeeded(sex);
+    sex = bridgeToLegacyIfNeeded(req, sex);
     const age_min = body.age_min ?? body.edadMin ?? null;
     const age_max = body.age_max ?? body.edadMax ?? null;
     const age_min_unit = schema.rCols.has('age_min_unit') ? (body.age_min_unit || body.age_unit || body.unidadEdad || null) : null;

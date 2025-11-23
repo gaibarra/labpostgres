@@ -60,6 +60,129 @@ function projectPatient(row){
   });
 }
 
+// --- Catálogo de análisis + parámetros (cache por tenant) -----------------
+const analysisCatalogCache = new WeakMap();
+const toPositiveInt = (value, fallback) => {
+  const num = Number(value);
+  return Number.isFinite(num) && num > 0 ? num : fallback;
+};
+const HISTORY_CATALOG_TTL_MS = toPositiveInt(process.env.PATIENT_HISTORY_CATALOG_CACHE_MS, 10 * 60 * 1000);
+
+function normalizeKeyToken(val) {
+  if (val == null) return null;
+  return String(val).trim().toLowerCase();
+}
+
+async function getAnalysisCatalog(req) {
+  const poolRef = activePool(req);
+  const now = Date.now();
+  let cached = analysisCatalogCache.get(poolRef);
+  if (!cached || (now - cached.ts) > HISTORY_CATALOG_TTL_MS) {
+    const { rows: studiesRows } = await poolRef.query('SELECT * FROM analysis');
+    const studyById = new Map();
+    const studyByExactKey = new Map();
+    const studyByNormalizedKey = new Map();
+    const paramGlobalById = new Map();
+    const registerKey = (key, value) => {
+      if (key == null) return;
+      const str = String(key);
+      studyByExactKey.set(str, value);
+      const norm = normalizeKeyToken(str);
+      if (norm) studyByNormalizedKey.set(norm, value);
+    };
+    const studyEntries = studiesRows.map((s) => {
+      const info = {
+        id: s.id,
+        name: s.name,
+        code: s.code,
+        clave: s.clave,
+        general_units: s.general_units,
+        parametersById: new Map(),
+        parametersByName: new Map()
+      };
+      studyById.set(String(s.id), info);
+      [s.id, s.code, s.clave, s.name].forEach((key) => registerKey(key, info));
+      return info;
+    });
+    if (studyEntries.length) {
+      const ids = studiesRows.map((s) => s.id);
+      const { rows: paramsRows } = await poolRef.query('SELECT id, analysis_id, name, unit FROM analysis_parameters WHERE analysis_id = ANY($1)', [ids]);
+      for (const pr of paramsRows) {
+        const parent = studyById.get(String(pr.analysis_id));
+        if (!parent) continue;
+        const paramIdKey = String(pr.id);
+        const paramData = { id: paramIdKey, name: pr.name, unit: pr.unit };
+        parent.parametersById.set(paramIdKey, paramData);
+        const normName = normalizeKeyToken(pr.name);
+        if (normName) parent.parametersByName.set(normName, paramData);
+        paramGlobalById.set(paramIdKey, { param: paramData, study: parent });
+      }
+    }
+    cached = {
+      ts: now,
+      data: {
+        studies: studyEntries,
+        studyByExactKey,
+        studyByNormalizedKey,
+        paramGlobalById
+      }
+    };
+    analysisCatalogCache.set(poolRef, cached);
+  }
+  return cached.data;
+}
+
+function resolveStudy(catalog, rawKey) {
+  if (!rawKey && rawKey !== 0) return null;
+  const keyStr = String(rawKey);
+  const direct = catalog.studyByExactKey.get(keyStr);
+  if (direct) return direct;
+  const norm = normalizeKeyToken(keyStr);
+  if (!norm) return null;
+  return catalog.studyByNormalizedKey.get(norm) || null;
+}
+
+function invalidateAnalysisCatalogCache(req) {
+  const poolRef = activePool(req);
+  const had = analysisCatalogCache.has(poolRef);
+  analysisCatalogCache.delete(poolRef);
+  return had;
+}
+
+function resolveParameter(studyInfo, catalog, payload) {
+  if (!payload || typeof payload !== 'object') return null;
+  const idKeys = ['parametroId','parameterId','parameter_id','idParametro','paramId','parametroID'];
+  for (const key of idKeys) {
+    const candidate = payload[key];
+    if (candidate == null) continue;
+    const idStr = String(candidate);
+    const fromStudy = studyInfo?.parametersById.get(idStr);
+    if (fromStudy) return { param: fromStudy, inferredStudy: studyInfo };
+    const global = catalog.paramGlobalById.get(idStr);
+    if (global) return { param: global.param, inferredStudy: global.study };
+  }
+  const nameKeys = ['parameterName','parametroNombre','parametro','nombreParametro','nombre','name'];
+  for (const key of nameKeys) {
+    const candidate = payload[key];
+    if (!candidate) continue;
+    const norm = normalizeKeyToken(candidate);
+    if (!norm) continue;
+    const fromStudy = studyInfo?.parametersByName.get(norm);
+    if (fromStudy) return { param: fromStudy, inferredStudy: studyInfo };
+  }
+  return null;
+}
+
+function pickFirst(payload, keys) {
+  if (!payload || typeof payload !== 'object') return null;
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(payload, key) && payload[key] != null && payload[key] !== '') {
+      return payload[key];
+    }
+  }
+  return null;
+}
+
 function splitFullName(name){
   if(!name) return { first_name: null, last_name: null };
   const parts = String(name).trim().split(/\s+/);
@@ -129,9 +252,6 @@ router.get('/', auth, async (req, res, next) => {
 
     const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
     const ap = activePool(req);
-    const countQuery = `SELECT COUNT(*)::int AS total FROM patients ${whereClause}`;
-    const { rows: countRows } = await ap.query(countQuery, params);
-    const total = countRows[0]?.total || 0;
 
     const orderClauses = [];
     if (cols.has('updated_at')) orderClauses.push('updated_at DESC');
@@ -139,9 +259,23 @@ router.get('/', auth, async (req, res, next) => {
     orderClauses.push('id DESC');
     const orderBy = orderClauses.join(', ');
 
-    const dataQuery = `SELECT ${select} FROM patients ${whereClause} ORDER BY ${orderBy} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
-    const { rows } = await ap.query(dataQuery, [...params, pageSize, offset]);
-    const data = rows.map(projectPatient);
+    const paginatedQuery = `
+      WITH filtered AS (
+        SELECT ${select}, COUNT(*) OVER() AS _total
+        FROM patients
+        ${whereClause}
+      )
+      SELECT * FROM filtered
+      ORDER BY ${orderBy}
+      LIMIT $${params.length + 1}
+      OFFSET $${params.length + 2}
+    `;
+    const { rows } = await ap.query(paginatedQuery, [...params, pageSize, offset]);
+    const total = rows.length ? Number(rows[0]._total) : 0;
+    const data = rows.map((row) => {
+      const { _total, ...rest } = row;
+      return projectPatient(rest);
+    });
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
     res.json({
       data,
@@ -181,6 +315,17 @@ router.get('/schema', auth, requirePermission('patients','read'), async (req,res
     console.error('[PATIENT_SCHEMA_FAIL]', e);
     next(new AppError(500,'Error obteniendo schema de pacientes','PATIENT_SCHEMA_FAIL'));
   }
+});
+
+// Admin utility: invalida la caché del catálogo de análisis usado por el historial clínico
+router.post('/history-cache/invalidate', auth, requirePermission('studies','update'), (req,res)=>{
+  const previouslyWarm = invalidateAnalysisCatalogCache(req);
+  res.json({
+    cleared: true,
+    previouslyWarm,
+    tenantId: req.auth?.tenant_id || null,
+    clearedAt: new Date().toISOString()
+  });
 });
 
 router.post('/', auth, sanitizeBody(['full_name','email','phone_number']), validate(createPatientSchema), audit('create','patient', (req,r)=>r.locals?.createdId, (req,r)=>({ body: req.body })), async (req, res, next) => {
@@ -243,39 +388,41 @@ router.get('/:id/history', auth, async (req, res, next) => {
     const pQ = await ap.query('SELECT * FROM patients WHERE id=$1', [req.params.id]);
     if (!pQ.rows[0]) return next(new AppError(404,'Paciente no encontrado','PATIENT_NOT_FOUND'));
     const patient = projectPatient(pQ.rows[0]);
+    const catalog = await getAnalysisCatalog(req);
+    const statusFilter = ['Concluida','Reportada','Entregada'];
+    const historyQuery = `
+      SELECT
+        wo.id AS order_id,
+        wo.folio,
+        wo.order_date,
+        wo.status,
+        se.study_key,
+        payload.result_entry
+      FROM work_orders wo
+      JOIN LATERAL jsonb_each(
+        CASE
+          WHEN wo.results IS NULL OR jsonb_typeof(wo.results) <> 'object' THEN '{}'::jsonb
+          ELSE wo.results
+        END
+      ) AS se(study_key, study_payload) ON TRUE
+      JOIN LATERAL (
+        SELECT arr.elem AS result_entry
+        FROM jsonb_array_elements(
+          CASE WHEN jsonb_typeof(se.study_payload) = 'array' THEN se.study_payload ELSE '[]'::jsonb END
+        ) AS arr(elem)
+        UNION ALL
+        SELECT obj.value
+        FROM jsonb_each(
+          CASE WHEN jsonb_typeof(se.study_payload) = 'object' THEN se.study_payload ELSE '{}'::jsonb END
+        ) AS obj(key, value)
+      ) AS payload ON TRUE
+      WHERE wo.patient_id = $1
+        AND wo.status = ANY($2)
+        AND wo.results IS NOT NULL
+      ORDER BY wo.order_date
+    `;
+    const { rows: historyRows } = await ap.query(historyQuery, [req.params.id, statusFilter]);
 
-    // 2) Órdenes con resultados relevantes
-    const { rows: orders } = await ap.query(
-      `SELECT id, folio, order_date, status, results
-       FROM work_orders
-       WHERE patient_id=$1 AND status = ANY($2)
-       ORDER BY order_date`,
-      [req.params.id, ['Concluida','Reportada','Entregada']]
-    );
-
-    // 3) Catálogo de estudios y parámetros (mínimo necesario)
-    const { rows: studiesRows } = await ap.query('SELECT id, name, code, clave, general_units FROM analysis');
-    const studyByAnyKey = new Map();
-    const uniqueStudies = [];
-    for (const s of studiesRows) {
-      const enriched = { ...s, parametersMap: new Map(), parameters: [] };
-      uniqueStudies.push(enriched);
-      const keys = [s.id, s.code, s.clave, s.name].filter(v => v != null);
-      for (const k of keys) studyByAnyKey.set(String(k), enriched);
-    }
-    if (uniqueStudies.length) {
-      const ids = uniqueStudies.map(s => s.id);
-      const { rows: paramsRows } = await ap.query('SELECT id, analysis_id, name, unit FROM analysis_parameters WHERE analysis_id = ANY($1)', [ids]);
-      for (const pr of paramsRows) {
-        const s = uniqueStudies.find(u => u.id === pr.analysis_id);
-        if (!s) continue;
-        const param = { id: pr.id, name: pr.name, unit: pr.unit };
-        s.parameters.push(param);
-        s.parametersMap.set(String(pr.id), param);
-      }
-    }
-
-    // 4) Normalizar resultados
     const safeNum = (raw) => {
       if (raw == null || raw === '') return { isNum: false, out: null };
       const n = (typeof raw === 'string') ? parseFloat(raw.replace(',', '.')) : Number(raw);
@@ -283,45 +430,39 @@ router.get('/:id/history', auth, async (req, res, next) => {
       return { isNum: false, out: String(raw) };
     };
 
+    const valueKeys = ['valor','value','resultado','result','valor_obtenido','valorObtenido'];
+    const textValueKeys = ['texto','text','valorTexto','valor_texto'];
+    const unitKeys = ['unit','unidad','units'];
+
     const out = [];
-    for (const o of orders) {
-      const results = o.results;
-      if (!results || typeof results !== 'object') continue;
-      for (const [studyKey, payload] of Object.entries(results)) {
-        let studyInfo = studyByAnyKey.get(String(studyKey));
-        if (!studyInfo) {
-          // fallback lineal por si hay diferencias tipográficas menores
-          studyInfo = uniqueStudies.find(s => [s.id, s.code, s.clave, s.name].some(v => v != null && String(v) === String(studyKey)));
-        }
-        if (!studyInfo) continue;
-        const arr = Array.isArray(payload)
-          ? payload
-          : (typeof payload === 'object' && payload !== null ? Object.values(payload) : []);
-        for (const r of arr) {
-          if (!r || typeof r !== 'object') continue;
-          const pid = r.parametroId;
-          if (!pid) continue;
-          // buscar param por id y luego por nombre
-          let param = studyInfo.parametersMap.get(String(pid));
-          if (!param) param = studyInfo.parameters.find(p => p.name === pid);
-          if (!param) continue;
-          const num = safeNum(r.valor);
-          out.push({
-            date: o.order_date,
-            folio: o.folio,
-            studyId: studyInfo.id,
-            studyName: studyInfo.name,
-            parameterId: param.id,
-            parameterName: param.name,
-            result: num.out ?? r.valor,
-            isNumeric: !!num.isNum,
-            unit: param.unit || studyInfo.general_units || 'N/A'
-          });
-        }
+    for (const row of historyRows) {
+      const payload = row.result_entry;
+      if (!payload || typeof payload !== 'object') continue;
+      let studyInfo = resolveStudy(catalog, row.study_key);
+      const paramResolution = resolveParameter(studyInfo, catalog, payload);
+      if (!paramResolution) continue;
+      const paramInfo = paramResolution.param;
+      if (!studyInfo && paramResolution.inferredStudy) {
+        studyInfo = paramResolution.inferredStudy;
       }
+      if (!studyInfo) continue;
+      const rawValue = pickFirst(payload, valueKeys) ?? pickFirst(payload, textValueKeys);
+      const numeric = safeNum(rawValue);
+      const resultValue = numeric.out ?? (rawValue != null ? String(rawValue) : null);
+      const unit = paramInfo.unit || studyInfo.general_units || pickFirst(payload, unitKeys) || 'N/A';
+      out.push({
+        date: row.order_date,
+        folio: row.folio,
+        studyId: studyInfo.id,
+        studyName: studyInfo.name || String(row.study_key),
+        parameterId: paramInfo.id,
+        parameterName: paramInfo.name,
+        result: resultValue,
+        isNumeric: !!numeric.isNum,
+        unit
+      });
     }
 
-    // Orden descendente por fecha en la respuesta estándar
     out.sort((a,b)=> new Date(b.date) - new Date(a.date));
     const chartableParams = Array.from(new Set(out.filter(r => r.isNumeric).map(r => r.parameterName)));
     res.json({ patient, results: out, chartableParameters: chartableParams });

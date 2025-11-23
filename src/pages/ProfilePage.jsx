@@ -10,12 +10,21 @@ import { motion } from 'framer-motion';
 const ProfilePage = () => {
   const { user, updatePassword } = useAuth();
   const { toast } = useToast();
+  const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isUpdating, setIsUpdating] = useState(false);
 
   const handlePasswordUpdate = async (e) => {
     e.preventDefault();
+    if (!currentPassword) {
+      toast({
+        title: 'Error',
+        description: 'Debes ingresar tu contraseña actual.',
+        variant: 'destructive',
+      });
+      return;
+    }
     if (newPassword !== confirmPassword) {
       toast({
         title: 'Error',
@@ -34,7 +43,7 @@ const ProfilePage = () => {
     }
 
     setIsUpdating(true);
-    const { error } = await updatePassword(newPassword);
+    const { error } = await updatePassword({ currentPassword, newPassword });
     if (error) {
       toast({
         title: 'Error al actualizar',
@@ -46,6 +55,7 @@ const ProfilePage = () => {
         title: 'Éxito',
         description: 'Tu contraseña ha sido actualizada correctamente.',
       });
+      setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
     }
@@ -97,6 +107,17 @@ const ProfilePage = () => {
           </CardHeader>
           <form onSubmit={handlePasswordUpdate}>
             <CardContent className="space-y-4">
+              <div className="space-y-1">
+                <Label htmlFor="currentPassword">Contraseña Actual</Label>
+                <Input
+                  id="currentPassword"
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                />
+              </div>
               <div className="space-y-1">
                 <Label htmlFor="newPassword">Nueva Contraseña</Label>
                 <Input

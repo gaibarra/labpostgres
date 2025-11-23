@@ -63,7 +63,7 @@ const useUserForm = (selectedUser, onFormSubmit) => {
       if (selectedUser) {
         updatedUser = await handleUpdateUser();
       } else {
-        await handleCreateUser();
+        updatedUser = await handleCreateUser();
       }
       onFormSubmit(updatedUser);
     } finally {
@@ -73,10 +73,17 @@ const useUserForm = (selectedUser, onFormSubmit) => {
   
   const handleCreateUser = async () => {
     try {
-      await apiClient.post('/users', formData);
+      const data = await apiClient.post('/users', formData);
       toast({ title: 'Usuario Creado', description: 'El nuevo usuario ha sido creado exitosamente.' });
+      return {
+        ...data,
+        display_name: (data.first_name || data.last_name)
+          ? `${data.first_name || ''} ${data.last_name || ''}`.trim()
+          : data.email,
+      };
     } catch (error) {
       toast({ variant: 'destructive', title: 'Error al Crear Usuario', description: error.message || 'Error desconocido' });
+      return null;
     }
   };
 

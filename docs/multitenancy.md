@@ -24,6 +24,22 @@ TENANT_PGPASSWORD=CHANGEME
 3. Middleware adjunta `req.tenantPool`.
 4. Repositorios / servicios usan `req.tenantPool.query(...)`.
 
+#### ¿Y si el admin vive únicamente en la DB del tenant?
+- Durante la migración hacia el modelo multi-tenant es común que los usuarios existan sólo en la base del laboratorio (por ejemplo `lab_demo`).
+- El backend ahora intenta deducir el `tenant_id` cuando la búsqueda en `tenant_admins` no arroja resultados pero el usuario sí existe en la DB por defecto (`PGDATABASE`).
+- Para que la detección automática funcione se necesita al menos uno de los siguientes *hints* configurados y un registro en `tenants` que coincida:
+	- `DEFAULT_TENANT_ID` → UUID exacto del tenant.
+	- `SINGLE_TENANT_SLUG` → slug registrado (citext) en la tabla `tenants`.
+	- `DEFAULT_TENANT_DB` → nombre de la base del laboratorio (ej. `lab_demo`). Si no se define, el sistema usa `PGDATABASE` como último recurso.
+- Recomendado: después de ejecutar `initMaster.sh` y registrar el tenant (o recrearlo con `provisionTenant.js`), añade el hint correspondiente en `.env`. Ejemplo:
+
+```
+DEFAULT_TENANT_DB=lab_demo
+# opcional si ya conoces el UUID
+# DEFAULT_TENANT_ID=00000000-0000-0000-0000-000000000000
+```
+- Una vez resuelto el tenant, el JWT incluirá `tenant_id` incluso para cuentas existentes, habilitando las rutas protegidas que dependen de `tenantMiddleware`.
+
 ### Provisionamiento (resumen)
 1. Crear DB: `CREATE DATABASE lab_tenant_<slug> TEMPLATE lab_template;` (o correr migraciones).
 2. Registrar: `registerTenant({ slug, dbName, adminEmail, passwordHash })`.

@@ -132,7 +132,38 @@ export const AuthProvider = ({ children, initialUser = null }) => {
         return { error: null };
       }, [toast]);
 
-      const value = useMemo(() => ({ user, loading, signUp, signIn, signOut }), [user, loading, signUp, signIn, signOut]);
+      const resetPasswordForEmail = useCallback(async (email) => {
+        try {
+          const data = await apiClient.auth.forgotPassword({ email });
+          return { error: null, data };
+        } catch (error) {
+          toast({ variant: 'destructive', title: 'Error al enviar enlace', description: error.message || 'No se pudo enviar el correo de restablecimiento.' });
+          return { error };
+        }
+      }, [toast]);
+
+      const completePasswordReset = useCallback(async ({ token, password }) => {
+        try {
+          const data = await apiClient.auth.resetPassword({ token, password });
+          return { error: null, data };
+        } catch (error) {
+          toast({ variant: 'destructive', title: 'Error al restablecer', description: error.message || 'No se pudo actualizar la contraseña.' });
+          return { error };
+        }
+      }, [toast]);
+
+      const updatePassword = useCallback(async ({ currentPassword, newPassword }) => {
+        try {
+          const data = await apiClient.auth.changePassword({ currentPassword, newPassword });
+          toast({ title: 'Contraseña actualizada', description: 'Tu contraseña se ha cambiado correctamente.' });
+          return { error: null, data };
+        } catch (error) {
+          toast({ variant: 'destructive', title: 'Error al actualizar', description: error.message || 'No se pudo actualizar la contraseña.' });
+          return { error };
+        }
+      }, [toast]);
+
+      const value = useMemo(() => ({ user, loading, signUp, signIn, signOut, resetPasswordForEmail, completePasswordReset, updatePassword }), [user, loading, signUp, signIn, signOut, resetPasswordForEmail, completePasswordReset, updatePassword]);
       return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
     };
 
