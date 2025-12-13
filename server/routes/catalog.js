@@ -5,7 +5,7 @@ const { requirePermission } = require('../middleware/permissions');
 const { listParameters, findParameter, toResponse, normalizeKey, reloadCatalog, buildETag, catalog } = require('../catalog');
 
 // Listado completo (paginar en futuro si crece mucho)
-router.get('/catalog/parameters', requireAuth, requirePermission('studies','read'), (req,res)=>{
+router.get('/parameters', requireAuth, requirePermission('studies','read'), (req,res)=>{
   const q = (req.query.q||'').toString().trim();
   const category = (req.query.category||'').toString().trim();
   const page = Math.max(1, parseInt(req.query.page,10) || 1);
@@ -30,7 +30,7 @@ router.get('/catalog/parameters', requireAuth, requirePermission('studies','read
 });
 
 // Obtener detalle normalizado (incluye rangos)
-router.get('/catalog/parameters/:key', requireAuth, requirePermission('studies','read'), (req,res)=>{
+router.get('/parameters/:key', requireAuth, requirePermission('studies','read'), (req,res)=>{
   const { key } = req.params;
   const hit = findParameter(key);
   if (!hit) return res.status(404).json({ error:'not_found' });
@@ -38,7 +38,7 @@ router.get('/catalog/parameters/:key', requireAuth, requirePermission('studies',
 });
 
 // Categorías agregadas
-router.get('/catalog/categories', requireAuth, requirePermission('studies','read'), (req,res)=>{
+router.get('/categories', requireAuth, requirePermission('studies','read'), (req,res)=>{
   const items = listParameters();
   const map = new Map();
   items.forEach(p => {
@@ -55,16 +55,16 @@ router.get('/catalog/categories', requireAuth, requirePermission('studies','read
 });
 
 // Versión catálogo
-router.get('/catalog/version', requireAuth, requirePermission('studies','read'), (req,res)=>{
+router.get('/version', requireAuth, requirePermission('studies','read'), (req,res)=>{
   const etag = buildETag();
   if (req.headers['if-none-match'] === etag) return res.status(304).end();
   res.set('ETag', etag).json({ version: catalog.version, updatedAt: catalog.updatedAt, count: catalog.parameters.length, etag });
 });
 
-module.exports = router;
 // Admin reload (requiere permiso de escritura sobre studies para simplificar)
-router.post('/catalog/reload', requireAuth, requirePermission('studies','update'), (req,res)=>{
+router.post('/reload', requireAuth, requirePermission('studies','update'), (req,res)=>{
   const info = reloadCatalog();
   const etag = buildETag();
   res.set('ETag', etag).json({ reloaded:true, ...info, etag });
 });
+module.exports = router;

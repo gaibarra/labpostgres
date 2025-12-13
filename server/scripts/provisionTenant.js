@@ -177,8 +177,10 @@ async function main(){
     }
 
     // Ejecutar seed de estudios canónicos
+    let bootstrapProfiles = null;
     try {
-      const { seed } = require('./seedDefaultStudies');
+      const { seed, bootstrapPackagesFromProfiles } = require('./seedDefaultStudies');
+      bootstrapProfiles = typeof bootstrapPackagesFromProfiles === 'function' ? bootstrapPackagesFromProfiles : null;
       await seed(tenantPool);
     } catch (se) {
       console.warn('[PROVISION] Seed estudios falló:', se.message);
@@ -191,6 +193,16 @@ async function main(){
       console.log('[PROVISION] Semilla de estudios sueltos ejecutada (si hay archivo JSON)');
     } catch (se2) {
       console.warn('[PROVISION] Semilla de estudios sueltos no aplicada:', se2.message);
+    }
+
+    // Reforzar paquetes Perfil -> estudios individuales ahora que existen los análisis sueltos
+    if (bootstrapProfiles) {
+      try {
+        await bootstrapProfiles(tenantPool);
+        console.log('[PROVISION] Paquetes Perfil actualizados con estudios individuales.');
+      } catch (pkgAlignErr) {
+        console.warn('[PROVISION] Rebuild de paquetes Perfil falló:', pkgAlignErr.message);
+      }
     }
 
     // Auto-fix cuantitativo con plantillas: volver a ejecutar seeder para reemplazar cualitativos

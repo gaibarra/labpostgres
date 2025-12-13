@@ -1,4 +1,9 @@
 const { pool } = require('../db');
+const { ensureAnalysisParameterPositionIndex } = require('../services/schemaGuards');
+
+beforeAll(async () => {
+  await ensureAnalysisParameterPositionIndex();
+});
 
 describe('Schema integrity', () => {
   test('analysis_parameters has position column and index', async () => {

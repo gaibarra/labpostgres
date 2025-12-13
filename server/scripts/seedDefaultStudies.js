@@ -21,6 +21,28 @@ function placeholderRanges(tipo='numerico'){
   return LIFE_SEGMENTS.map(([a,b])=>({ sexo:'Ambos', edad_min:a, edad_max:b, edad_unit:'años', valor_min:null, valor_max:null, tipo_valor:tipo, texto_permitido:'', texto_libre:'', notas: tipo==='textoLibre' ? '(Cualitativo)' : '(Pendiente definir)' }));
 }
 
+function normalizeName(str){
+  if (!str) return '';
+  return str
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g,'')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g,' ')
+    .replace(/\s+/g,' ')
+    .trim();
+}
+
+function deriveCodeFromName(name) {
+  const clean = (name || 'AUTO')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Za-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 24)
+    .toUpperCase();
+  return clean || `AUTO_${Math.random().toString(36).slice(2,8).toUpperCase()}`;
+}
+
 // Minimal schema assumptions: studies(id serial, name, category, description, created_at);
 // parameters(id serial, study_id, name, unit, decimal_places, position);
 // reference_ranges(id serial, parameter_id, sexo, edad_min, edad_max, edad_unit, valor_min, valor_max, tipo_valor, texto_permitido, texto_libre, notas)
@@ -343,11 +365,275 @@ async function seed(pool){
   } catch (e) {
     console.warn('[SEED] Enforcer M/F adultos: aviso %s', e.message);
   }
+
+  // Crear paquetes automáticamente a partir de análisis "Perfil"
+  if (modeModern) {
+    await bootstrapPackagesFromProfiles(pool);
+  }
 }
 
 async function hasColumn(pool, table, column){
   const { rows } = await pool.query(`SELECT 1 FROM information_schema.columns WHERE table_name=$1 AND column_name=$2 LIMIT 1`,[table, column]);
   return !!rows[0];
+}
+
+async function bootstrapPackagesFromProfiles(pool) {
+  const supportsPkg = (await pool.query("SELECT to_regclass('public.analysis_packages') AS t")).rows[0]?.t;
+  const supportsItems = (await pool.query("SELECT to_regclass('public.analysis_package_items') AS t")).rows[0]?.t;
+  const supportsPosition = supportsItems && (await pool.query(`SELECT 1 FROM information_schema.columns WHERE table_name='analysis_package_items' AND column_name='position' LIMIT 1`)).rows.length === 1;
+  const packagesHasSlug = supportsPkg ? await hasColumn(pool, 'analysis_packages', 'slug') : false;
+  const analysisHasPackageId = await hasColumn(pool,'analysis','package_id');
+  if (!supportsPkg || !supportsItems) {
+    console.log('[SEED][PACKAGES] Tablas analysis_packages o analysis_package_items ausentes; se omite conversión de perfiles.');
+    return;
+  }
+
+  const analysisColumnFlags = {
+    code: await hasColumn(pool,'analysis','code'),
+    clave: await hasColumn(pool,'analysis','clave'),
+    category: await hasColumn(pool,'analysis','category'),
+    description: await hasColumn(pool,'analysis','description'),
+    indications: await hasColumn(pool,'analysis','indications'),
+    sample_type: await hasColumn(pool,'analysis','sample_type'),
+    sample_container: await hasColumn(pool,'analysis','sample_container'),
+    processing_time_hours: await hasColumn(pool,'analysis','processing_time_hours'),
+    general_units: await hasColumn(pool,'analysis','general_units')
+  };
+
+  const parameterColumnFlags = {
+    unit: await hasColumn(pool,'analysis_parameters','unit'),
+    decimal_places: await hasColumn(pool,'analysis_parameters','decimal_places'),
+    position: await hasColumn(pool,'analysis_parameters','position')
+  };
+
+  const hasRangesTable = (await pool.query("SELECT to_regclass('public.analysis_reference_ranges') AS t")).rows[0]?.t;
+  const rangeColumnFlags = hasRangesTable ? {
+    sex: await hasColumn(pool,'analysis_reference_ranges','sex'),
+    age_min: await hasColumn(pool,'analysis_reference_ranges','age_min'),
+    age_max: await hasColumn(pool,'analysis_reference_ranges','age_max'),
+    age_min_unit: await hasColumn(pool,'analysis_reference_ranges','age_min_unit'),
+    lower: await hasColumn(pool,'analysis_reference_ranges','lower'),
+    upper: await hasColumn(pool,'analysis_reference_ranges','upper'),
+    text_value: await hasColumn(pool,'analysis_reference_ranges','text_value'),
+    notes: await hasColumn(pool,'analysis_reference_ranges','notes'),
+    unit: await hasColumn(pool,'analysis_reference_ranges','unit'),
+    method: await hasColumn(pool,'analysis_reference_ranges','method')
+  } : {};
+
+  const { rows: analysisRows } = await pool.query('SELECT id, name FROM analysis');
+  if (!analysisRows.length) {
+    console.log('[SEED][PACKAGES] No hay análisis disponibles para asociar a los paquetes.');
+    return;
+  }
+  const analysisByName = new Map();
+  for (const row of analysisRows) {
+    const key = normalizeName(row.name);
+    if (key && !analysisByName.has(key)) {
+      analysisByName.set(key, row.id);
+    }
+  }
+  if (!analysisByName.size) {
+    console.log('[SEED][PACKAGES] No se pudieron normalizar nombres de análisis para vincular.');
+    return;
+  }
+
+  const { rowCount: danglingRemoved } = await pool.query(`
+    DELETE FROM analysis_package_items
+    WHERE item_type='analysis'
+      AND NOT EXISTS (SELECT 1 FROM analysis a WHERE a.id = analysis_package_items.item_id)
+  `);
+  if (danglingRemoved) {
+    console.log('[SEED][PACKAGES] Ítems huérfanos removidos: %d', danglingRemoved);
+  }
+
+  const profileSelect = [
+    'id',
+    'name',
+    analysisColumnFlags.description ? "COALESCE(description,'Perfil clínico') AS description" : "'Perfil clínico'::text AS description",
+    analysisColumnFlags.category ? 'category' : 'NULL::text AS category',
+    analysisColumnFlags.sample_type ? 'sample_type' : 'NULL::text AS sample_type',
+    analysisColumnFlags.sample_container ? 'sample_container' : 'NULL::text AS sample_container',
+    analysisColumnFlags.processing_time_hours ? 'processing_time_hours' : 'NULL::int AS processing_time_hours'
+  ];
+  const profilesSql = `SELECT ${profileSelect.join(', ')} FROM analysis WHERE name ILIKE 'perfil %'`;
+  const { rows: profiles } = await pool.query(profilesSql);
+  if (!profiles.length) {
+    console.log('[SEED][PACKAGES] No se encontraron análisis con nombre Perfil*.');
+    return;
+  }
+
+  const paramSelect = [
+    'id',
+    'name',
+    parameterColumnFlags.unit ? 'unit' : 'NULL::text AS unit',
+    parameterColumnFlags.decimal_places ? 'decimal_places' : 'NULL::int AS decimal_places'
+  ];
+  const paramOrderClause = parameterColumnFlags.position ? 'ORDER BY position' : 'ORDER BY name';
+  const paramsSql = `SELECT ${paramSelect.join(', ')} FROM analysis_parameters WHERE analysis_id=$1 ${paramOrderClause}`;
+
+  const missingNames = new Map();
+  let linkedItems = 0;
+  let packagesTouched = 0;
+  let createdAnalyses = 0;
+
+  async function cloneRanges(sourceParamId, targetParamId) {
+    if (!hasRangesTable) return;
+    const { rows } = await pool.query('SELECT * FROM analysis_reference_ranges WHERE parameter_id=$1', [sourceParamId]);
+    for (const range of rows) {
+      const cols = ['parameter_id'];
+      const vals = ['$1'];
+      const params = [targetParamId];
+      if (rangeColumnFlags.sex) { cols.push('sex'); vals.push(`$${params.length+1}`); params.push(range.sex || 'Ambos'); }
+      if (rangeColumnFlags.age_min) { cols.push('age_min'); vals.push(`$${params.length+1}`); params.push(range.age_min ?? null); }
+      if (rangeColumnFlags.age_max) { cols.push('age_max'); vals.push(`$${params.length+1}`); params.push(range.age_max ?? null); }
+      if (rangeColumnFlags.age_min_unit) { cols.push('age_min_unit'); vals.push(`$${params.length+1}`); params.push(range.age_min_unit || 'años'); }
+      if (rangeColumnFlags.lower) { cols.push('lower'); vals.push(`$${params.length+1}`); params.push(range.lower ?? null); }
+      if (rangeColumnFlags.upper) { cols.push('upper'); vals.push(`$${params.length+1}`); params.push(range.upper ?? null); }
+      if (rangeColumnFlags.text_value) { cols.push('text_value'); vals.push(`$${params.length+1}`); params.push(range.text_value ?? null); }
+      if (rangeColumnFlags.notes) { cols.push('notes'); vals.push(`$${params.length+1}`); params.push(range.notes ?? null); }
+      if (rangeColumnFlags.unit) { cols.push('unit'); vals.push(`$${params.length+1}`); params.push(range.unit ?? null); }
+      if (rangeColumnFlags.method) { cols.push('method'); vals.push(`$${params.length+1}`); params.push(range.method ?? null); }
+      await pool.query(`INSERT INTO analysis_reference_ranges(${cols.join(',')}) VALUES(${vals.join(',')})`, params);
+    }
+  }
+
+  async function ensureStandaloneAnalysis(paramRow, profMeta) {
+    const normalized = normalizeName(paramRow.name);
+    if (!normalized) return null;
+    const cached = analysisByName.get(normalized);
+    if (cached) return cached;
+
+    const insertCols = ['name'];
+    const insertVals = ['$1'];
+    const insertParams = [paramRow.name];
+    if (analysisColumnFlags.category) { insertCols.push('category'); insertVals.push(`$${insertParams.length+1}`); insertParams.push(profMeta.category || 'Perfil'); }
+    if (analysisColumnFlags.description) {
+      insertCols.push('description'); insertVals.push(`$${insertParams.length+1}`);
+      insertParams.push(`Subestudio del ${profMeta.name}`);
+    }
+    if (analysisColumnFlags.indications) { insertCols.push('indications'); insertVals.push(`$${insertParams.length+1}`); insertParams.push(`Derivado del ${profMeta.name}`); }
+    if (analysisColumnFlags.sample_type) { insertCols.push('sample_type'); insertVals.push(`$${insertParams.length+1}`); insertParams.push(profMeta.sample_type || null); }
+    if (analysisColumnFlags.sample_container) { insertCols.push('sample_container'); insertVals.push(`$${insertParams.length+1}`); insertParams.push(profMeta.sample_container || null); }
+    if (analysisColumnFlags.processing_time_hours) { insertCols.push('processing_time_hours'); insertVals.push(`$${insertParams.length+1}`); insertParams.push(profMeta.processing_time_hours ?? null); }
+    if (analysisColumnFlags.general_units) { insertCols.push('general_units'); insertVals.push(`$${insertParams.length+1}`); insertParams.push(paramRow.unit || null); }
+    if (analysisColumnFlags.code) { insertCols.push('code'); insertVals.push(`$${insertParams.length+1}`); insertParams.push(`${deriveCodeFromName(paramRow.name)}_PF`); }
+    if (analysisColumnFlags.clave) { insertCols.push('clave'); insertVals.push(`$${insertParams.length+1}`); insertParams.push(`${deriveCodeFromName(paramRow.name)}_PF`); }
+
+    let newAnalysisId;
+    try {
+      const { rows: created } = await pool.query(`INSERT INTO analysis(${insertCols.join(',')}) VALUES(${insertVals.join(',')}) RETURNING id`, insertParams);
+      newAnalysisId = created[0].id;
+    } catch (err) {
+      console.warn('[SEED][PACKAGES] No se pudo crear análisis individual %s: %s', paramRow.name, err.message);
+      return null;
+    }
+
+    const paramCols = ['analysis_id','name'];
+    const paramVals = ['$1','$2'];
+    const paramParams = [newAnalysisId, paramRow.name];
+    if (parameterColumnFlags.unit) { paramCols.push('unit'); paramVals.push(`$${paramParams.length+1}`); paramParams.push(paramRow.unit || null); }
+    if (parameterColumnFlags.decimal_places) { paramCols.push('decimal_places'); paramVals.push(`$${paramParams.length+1}`); paramParams.push(paramRow.decimal_places ?? null); }
+    if (parameterColumnFlags.position) { paramCols.push('position'); paramVals.push(`$${paramParams.length+1}`); paramParams.push(1); }
+    let newParamId = null;
+    try {
+      const { rows: createdParam } = await pool.query(`INSERT INTO analysis_parameters(${paramCols.join(',')}) VALUES(${paramVals.join(',')}) RETURNING id`, paramParams);
+      newParamId = createdParam[0].id;
+    } catch (err) {
+      console.warn('[SEED][PACKAGES] No se pudo crear parámetro para %s: %s', paramRow.name, err.message);
+    }
+    if (newParamId) {
+      await cloneRanges(paramRow.id, newParamId);
+    }
+
+    analysisByName.set(normalized, newAnalysisId);
+    createdAnalyses++;
+    return newAnalysisId;
+  }
+
+  for (const prof of profiles) {
+    await pool.query('BEGIN');
+    try {
+      const slug = prof.name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+      let packageId;
+      if (packagesHasSlug) {
+        const pkgRes = await pool.query(
+          `INSERT INTO analysis_packages(name, description, price, slug)
+           VALUES($1,$2,NULL,$3)
+           ON CONFLICT (slug) DO UPDATE SET description = COALESCE(analysis_packages.description, EXCLUDED.description)
+           RETURNING id`,
+          [prof.name, prof.description, slug || null]
+        );
+        packageId = pkgRes.rows[0].id;
+      } else {
+        const { rows: existing } = await pool.query(
+          'SELECT id FROM analysis_packages WHERE LOWER(name)=LOWER($1) LIMIT 1',
+          [prof.name]
+        );
+        if (existing[0]) {
+          packageId = existing[0].id;
+          if (prof.description) {
+            await pool.query(
+              'UPDATE analysis_packages SET description = COALESCE(description, $2) WHERE id = $1',
+              [packageId, prof.description]
+            );
+          }
+        } else {
+          const pkgRes = await pool.query(
+            'INSERT INTO analysis_packages(name, description, price) VALUES($1,$2,NULL) RETURNING id',
+            [prof.name, prof.description]
+          );
+          packageId = pkgRes.rows[0].id;
+        }
+      }
+      if (analysisHasPackageId) {
+        await pool.query('UPDATE analysis SET package_id=$1 WHERE id=$2', [packageId, prof.id]);
+      }
+
+      const { rows: params } = await pool.query(paramsSql, [prof.id]);
+      let position = 1;
+      let packageHasItems = false;
+      for (const param of params) {
+        const key = normalizeName(param.name);
+        let childAnalysisId = key ? analysisByName.get(key) : null;
+        if (!childAnalysisId) {
+          childAnalysisId = await ensureStandaloneAnalysis(param, prof);
+        }
+        if (!childAnalysisId) {
+          const label = (param.name || '').trim() || key || '(sin nombre)';
+          missingNames.set(label, (missingNames.get(label) || 0) + 1);
+          continue;
+        }
+        packageHasItems = true;
+        linkedItems++;
+        if (supportsPosition) {
+          await pool.query(
+            `INSERT INTO analysis_package_items(package_id, item_id, item_type, position)
+             VALUES($1,$2,'analysis',$3)
+             ON CONFLICT DO NOTHING`,
+            [packageId, childAnalysisId, position++]
+          );
+        } else {
+          await pool.query(
+            `INSERT INTO analysis_package_items(package_id, item_id, item_type)
+             VALUES($1,$2,'analysis')
+             ON CONFLICT DO NOTHING`,
+            [packageId, childAnalysisId]
+          );
+        }
+      }
+      if (packageHasItems) packagesTouched++;
+      await pool.query('COMMIT');
+      console.log('[SEED][PACKAGES] Perfil %s vinculado a %d estudios.', prof.name, packageHasItems ? position-1 : 0);
+    } catch (pkgErr) {
+      await pool.query('ROLLBACK');
+      console.warn('[SEED][PACKAGES] No se pudo crear paquete para %s: %s', prof.name, pkgErr.message);
+    }
+  }
+  console.log('[SEED][PACKAGES] Resumen: paquetes tocados=%d, ítems vinculados=%d, nuevos análisis=%d, pendientes=%d', packagesTouched, linkedItems, createdAnalyses, missingNames.size);
+  if (missingNames.size) {
+    const sample = Array.from(missingNames.entries()).slice(0, 10).map(([name, count]) => `${name} (${count})`);
+    console.warn('[SEED][PACKAGES] Advertencia: no se pudieron generar/vincular estudios para %s%s', sample.join(', '), missingNames.size > sample.length ? '...' : '');
+  }
 }
 
 async function main(){
@@ -378,4 +664,4 @@ if (require.main === module){
   main();
 }
 
-module.exports = { PANELS, seed };
+module.exports = { PANELS, seed, bootstrapPackagesFromProfiles };

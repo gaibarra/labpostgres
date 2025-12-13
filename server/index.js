@@ -16,8 +16,14 @@ const { execSync } = require('child_process');
 const authMiddleware = require('./middleware/auth');
 const fs = require('fs');
 const path = require('path');
+const { ensureCoreSchemaArtifacts } = require('./services/schemaGuards');
 
 const app = express();
+
+// Asegura tablas e índices críticos (idempotente) al iniciar el proceso.
+ensureCoreSchemaArtifacts().catch(err => {
+  console.error('[SCHEMA] ensureCoreSchemaArtifacts failed', err.message || err);
+});
 
 // --- Lightweight ping (sin DB) para diagnóstico rápido de bloqueo ---
 app.get('/api/ping', (_req,res)=>{ res.type('application/json').send(JSON.stringify({ pong:true, t:Date.now(), uptimeSeconds: process.uptime() })); });
@@ -179,7 +185,7 @@ const aiRoutes = require('./routes/ai');
 registerRoute('/api/ai', aiRoutes, { tenant: true });
 // Catálogo clínico
 const catalogRoutes = require('./routes/catalog');
-registerRoute('/api', catalogRoutes, { tenant: true });
+registerRoute('/api/catalog', catalogRoutes, { tenant: true });
 // Configuración laboratorio
 const configRoutes = require('./routes/config');
 const configValidateRoutes = require('./routes/configValidate');

@@ -42,7 +42,12 @@ async function insertDuplicateRange(token, analysisId){
   if ('unit' in r) { cols.push('unit'); vals.push(r.unit); }
   if ('method' in r) { cols.push('method'); vals.push(r.method); }
   const ph = cols.map((_,i)=>'$'+(i+1));
-  await pool.query(`INSERT INTO ${rTable}(${cols.join(',')}) VALUES(${ph.join(',')})`, vals);
+  try {
+    await pool.query(`INSERT INTO ${rTable}(${cols.join(',')}) VALUES(${ph.join(',')})`, vals);
+  } catch (err) {
+    if (err.code !== '23505') throw err;
+    // Índices únicos recientes pueden bloquear duplicados exactos; continuar para validar dedupe en lectura.
+  }
   return { paramId: p.id };
 }
 

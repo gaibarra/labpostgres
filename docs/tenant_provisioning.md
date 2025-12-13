@@ -42,6 +42,7 @@ Orden simplificado de operaciones:
    - 0001 crea tablas básicas: `studies`, `parameters`, `reference_ranges`, `_tenant_bootstrap`.
    - 0002 crea todo el dominio: `patients`, `analysis*` (catálogo paralelo si se usa), `work_orders`, `work_order_items`, `branches`, `referrers`, `packages`, `templates`, índices y triggers de `updated_at`.
 4. Ejecuta el *seed* (`seedDefaultStudies.js`) que inserta ~14 estudios predefinidos con sus parámetros y rangos.
+   - Después del seed, todos los análisis cuyo nombre inicia con “Perfil …” se convierten automáticamente en registros de `analysis_packages` con sus ítems (`analysis_package_items`), por lo que ya aparecen como Paquetes desde el primer arranque.
    - Si existe la migración 0006 se usarán `analysis_reference_ranges` para el catálogo moderno (`analysis` / `analysis_parameters`).
    - Si además está aplicada la 0007 se poblarán (cuando se definan en el array PANELS) campos descriptivos opcionales: description, indications, sample_type, sample_container, processing_time_hours, general_units.
 5. Registra un evento `tenant_provisioned`.
@@ -71,6 +72,31 @@ node server/scripts/provisionTenant.js --slug=milab --email=admin@milab.com --pa
 > node provisionTenant.js --slug=hematos --email=admin@hematos.com --password='ClaveSegura123!'
 > ```
 > Error típico: `Cannot find module .../server/scripts/server/scripts/provisionTenant.js` → ruta duplicada.
+
+### 5.1 Limpiar paquetes "test" en cualquier tenant
+Si detectas paquetes marcados como "test" (por ejemplo, usados para QA), elimínalos directamente en la base del tenant (`lab_<slug>`). Los ítems relacionados se borran en cascada gracias a la FK `ON DELETE CASCADE` hacia `analysis_package_items`.
+
+```bash
+DB=lab_milab   # reemplaza por la base del tenant
+# Listar paquetes sospechosos
+psql "$DB" -c "SELECT id, name, description FROM analysis_packages WHERE name ILIKE '%test%' OR description ILIKE '%test%';"
+
+# Eliminar los paquetes de prueba
+psql "$DB" -c "DELETE FROM analysis_packages WHERE name ILIKE '%test%' OR description ILIKE '%test%';"
+```
+
+> Ajusta el filtro si tus paquetes de prueba usan otra convención (por ejemplo `slug` o `price IS NULL`).
+
+### 5.2 Re-sincronizar los paquetes "Perfil" con estudios individuales
+Para cualquier tenant aprovisionado antes de esta actualización, si los paquetes tipo Perfil muestran "Estudio desconocido" en la UI, vuelve a enlazarlos con los estudios individuales ejecutando:
+
+```bash
+DB=lab_milab   # reemplaza por la base del tenant
+node server/scripts/seedSingleParameterStudies.js --db="$DB"
+node server/scripts/seedDefaultStudies.js --db="$DB"
+```
+
+El primer comando asegura que existan los análisis individuales (TSH, Creatinina, etc.). El segundo limpia ítems huérfanos, crea los estudios faltantes si es necesario y vuelve a poblar `analysis_package_items` mapeando cada parámetro del Perfil al estudio correspondiente. Después de correr ambos comandos, los paquetes mostrarán todos los componentes (mismo número de parámetros que el Estudio) y la UI listará los nombres reales en "Items incluidos".
 
 ---
 ## 6. Verificar que se sembraron los estudios y el dominio

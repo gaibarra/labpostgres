@@ -27,16 +27,17 @@ import React, { useRef, useEffect } from 'react';
     }) => {
 
       const scrollParentRef = useRef(null);
+      const safeOrders = Array.isArray(orders) ? orders : [];
       const rowVirtualizer = useVirtualizer({
-        count: Array.isArray(orders) ? orders.length : 0,
+        count: safeOrders.length,
         getScrollElement: () => scrollParentRef.current,
         estimateSize: () => 64,
         overscan: 8
       });
 
       useEffect(() => {
-        if (!highlightId || !Array.isArray(orders) || !orders.length) return;
-        const highlightIndex = orders.findIndex(order => order.id === highlightId);
+        if (!highlightId || safeOrders.length === 0) return;
+        const highlightIndex = safeOrders.findIndex(order => order.id === highlightId);
         if (highlightIndex === -1) return;
         try {
           rowVirtualizer.scrollToIndex(highlightIndex, { align: 'center' });
@@ -60,7 +61,7 @@ import React, { useRef, useEffect } from 'react';
         );
       }
 
-      if (!orders || orders.length === 0) {
+      if (safeOrders.length === 0) {
         return (
           <div className="text-center py-12 text-slate-500 dark:text-slate-400">
             <Search className="mx-auto h-12 w-12 mb-4" />
@@ -72,8 +73,15 @@ import React, { useRef, useEffect } from 'react';
 
       const virtualRows = rowVirtualizer.getVirtualItems();
       const totalHeight = rowVirtualizer.getTotalSize();
-      const paddingTop = virtualRows.length > 0 ? virtualRows[0].start : 0;
-      const paddingBottom = virtualRows.length > 0 ? totalHeight - virtualRows[virtualRows.length - 1].end : 0;
+      const shouldVirtualize = virtualRows.length > 0 && safeOrders.length > 0;
+      const paddingTop = shouldVirtualize ? virtualRows[0].start : 0;
+      const paddingBottom = shouldVirtualize ? totalHeight - virtualRows[virtualRows.length - 1].end : 0;
+      const renderedRows = shouldVirtualize
+        ? virtualRows.map((virtualRow) => ({
+            order: safeOrders[virtualRow.index],
+            key: safeOrders[virtualRow.index]?.id ?? `virtual-${virtualRow.index}`,
+          }))
+        : safeOrders.map((order, index) => ({ order, key: order.id ?? `order-${index}` }));
 
       return (
         <div ref={scrollParentRef} className="max-h-[70vh] overflow-auto">
@@ -90,18 +98,17 @@ import React, { useRef, useEffect } from 'react';
             </TableRow>
           </TableHeader>
           <TableBody>
-            {paddingTop > 0 && (
+            {shouldVirtualize && paddingTop > 0 && (
               <TableRow key="pad-top" style={{ height: paddingTop }}>
                 <TableCell colSpan={7} className="p-0 border-0" />
               </TableRow>
             )}
-            {virtualRows.map((virtualRow) => {
-              const order = orders[virtualRow.index];
+            {renderedRows.map(({ order, key }) => {
               if (!order) return null;
               const isHighlighted = highlightId && order.id === highlightId;
               return (
               <TableRow 
-                key={order.id}
+                key={key}
                 id={`order-${order.id}`}
                 data-highlighted={isHighlighted ? 'true' : 'false'}
                 className={`hover:bg-slate-100/50 dark:hover:bg-slate-800/50 transition-colors ${isHighlighted ? 'ring-2 ring-sky-400 dark:ring-sky-500 bg-sky-50/70 dark:bg-sky-900/30 animate-pulse-[1.5s_ease-in-out_2]' : ''}`}
@@ -195,7 +202,7 @@ import React, { useRef, useEffect } from 'react';
                 </TableCell>
               </TableRow>
             );})}
-            {paddingBottom > 0 && (
+            {shouldVirtualize && paddingBottom > 0 && (
               <TableRow key="pad-bottom" style={{ height: paddingBottom }}>
                 <TableCell colSpan={7} className="p-0 border-0" />
               </TableRow>

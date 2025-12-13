@@ -114,6 +114,26 @@ export const generateUserManualPDF = async () => {
         y += 20;
     };
     
+    const addAlert = (title, text) => {
+        const padding = 14;
+        const icon = '⚠️';
+        const textBlock = doc.splitTextToSize(text, contentWidth - padding * 2 - 20);
+        const height = (textBlock.length + 1) * 10 * LINE_HEIGHT + padding * 2;
+        addPageIfNecessary(height + 10);
+        doc.setFillColor(254, 242, 242);
+        doc.setDrawColor(248, 113, 113);
+        doc.roundedRect(margin, y, contentWidth, height, 6, 6, 'FD');
+        doc.setFontSize(12);
+        doc.setFont(undefined, 'bold');
+        doc.setTextColor(185, 28, 28);
+        doc.text(`${icon} ${title}`, margin + padding, y + padding + 4);
+        doc.setFontSize(10);
+        doc.setFont(undefined, 'normal');
+        doc.setTextColor(120, 53, 15);
+        doc.text(textBlock, margin + padding, y + padding + 20, { maxWidth: contentWidth - padding * 2 });
+        y += height + 10;
+    };
+
     const addHelpSection = (mainTitle, content) => {
         addTitle(mainTitle, { size: 18 });
         content.forEach(item => {
@@ -130,36 +150,53 @@ export const generateUserManualPDF = async () => {
     };
 
     addTitle("Bienvenido a LabG40", { size: 32 });
-    addParagraph("La guía definitiva para transformar su laboratorio clínico en un modelo de eficiencia, crecimiento y excelencia.", { size: 14 });
-    addParagraph("Este no es solo un manual; es el mapa para desbloquear todo el potencial de su negocio. LabG40 ha sido diseñado desde cero para ir más allá de un simple sistema de gestión: es su socio estratégico.", { isQuote: true });
+    addParagraph("Manual actualizado con las últimas capacidades de LabG40 para operación multitenant, asistentes de IA y automatización de flujos críticos.", { size: 14 });
+    addParagraph("LabG40 integra catálogos clínicos dinámicos, análisis financiero en tiempo real y omnicanalidad para pacientes, referentes y personal interno. Este documento describe la experiencia end-to-end para que cada rol pueda ejecutar con consistencia.", { isQuote: true });
+    addAlert('Validación obligatoria de parámetros', 'Los parámetros sugeridos por el asistente de IA y los valores de referencia generados automáticamente deben ser revisados y validados por un especialista clínico antes de publicarse o entregarse a pacientes. LabG40 facilita la creación, pero la responsabilidad final recae en el laboratorio.');
     
     addSectionBreak();
 
+    addTitle('🚀 Guía rápida de adopción', { size: 20 });
+    const quickStart = [
+        { title: '1. Configura tu tenant', text: 'Ejecuta el aprovisionamiento, crea el usuario admin, verifica que los perfiles y paquetes estén sincronizados y activa las plantillas de mail.' },
+        { title: '2. Define catálogo base', text: 'Complementa o corrige los estudios precargados, valida rangos y agrega paquetes propios. Usa el asistente de IA solo como punto de partida.' },
+        { title: '3. Carga pacientes y referentes', text: 'Importa desde CSV o crea manualmente. Configura precios especiales para clientes frecuentes.' },
+        { title: '4. Entrena a tu equipo', text: 'Recorre el flujo completo: orden → resultados → publicación, y revisa los paneles de auditoría.' }
+    ];
+    quickStart.forEach(item => addListItem(item.title, item.text));
+
+    addSectionBreak();
+
     const patientHelp = [
-        { title: '✍️ Añadir y Editar Pacientes', points: [ "Usa el botón \"Nuevo Paciente\" para registrar todos los datos del paciente.", {bold: "Guardar y Registrar Orden", text: "Guarda al paciente y te redirige inmediatamente para crear una nueva orden."} ]},
-        { title: '🔍 Búsqueda y Filtros', points: ["Usa la barra de búsqueda para encontrar pacientes por nombre, email o teléfono."]},
-        { title: '⚙️ Acciones en la Tabla', points: [ {bold: '👁️ Ver Historial', text: 'Accede al historial clínico completo.'}, {bold: '✏️ Editar', text: 'Modifica los datos del paciente.'}, {bold: '🗑️ Eliminar', text: 'Borra el registro del paciente (requiere confirmación).'} ]}
+        { title: '✍️ Añadir y Editar Pacientes', points: [ "'Nuevo Paciente' registra datos demográficos, notas clínicas y preferencias. El botón 'Guardar y crear orden' acelera la admisión.", {bold: "Historial clínico inteligente", text: "Cada paciente agrega automáticamente órdenes, resultados y archivos adjuntos consultables."} ]},
+        { title: '🔍 Búsqueda y segmentación', points: ["Filtra por nombre, email, etiquetas clínicas o rango de fecha de última visita. La búsqueda tolera acentos y mayúsculas."]},
+        { title: '⚙️ Acciones rápidas', points: [ {bold: '👁️ Ver resumen', text: 'Abre una vista lateral con datos clave, alergias y órdenes recientes.'}, {bold: '📎 Adjuntar documentos', text: 'Carga consentimientos o recetas firmadas.'}, {bold: '🗑️ Desactivar registro', text: 'Oculta pacientes obsoletos (soft delete con trazabilidad).'} ]}
     ];
     addHelpSection('👥 Gestión de Pacientes', patientHelp);
 
     const referrerHelp = [
-        { title: '✍️ Añadir y Editar Referentes', points: [ "Usa \"Nuevo Referente\" para registrar médicos o instituciones. El referente 'Particular' es la base de precios y no puede ser editado.", ]},
-        { title: '⚙️ Acciones en la Tabla', points: [ {bold: '✏️ Editar Datos', text: 'Modifica la información del referente.'}, {bold: '💲 Gestionar Precios', text: 'Crea listas de precios personalizadas.'}, {bold: '📄 Ver Lista (PDF)', text: 'Genera un PDF con la lista de precios.'}, {bold: '🗑️ Eliminar Referente', text: 'Borra permanentemente al referente.'} ]}
+        { title: '✍️ Registrar referentes', points: [ "'Nuevo Referente' soporta médicos, aseguradoras y convenios corporativos. El referente 'Particular' permanece protegido como lista base." ]},
+        { title: '💲 Listas dinámicas de precios', points: [ {bold: 'Tarifario personalizado', text: 'Define estudios o paquetes con precios específicos por referente y moneda.'}, {bold: 'Exportación inmediata', text: 'Genera PDF o CSV de la lista vigente para compartir con tu aliado.'} ]},
+        { title: '🔐 Accesos y comunicación', points: [ "Habilita credenciales para que el referente descargue resultados desde el portal seguro y recibe alertas cuando se publique una orden."]}
     ];
     addHelpSection('🤝 Gestión de Referentes', referrerHelp);
     
     addPageIfNecessary(200);
 
     const studyHelp = [
-        { title: '🧪 Añadir y Editar Estudios', points: ["Usa \"Nuevo Estudio\" para definir nombres, categorías, parámetros y valores de referencia."]},
-        { title: '🤖 Asistente de IA', points: ["\"Asistencia IA\" genera automáticamente la estructura de un estudio a partir de su nombre."]},
-        { title: '💲 Gestión de Precios', points: [ {bold: 'Precio Base (Particular)', text: 'El precio definido en el formulario es el precio de lista.'}, {bold: 'Asignar Precios', text: 'Asigna precios diferentes a otros referentes usando el botón de la tabla.'} ]}
+        { title: '🧪 Definición de estudios', points: ["El formulario permite nombre, categoría, código, unidades, tiempos y notas clínicas. Puedes clonar estudios existentes para acelerar la configuración." ]},
+        { title: '🤖 Asistencia de IA', points: ["El asistente genera parámetros y rangos sugeridos a partir del nombre del estudio. Usa el resultado como borrador y ajusta según tus criterios profesionales.", {bold: 'Verificación experta', text: 'Antes de publicar un estudio debes validar manualmente los parámetros y valores de referencia.'}]},
+        { title: '📚 Versionado y publicación', points: [ "Guarda borradores sin exponerlos al catálogo, documenta cambios y publica cuando el comité lo autorice." ]},
+        { title: '💲 Gestión de precios', points: [ {bold: 'Precio base', text: 'Define monto particular e impuestos aplicables.'}, {bold: 'Propagación', text: 'Sincroniza cambios de precio hacia listas de referentes con un clic.'} ]}
     ];
     addHelpSection('🔬 Catálogo de Estudios', studyHelp);
+
+    addAlert('Recordatorio crítico', 'Los parámetros y valores de referencia generados por la IA siempre deben revisarse por el director médico o responsable sanitario antes de activarse. Configura tus flujos de revisión interna para evitar publicar datos no validados.');
     
     const packageHelp = [
-        { title: '📦 Crear y Editar Paquetes', points: ["Usa \"Nuevo Paquete\" para agrupar estudios individuales."]},
-        { title: '💲 Gestión de Precios de Paquetes', points: ["El precio de un paquete se gestiona igual que un estudio: se establece un precio base y luego precios especiales por referente."]},
+        { title: '📦 Construcción de paquetes', points: ["Agrupa estudios individuales o subpaquetes. El sistema garantiza que cada paquete mantenga paridad con los parámetros del estudio Perfil asociado.", {bold: 'Orden manual o drag & drop', text: 'Reordena componentes para reflejar el toque comercial o la secuencia de toma de muestras.'}]},
+        { title: '🔁 Sincronización automática', points: ["Cuando se actualiza un Perfil, los paquetes derivados se regeneran y crean estudios faltantes para mantener consistencia."]},
+        { title: '💲 Precios', points: ["Administra precio base, descuentos y promociones temporales enlazadas con Marketing."]}
     ];
     addHelpSection('🎁 Gestión de Paquetes', packageHelp);
     
@@ -185,35 +222,34 @@ export const generateUserManualPDF = async () => {
     addTitle("🕹️ Paneles de Control: Su Torre de Mando");
 
     const adminHelp = [
-        { title: '👥 Gestión de Usuarios', points: ["Crea, edita y elimina cuentas de usuario y asigna roles."]},
-        { title: '🔐 Roles y Permisos', points: ["Define roles personalizados con permisos específicos."]},
-        { title: '🗒️ Auditoría del Sistema', points: ["Rastrea todas las acciones importantes para seguridad y control."]},
-        { title: '⚙️ Configuración General', points: ["Configura datos de la empresa, reportes, e integraciones."]},
-        { title: '🎨 Plantillas y Reportes', points: ["Personaliza la apariencia de todos los documentos."]},
-        { title: '🏢 Gestión de Sucursales', points: ["Administra múltiples sedes de forma centralizada."]}
+        { title: '👥 Gestión de Usuarios', points: ["Crea cuentas con caducidad, fuerza MFA y asigna roles granularmente." ]},
+        { title: '🔐 Roles y Permisos', points: ["Combina permisos predefinidos (captura, validación, finanzas) o crea tu matriz personalizada. Cada cambio queda auditado."]},
+        { title: '🗒️ Auditoría Integral', points: ["Consulta el timeline de acciones (login, edición, publicación) para investigaciones internas." ]},
+        { title: '⚙️ Configuración General', points: ["Define branding, plantillas de correo, zonas horarias y dominios de portal de resultados." ]},
+        { title: '🏢 Sucursales y multitenancy', points: ["Activa nuevas sedes con catálogos compartidos o independientes y replica datos maestros en minutos." ]}
     ];
     addHelpSection('🛡️ Panel de Administración', adminHelp);
     
     addPageIfNecessary(400);
 
     const financeHelp = [
-        { title: '📈 Reporte de Ingresos', points: ["Analiza ingresos por fechas, estudios o referentes."]},
-        { title: '💸 Control de Gastos', points: ["Registra y categoriza todos los gastos para optimizar costos."]},
-        { title: '💰 Cuentas por Cobrar', points: ["Lleva un control de deudas y registra pagos."]},
-        { title: '🧾 Facturación y Recibos', points: ["Genera recibos de pago y gestiona la facturación."]},
-        { title: '📊 Configuración de Impuestos', points: ["Define los impuestos aplicables a tus servicios."]},
-        { title: '🌊 Flujo de Caja', points: ["Monitorea en tiempo real las entradas y salidas de dinero."]}
+        { title: '📈 Dashboard de ingresos', points: ["Filtra por rango de fechas, sucursal, canal o paquete. Exporta a Excel o sincroniza con BI externo." ]},
+        { title: '💳 Cuentas por cobrar y pagar', points: ["Registra abonos, aplica notas de crédito y configura recordatorios automáticos a clientes corporativos." ]},
+        { title: '💸 Control de gastos', points: ["Clasifica egresos, adjunta comprobantes y concilia con bancos." ]},
+        { title: '🧾 Facturación electrónica', points: ["Genera recibos timbrados o facturas proforma listos para SAT/DIAN (según jurisdicción)." ]},
+        { title: '📊 Impuestos y tarifas', points: ["Define IVA/IGV/ITBIS y reglas por estudio o paquete." ]},
+        { title: '🌊 Flujo de caja proyectado', points: ["Simula escenarios con base en cartera, gastos planificados y campañas activas." ]}
     ];
     addHelpSection('💵 Panel de Finanzas', financeHelp);
     
     addPageIfNecessary(400);
 
     const marketingHelp = [
-        { title: '📢 Campañas de Publicidad', points: ["Flujo: Estrategia ➡️ Creación ➡️ Gestión y Análisis."]},
-        { title: '📱 Gestión de Redes Sociales', points: ["Flujo: Planificación ➡️ Creación y Programación ➡️ Publicación y Análisis."]},
-        { title: '📧 Email Marketing', points: ["Flujo: Recopilación y Segmentación ➡️ Creación ➡️ Envío y Análisis."]},
-        { title: '🌐 SEO y Contenido', points: ["Flujo: Investigación ➡️ Creación ➡️ Optimización y Monitoreo."]},
-        { title: '⭐ Programas de Lealtad', points: ["Flujo: Diseño ➡️ Implementación ➡️ Comunicación y Análisis."]}
+        { title: '📢 Campañas omnicanal', points: ["Planea campañas con objetivos claros, asigna presupuesto y monitorea conversiones (órdenes generadas o leads captados)." ]},
+        { title: '📱 Redes Sociales', points: ["Programa publicaciones, reutiliza plantillas de diseño y mide engagement desde el mismo panel." ]},
+        { title: '📧 Email marketing', points: ["Segmenta pacientes por historial, automatiza recordatorios y monitorea aperturas/clics." ]},
+        { title: '🌐 SEO & Contenido', points: ["Administra blog corporativo, audita palabras clave y genera briefs listos para copywriters." ]},
+        { title: '⭐ Fidelización', points: ["Configura planes de puntos, referidos y beneficios VIP conectados al módulo de Finanzas." ]}
     ];
     addHelpSection('🎯 Marketing Digital Estratégico', marketingHelp);
 
