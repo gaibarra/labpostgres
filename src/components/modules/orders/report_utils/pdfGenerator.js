@@ -319,10 +319,9 @@ import { loadJsPdf } from '@/lib/dynamicImports';
           // Header
           let yPos = compact ? 8 : 10;
           // El logo puede no haber terminado de cargar; se inserta luego de dibujar texto base (ver preload).
-          if (!logoIncludesName) {
-            doc.setFontSize(compact ? 12 : 14).setFont(undefined, 'bold').setTextColor(30, 58, 138);
-            doc.text(labName, pageWidth / 2, yPos + 4, { align: 'center' });
-          }
+          // Siempre mostrar el nombre del laboratorio, aunque el logo ya lo incluya
+          doc.setFontSize(compact ? 12 : 14).setFont(undefined, 'bold').setTextColor(30, 58, 138);
+          doc.text(labName, pageWidth / 2, yPos + 4, { align: 'center' });
           // Bandera para insertar logo ya rasterizado si se precargó
           if (labLogo && reportSettings.showLogoInReport && generatePdfContent.__logoDataUrl) {
             try {
@@ -337,10 +336,10 @@ import { loadJsPdf } from '@/lib/dynamicImports';
               // Desired height configurable; fallbacks give a bit more presence than previous values
               const desiredHeight = (reportSettings.logoHeightMm && reportSettings.logoHeightMm > 0)
                 ? reportSettings.logoHeightMm
-                : (compact ? 11 : 13); // mm
+                : (compact ? 18 : 23); // mm (25% más presencia)
               const maxWidthRatio = (reportSettings.logoMaxWidthRatio && reportSettings.logoMaxWidthRatio > 0 && reportSettings.logoMaxWidthRatio < 1)
                 ? reportSettings.logoMaxWidthRatio
-                : 0.40; // 40% of printable width
+                : 0.69; // hasta ~70% del ancho imprimible
               const widthConstraint = (pageWidth - 2 * margin) * maxWidthRatio;
               let logoHeight = desiredHeight;
               let logoWidth = logoHeight * aspectRatio;
@@ -409,16 +408,20 @@ import { loadJsPdf } from '@/lib/dynamicImports';
           // Footer
           doc.setFontSize(compact ? 7 : 8).setFont(undefined, 'italic');
           doc.setTextColor(100, 116, 139);
-          // VN note (Valores Normales)
-          doc.setFontSize(compact ? 6.5 : 7).setFont(undefined, 'normal');
-          doc.text('VN = Valores Normales', margin, pageHeight - 13, { align: 'left' });
-          // Main footer
+          const footerBaseY = pageHeight - 10;
+          // Nota VN (una sola vez), más abajo y a la izquierda
+          doc.setFontSize(compact ? 6.3 : 6.8).setFont(undefined, 'normal');
+          // doc.text('VN = Valores Normales', margin, footerBaseY, { align: 'left' });
+          // Texto principal y paginación con mayor margen lateral
           const footerText = reportSettings.defaultFooter || 'Gracias por su preferencia. Los resultados deben ser interpretados por un médico.';
-          doc.setFontSize(compact ? 7 : 8).setFont(undefined, 'italic');
-          doc.text(footerText, pageWidth / 2, pageHeight - 10, { align: 'center' });
-          // Nota al pie: VN = Valores Normales
-          doc.text('VN = Valores Normales', margin, pageHeight - 10, { align: 'left' });
-          doc.text(`Página ${data.pageNumber} de ${totalPagesExp}`, pageWidth - margin, pageHeight - 10, { align: 'right' });
+          const mainFooterY = footerBaseY - 4;
+          doc.setFontSize(compact ? 6.8 : 7.2).setFont(undefined, 'italic');
+          const footerWidth = pageWidth - 2 * margin;
+          const footerLines = doc.splitTextToSize(footerText, footerWidth);
+          doc.text(footerLines, pageWidth / 2, mainFooterY, { align: 'center' });
+          // Pagina abajo del texto para que no se mezcle con el párrafo
+          const pageNumberY = footerBaseY + 4;
+          doc.text(`Página ${data.pageNumber} de ${totalPagesExp}`, pageWidth - margin, pageNumberY, { align: 'right' });
 
           // Firmas y notas (última página, se maneja al final del documento)
       };
@@ -435,7 +438,7 @@ import { loadJsPdf } from '@/lib/dynamicImports';
           startY: headerHeight,
           head: [[cbcStudy.name || 'Biometría Hemática']],
           theme: 'grid',
-          margin: { top: topHeaderOnly, left: margin, right: margin },
+          margin: { top: topHeaderOnly, left: margin, right: margin, bottom: 18 },
           tableWidth: pageWidth - 2 * margin,
           headStyles: { fillColor: [241, 245, 249], textColor: [14, 116, 144], fontStyle: 'bold', fontSize: 11, lineWidth: 0.1, lineColor: [203, 213, 225] },
           styles: { cellPadding: compact ? 2.0 : 2.5 },
@@ -484,7 +487,7 @@ import { loadJsPdf } from '@/lib/dynamicImports';
             const bodyRows = fillRows(sec.rows);
             autoTable(doc, {
               startY: y,
-              margin: { top: topHeaderOnly, left: x, right: margin },
+              margin: { top: topHeaderOnly, left: x, right: margin, bottom: 18 },
               tableWidth: width,
               head: [[sec.title, 'Resultado', 'Unidades', 'Valores de Referencia (VN)']],
               body: bodyRows,
@@ -630,7 +633,7 @@ import { loadJsPdf } from '@/lib/dynamicImports';
         // Dibuja Serie Blanca manualmente
         autoTable(doc, {
           startY: startY,
-          margin: { top: topHeaderOnly, left: rightStartX, right: margin },
+          margin: { top: topHeaderOnly, left: rightStartX, right: margin, bottom: 18 },
           tableWidth: rightWidth,
           head: [[ 'Serie Blanca', '', '' ]],
           theme: 'grid',
@@ -681,7 +684,7 @@ import { loadJsPdf } from '@/lib/dynamicImports';
   doc.text(rnText, rightStartX + rightWidth - 2, bandY, { align: 'right' });
         autoTable(doc, {
           startY: bandY + 4,
-          margin: { top: topHeaderOnly, left: rightStartX, right: margin },
+          margin: { top: topHeaderOnly, left: rightStartX, right: margin, bottom: 18 },
           tableWidth: rightWidth,
           // Encabezado verde, columnas: Parámetro | Absoluto | % | Valores de Referencia (Abs.)
           head: [[ 'Parámetro', 'Absoluto', '%', 'Valores de Referencia (VN)' ]],
@@ -773,7 +776,7 @@ import { loadJsPdf } from '@/lib/dynamicImports';
     head: [['Parámetro', 'Resultado', 'Valores de Referencia (VN)']],
         body: mainContent,
         startY: cbcStudy ? afterCbcY : headerHeight,
-    margin: { top: topHeaderOnly, left: margin, right: margin },
+    margin: { top: topHeaderOnly, left: margin, right: margin, bottom: 18 },
         showHead: 'firstPage',
         headStyles: { 
             fillColor: [248, 250, 252], 

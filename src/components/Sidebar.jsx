@@ -48,10 +48,11 @@ import React from 'react';
         <div className="flex flex-col h-full">
           <div className={cn("flex items-center justify-between p-2 mb-4", isCollapsed && "justify-center gap-0")}>
             <BrandLogo
-              showName={!isCollapsed}
+              showName={false}
               shouldAnimateText
-              size="md"
+              size="lg"
               className={cn("flex-1", isCollapsed && "justify-center")}
+              imageClassName="h-12 w-auto max-w-[160px]"
             />
             <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setSidebarOpen(false)}>
               <X className="h-6 w-6"/>
