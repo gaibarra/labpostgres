@@ -21,13 +21,14 @@ import { loadJsPdf } from '@/lib/dynamicImports';
       const doc = new jsPDF();
     const pageHeight = doc.internal.pageSize.height;
       const pageWidth = doc.internal.pageSize.width;
-      const margin = 10;
-  const headerHeight = compact ? 58 : 85;
-    const topHeaderOnly = compact ? 22 : 28; // margen superior en páginas 2+
+      const margin = 6; // margen más estrecho para compactar
+  const headerHeight = compact ? 46 : 68; // cabecera más baja
+    const topHeaderOnly = compact ? 16 : 20; // margen superior en páginas 2+
       // Placeholder para total de páginas (se resuelve al final)
       const totalPagesExp = '{total_pages_count_string}';
       // Control para no dibujar la grilla de datos del paciente más de una vez por página
       const patientGridDrawnPages = new Set();
+      let patientGridBottom = headerHeight; // posición final de la grilla de paciente
 
   const labInfo = labSettings.labInfo || {};
   const reportSettings = labSettings.reportSettings || {};
@@ -403,6 +404,12 @@ import { loadJsPdf } from '@/lib/dynamicImports';
               columnStyles: { 0: { fontStyle: 'bold', textColor: [51, 65, 85] }, 2: { fontStyle: 'bold', textColor: [51, 65, 85] } },
             });
             patientGridDrawnPages.add(1);
+            // Línea divisoria bajo datos del paciente, igual que la del header
+            const gridBottom = doc.lastAutoTable ? doc.lastAutoTable.finalY : (yPos + 4);
+            patientGridBottom = gridBottom + 1.5;
+            doc.setDrawColor(226, 232, 240);
+            doc.setLineWidth(0.3);
+            doc.line(margin, patientGridBottom, pageWidth - margin, patientGridBottom);
           }
 
           // Footer
@@ -429,23 +436,23 @@ import { loadJsPdf } from '@/lib/dynamicImports';
       // Si hay Biometría Hemática, dibujarla primero en dos columnas
       let afterCbcY = headerHeight;
       if (cbcStudy) {
-        const gutter = 6;
+        const gutter = 4;
         const colWidth = (pageWidth - 2 * margin - gutter);
         const leftWidth = colWidth / 2;
         const rightWidth = colWidth / 2;
         // Título del estudio (Biometría Hemática)
         autoTable(doc, {
-          startY: headerHeight,
+          startY: Math.max(headerHeight, patientGridBottom + 4),
           head: [[cbcStudy.name || 'Biometría Hemática']],
           theme: 'grid',
           margin: { top: topHeaderOnly, left: margin, right: margin, bottom: 18 },
           tableWidth: pageWidth - 2 * margin,
-          headStyles: { fillColor: [241, 245, 249], textColor: [14, 116, 144], fontStyle: 'bold', fontSize: 11, lineWidth: 0.1, lineColor: [203, 213, 225] },
-          styles: { cellPadding: compact ? 2.0 : 2.5 },
+          headStyles: { fillColor: [241, 245, 249], textColor: [14, 116, 144], fontStyle: 'bold', fontSize: 9.6, lineWidth: 0.1, lineColor: [203, 213, 225] },
+          styles: { cellPadding: compact ? 1.4 : 1.8 },
           showHead: 'firstPage',
           didDrawPage: function(data) { drawHeaderAndFooter(data); },
         });
-        const startY = doc.lastAutoTable ? doc.lastAutoTable.finalY + 2 : headerHeight;
+        const startY = doc.lastAutoTable ? doc.lastAutoTable.finalY + 2 : Math.max(headerHeight, patientGridBottom + 4);
 
         // Utilidades de agrupación (mismas reglas que preview)
         const groupParams = (parameters = []) => {
@@ -487,13 +494,13 @@ import { loadJsPdf } from '@/lib/dynamicImports';
             const bodyRows = fillRows(sec.rows);
             autoTable(doc, {
               startY: y,
-              margin: { top: topHeaderOnly, left: x, right: margin, bottom: 18 },
+              margin: { top: topHeaderOnly, left: x, right: margin, bottom: 10 },
               tableWidth: width,
               head: [[sec.title, 'Resultado', 'Unidades', 'Valores de Referencia (VN)']],
               body: bodyRows,
               theme: 'grid',
-              headStyles: { fillColor: [248, 250, 252], textColor: [30, 41, 59], fontStyle: 'bold', lineWidth: 0.1, lineColor: [203, 213, 225] },
-              styles: { fontSize: compact ? 7.2 : 8, cellPadding: compact ? 0.9 : 1.4, valign: 'middle', font: 'helvetica', overflow: 'linebreak' },
+              headStyles: { fillColor: [248, 250, 252], textColor: [30, 41, 59], fontStyle: 'bold', fontSize: 8.4, lineWidth: 0.1, lineColor: [203, 213, 225] },
+              styles: { fontSize: compact ? 6.7 : 7.2, cellPadding: compact ? 0.7 : 1.1, valign: 'middle', font: 'helvetica', overflow: 'linebreak' },
               // Columnas: Parámetro 40%, Resultado 20%, Unidades 12%, Referencia 28%
               columnStyles: { 0: { cellWidth: width * 0.40, fontStyle: 'bold' }, 1: { cellWidth: width * 0.20, halign: 'center' }, 2: { cellWidth: width * 0.12, halign: 'center' }, 3: { cellWidth: width * 0.28, halign: 'center' } },
               didParseCell: (data) => {
@@ -775,7 +782,7 @@ import { loadJsPdf } from '@/lib/dynamicImports';
         theme: 'grid',
     head: [['Parámetro', 'Resultado', 'Valores de Referencia (VN)']],
         body: mainContent,
-        startY: cbcStudy ? afterCbcY : headerHeight,
+        startY: cbcStudy ? afterCbcY : Math.max(headerHeight, patientGridBottom + 4),
     margin: { top: topHeaderOnly, left: margin, right: margin, bottom: 18 },
         showHead: 'firstPage',
         headStyles: { 
@@ -785,7 +792,7 @@ import { loadJsPdf } from '@/lib/dynamicImports';
             lineWidth: 0.1,
             lineColor: [203, 213, 225], 
         },
-        styles: { fontSize: compact ? 7.0 : 8, cellPadding: compact ? 1.0 : 1.8, valign: 'middle', font: 'helvetica' },
+        styles: { fontSize: compact ? 6.8 : 7.2, cellPadding: compact ? 0.7 : 1.1, valign: 'middle', font: 'helvetica' },
         columnStyles: {
           // Reducimos 'Parámetro' y ampliamos 'Valores de Referencia'
           0: { cellWidth: compact ? 42 : 46, fontStyle: 'bold' },
@@ -856,44 +863,104 @@ import { loadJsPdf } from '@/lib/dynamicImports';
         },
         didDrawPage: function (data) {
           drawHeaderAndFooter(data);
-
-          if (data.pageNumber === doc.internal.getNumberOfPages()) {
-                let finalY = doc.lastAutoTable ? doc.lastAutoTable.finalY : undefined;
-                // Antibiogram section (draw after main table if exists)
-                finalY = drawAntibiogramSection((typeof finalY === 'number' ? finalY + 6 : headerHeight));
-            if (order.validation_notes) {
-                doc.setFontSize(9).setFont(undefined, 'bold');
-                doc.text("Notas de Validación / Observaciones:", margin, finalY + 8);
-                doc.setFontSize(8).setFont(undefined, 'normal');
-                const splitNotes = doc.splitTextToSize(order.validation_notes, pageWidth - (2 * margin));
-                doc.text(splitNotes, margin, finalY + 12);
-            }
-
-            const responsableNombre = labInfo.responsableSanitarioNombre;
-            const responsableCedula = labInfo.responsableSanitarioCedula;
-            if (responsableNombre) {
-                let signatureY = pageHeight - 30;
-                if (finalY > signatureY - 20) {
-                  signatureY = finalY + 20;
-                  if(signatureY > pageHeight -30) {
-                    doc.addPage();
-                    signatureY = 30;
-                  }
-                }
-                doc.setDrawColor(100, 116, 139);
-                doc.line(pageWidth / 2 - 30, signatureY, pageWidth / 2 + 30, signatureY);
-                doc.setFontSize(8).setFont(undefined, 'bold');
-                doc.text("Responsable Sanitario", pageWidth / 2, signatureY + 4, { align: 'center' });
-                doc.setFontSize(8).setFont(undefined, 'normal');
-                doc.text(responsableNombre, pageWidth / 2, signatureY + 8, { align: 'center' });
-                if (responsableCedula) {
-                    doc.text(`Céd. Prof. ${responsableCedula}`, pageWidth / 2, signatureY + 12, { align: 'center' });
-                }
-            }
-          }
         },
       });
   }
+
+      // Post-table content: antibiogram, extra info row, signature
+      let finalY = doc.lastAutoTable ? doc.lastAutoTable.finalY : (cbcStudy ? afterCbcY : Math.max(headerHeight, patientGridBottom + 4));
+      finalY = drawAntibiogramSection((typeof finalY === 'number' ? finalY + 6 : headerHeight));
+
+      const defaultExtraNotes = "Valores de referncia ajustados a sexo, la edad del o la paciente así como a la altura del nivel del mar de la zona geográfica de residencia.";
+      const extraDescription = order.report_extra_description && String(order.report_extra_description).trim();
+      const extraDiagnosis = order.report_extra_diagnosis && String(order.report_extra_diagnosis).trim();
+      const extraNotesRaw = order.report_extra_notes && String(order.report_extra_notes).trim();
+      const extraNotes = (extraNotesRaw || defaultExtraNotes);
+      const hasExtraLine = [extraDescription, extraDiagnosis, extraNotes].some(Boolean);
+      if (hasExtraLine) {
+        const footerReserve = compact ? 28 : 32; // permitir usar más espacio de la página
+        const gap = compact ? 2 : 3;
+        let startY = (typeof finalY === 'number' ? finalY + gap : headerHeight);
+        const colWidths = [0.33, 0.33, 0.34].map(p => (pageWidth - 2 * margin) * p);
+        const texts = [extraDescription || '—', extraDiagnosis || '—', extraNotes || '—'];
+        const estimatedLines = texts.reduce((acc, txt, idx) => {
+          const lines = doc.splitTextToSize(String(txt), colWidths[idx]);
+          return Math.max(acc, lines.length);
+        }, 1);
+        const rowHeight = (compact ? 5.4 : 6.6) + (compact ? 1.4 : 1.9);
+        const estimatedHeight = (compact ? 6 : 8) + (estimatedLines * rowHeight) + 2;
+        const safeBottom = pageHeight - footerReserve;
+        if (startY + estimatedHeight > safeBottom) {
+          doc.addPage();
+          drawHeaderAndFooter({ pageNumber: doc.internal.getCurrentPageInfo().pageNumber });
+          startY = topHeaderOnly + 6; // en páginas siguientes no reservamos la grilla completa
+        }
+        autoTable(doc, {
+          startY,
+          head: [[
+            'Descripción',
+            'Diagnóstico ',
+            'Notas'
+          ]],
+          body: [[
+            texts[0],
+            texts[1],
+            texts[2]
+          ]],
+          theme: 'grid',
+          margin: { top: topHeaderOnly, left: margin, right: margin },
+          tableWidth: pageWidth - 2 * margin,
+          headStyles: { fillColor: [241, 245, 249], textColor: [14, 116, 144], fontStyle: 'bold', fontSize: 8.3, lineWidth: 0.1, lineColor: [203, 213, 225] },
+          styles: { fontSize: compact ? 6.9 : 7.4, cellPadding: compact ? 1.1 : 1.6, valign: 'top', overflow: 'linebreak', font: 'helvetica' },
+          columnStyles: {
+            0: { cellWidth: colWidths[0] },
+            1: { cellWidth: colWidths[1] },
+            2: { cellWidth: colWidths[2] },
+          },
+          didDrawPage: function (data) { drawHeaderAndFooter(data); },
+        });
+        finalY = doc.lastAutoTable ? doc.lastAutoTable.finalY : startY;
+      }
+
+      if (order.validation_notes) {
+        const footerReserve = 24;
+        let startY = (typeof finalY === 'number' ? finalY + 4 : headerHeight);
+        const notesLines = doc.splitTextToSize(order.validation_notes, pageWidth - (2 * margin));
+        const estHeight = 4 + notesLines.length * (compact ? 2.8 : 3.2);
+        if (startY + estHeight > pageHeight - footerReserve) {
+          doc.addPage();
+          drawHeaderAndFooter({ pageNumber: doc.internal.getCurrentPageInfo().pageNumber });
+          startY = topHeaderOnly + 5;
+        }
+        doc.setFontSize(9).setFont(undefined, 'bold');
+        doc.text('Notas de Validación / Observaciones:', margin, startY);
+        doc.setFontSize(8).setFont(undefined, 'normal');
+        doc.text(notesLines, margin, startY + 4);
+        finalY = startY + estHeight;
+      }
+
+      const responsableNombre = labInfo.responsableSanitarioNombre;
+      const responsableCedula = labInfo.responsableSanitarioCedula;
+      if (responsableNombre) {
+          let signatureY = pageHeight - 46; // subir más para evitar encimar footer
+          if (finalY > signatureY - 18) {
+            signatureY = finalY + 16;
+            if(signatureY > pageHeight - 46) {
+              doc.addPage();
+              drawHeaderAndFooter({ pageNumber: doc.internal.getCurrentPageInfo().pageNumber });
+              signatureY = topHeaderOnly + 18;
+            }
+          }
+          doc.setDrawColor(100, 116, 139);
+          doc.line(pageWidth / 2 - 30, signatureY, pageWidth / 2 + 30, signatureY);
+          doc.setFontSize(8).setFont(undefined, 'bold');
+          doc.text("Responsable Sanitario", pageWidth / 2, signatureY + 4, { align: 'center' });
+          doc.setFontSize(8).setFont(undefined, 'normal');
+          doc.text(responsableNombre, pageWidth / 2, signatureY + 8, { align: 'center' });
+          if (responsableCedula) {
+              doc.text(`Céd. Prof. ${responsableCedula}`, pageWidth / 2, signatureY + 12, { align: 'center' });
+          }
+      }
 
       // Si no se generó ninguna tabla ni sección (caso extremo), dibujar al menos el encabezado
       // y un mensaje para evitar PDF en blanco.

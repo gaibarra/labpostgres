@@ -82,10 +82,10 @@ import React, { useState, useMemo, useCallback } from 'react';
         if (savedOrder) closeModal();
       }, [onSubmit, openModal, closeModal]);
 
-      const handleValidateAndPreview = useCallback(async (orderId, results, status, notes) => {
+      const handleValidateAndPreview = useCallback(async (orderId, results, status, notes, extra) => {
         // Primera fase: persist draft with provided status (if user set Reportada we respect, else keep status)
         const desiredStatus = status === 'Reportada' ? 'Reportada' : status;
-        await onSaveResults(orderId, results, desiredStatus, notes, async (saved) => {
+        await onSaveResults(orderId, results, desiredStatus, notes, extra, async (saved) => {
           try {
             // Enforce validated stage if not already
             if (saved.status !== 'Reportada') {

@@ -103,8 +103,8 @@ export const useOrderModals = ({
     }
   }, [onSubmit, closeModal, loadData]);
 
-  const handleValidateAndPreview = useCallback(async (orderId, results, status, notes) => {
-    await handleSaveResults(orderId, results, status, notes, (updatedOrder) => {
+  const handleValidateAndPreview = useCallback(async (orderId, results, status, notes, extra) => {
+    await handleSaveResults(orderId, results, status, notes, extra, (updatedOrder) => {
       openModal('report', updatedOrder);
     });
   }, [handleSaveResults, openModal]);

@@ -362,10 +362,32 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
                   );
                 })}
 
-                {order.validation_notes && (
-                  <div className="mt-6 pt-4 border-t dark:border-slate-700">
-                    <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1.5">Notas de Validación / Observaciones:</h4>
-                    <p className="text-xs text-slate-600 dark:text-slate-400 whitespace-pre-wrap">{order.validation_notes}</p>
+                {(order.validation_notes || order.report_extra_description || order.report_extra_diagnosis || order.report_extra_notes) && (
+                  <div className="mt-6 pt-4 border-t dark:border-slate-700 space-y-3">
+                    {order.validation_notes && (
+                      <div>
+                        <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1.5">Notas de Validación / Observaciones</h4>
+                        <p className="text-xs text-slate-600 dark:text-slate-400 whitespace-pre-wrap">{order.validation_notes}</p>
+                      </div>
+                    )}
+                    {order.report_extra_description && (
+                      <div>
+                        <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1.5">Descripción</h4>
+                        <p className="text-xs text-slate-600 dark:text-slate-400 whitespace-pre-wrap">{order.report_extra_description}</p>
+                      </div>
+                    )}
+                    {order.report_extra_diagnosis && (
+                      <div>
+                        <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1.5">Diagnóstico</h4>
+                        <p className="text-xs text-slate-600 dark:text-slate-400 whitespace-pre-wrap">{order.report_extra_diagnosis}</p>
+                      </div>
+                    )}
+                    {order.report_extra_notes && (
+                      <div>
+                        <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1.5">Notas </h4>
+                        <p className="text-xs text-slate-600 dark:text-slate-400 whitespace-pre-wrap">{order.report_extra_notes}</p>
+                      </div>
+                    )}
                   </div>
                 )}
 

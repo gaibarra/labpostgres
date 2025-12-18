@@ -74,7 +74,10 @@ const createWorkOrderSchema = z.object({
   total_price: z.number().nonnegative().optional().nullable(),
   notas: z.string().optional().nullable(),
   results: z.any().optional().nullable(),
-  validation_notes: z.string().optional().nullable()
+  validation_notes: z.string().optional().nullable(),
+  report_extra_description: z.string().optional().nullable(),
+  report_extra_diagnosis: z.string().optional().nullable(),
+  report_extra_notes: z.string().optional().nullable()
   })
 });
 

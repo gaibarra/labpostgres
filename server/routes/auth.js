@@ -654,14 +654,19 @@ if (process.env.DEBUG_AUTH_DIAG === '1') {
 
 router.get('/me', authMiddleware, ensureTenantPool, async (req, res, next) => {
   try {
-    // Construir dinámicamente columnas existentes para evitar errores de columnas inexistentes
+    // Detect columnas disponibles en la BD actual (por tenant) para evitar errores p.full_name inexistente
+    const poolToUse = activePool(req);
+    const colRes = await poolToUse.query("SELECT column_name FROM information_schema.columns WHERE table_name='profiles' AND column_name IN ('full_name','first_name','last_name','user_id','role')");
+    const colSet = new Set(colRes.rows.map(r => r.column_name));
     const profileCols = [];
-    if (PROFILE_HAS_FULL_NAME) profileCols.push('p.full_name AS profile_full_name');
-    if (PROFILE_HAS_FIRST_LAST) profileCols.push('p.first_name', 'p.last_name');
+    // Evitar p.full_name para no depender de columnas legacy inexistentes
+    if (colSet.has('first_name')) profileCols.push('p.first_name');
+    if (colSet.has('last_name')) profileCols.push('p.last_name');
+    if (colSet.has('role')) profileCols.push('p.role');
     const profileColsSql = profileCols.length ? ', ' + profileCols.join(', ') : '';
-    const joinCondition = PROFILE_HAS_USER_ID ? 'p.user_id=u.id' : 'p.id=u.id';
-    const sql = `SELECT u.id, u.email, u.full_name, u.created_at, p.role${profileColsSql} FROM users u LEFT JOIN profiles p ON ${joinCondition} WHERE u.id=$1`;
-  const { rows } = await activePool(req).query(sql, [req.user.id]);
+    const joinCondition = colSet.has('user_id') ? 'p.user_id=u.id' : 'p.id=u.id';
+    const sql = `SELECT u.id, u.email, u.full_name, u.created_at${profileColsSql} FROM users u LEFT JOIN profiles p ON ${joinCondition} WHERE u.id=$1`;
+    const { rows } = await poolToUse.query(sql, [req.user.id]);
     if (!rows[0]) {
       if (process.env.AUTH_ME_DEBUG === '1') {
         console.warn('[AUTH/ME][USER_NOT_FOUND]', {
@@ -676,9 +681,8 @@ router.get('/me', authMiddleware, ensureTenantPool, async (req, res, next) => {
     }
     const row = rows[0];
     let fullNameOut = row.full_name;
-    if (!fullNameOut) {
-      if (row.profile_full_name) fullNameOut = row.profile_full_name;
-      else if (row.first_name || row.last_name) fullNameOut = [row.first_name, row.last_name].filter(Boolean).join(' ') || null;
+    if (!fullNameOut && (row.first_name || row.last_name)) {
+      fullNameOut = [row.first_name, row.last_name].filter(Boolean).join(' ') || null;
     }
     res.json({ user: { id: row.id, email: row.email, full_name: fullNameOut, created_at: row.created_at, role: row.role } });
   } catch (e) {

@@ -20,7 +20,14 @@ export function useResultWorkflow() {
   }, []);
 
   const persistDraft = useCallback(async (orderId, draftResults, meta = {}) => {
-    const payload = { results: draftResults, status: meta.status || 'Pendiente', validation_notes: meta.validation_notes || '' };
+    const payload = {
+      results: draftResults,
+      status: meta.status || 'Pendiente',
+      validation_notes: meta.validation_notes || '',
+      report_extra_description: meta.report_extra_description || '',
+      report_extra_diagnosis: meta.report_extra_diagnosis || '',
+      report_extra_notes: meta.report_extra_notes || ''
+    };
     const saved = await apiClient.put(`/work-orders/${orderId}`, payload);
     return saved;
   }, []);

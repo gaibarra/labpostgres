@@ -6,10 +6,12 @@ echo "[initMaster] Iniciando creación/actualización de base master"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# Cargar .env si existe
+# Cargar .env si existe (usa source para respetar comillas y caracteres especiales)
 if [ -f "$ROOT_DIR/.env" ]; then
-  # shellcheck disable=SC2046
-  export $(grep -v '^#' "$ROOT_DIR/.env" | grep -E '^[A-Za-z0-9_]+=' | xargs -0 -I{} bash -c 'echo {}' 2>/dev/null || true)
+  # shellcheck disable=SC1090
+  set -a
+  source "$ROOT_DIR/.env"
+  set +a
 fi
 
 DB_NAME="${MASTER_PGDATABASE:-${MASTER_DB:-lab_master}}"

@@ -5,6 +5,7 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
     import { Label } from '@/components/ui/label';
     import { Input } from '@/components/ui/input';
     import { Textarea } from '@/components/ui/textarea';
+    import { Switch } from '@/components/ui/switch';
     import SearchableSelect from '@/components/ui/SearchableSelect';
     import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
   import { useToast } from "@/components/ui/use-toast";
@@ -21,6 +22,10 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
       const [resultsData, setResultsData] = useState({});
       const [orderStatus, setOrderStatus] = useState(order?.status || 'Pendiente');
       const [validationNotes, setValidationNotes] = useState(order?.validation_notes || '');
+  const [extraEnabled, setExtraEnabled] = useState(Boolean(order?.report_extra_description || order?.report_extra_diagnosis || order?.report_extra_notes));
+  const [extraDescription, setExtraDescription] = useState(order?.report_extra_description || '');
+  const [extraDiagnosis, setExtraDiagnosis] = useState(order?.report_extra_diagnosis || '');
+  const [extraNotes, setExtraNotes] = useState(order?.report_extra_notes || '');
   const [abgHelpOpen, setAbgHelpOpen] = useState(false);
       const { calculateAgeInUnits, getReferenceRangeText, evaluateResult } = useEvaluationUtils();
       const { getStudiesAndParametersForOrder } = useOrderManagement();
@@ -188,10 +193,18 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
           setResultsData(initialResults);
           setOrderStatus(order.status || 'Pendiente');
           setValidationNotes(order.validation_notes || '');
+          setExtraDescription(order.report_extra_description || '');
+          setExtraDiagnosis(order.report_extra_diagnosis || '');
+          setExtraNotes(order.report_extra_notes || '');
+          setExtraEnabled(Boolean(order.report_extra_description || order.report_extra_diagnosis || order.report_extra_notes));
         } else if (order) {
           setResultsData({});
           setOrderStatus(order.status || 'Pendiente');
           setValidationNotes(order.validation_notes || '');
+          setExtraDescription(order.report_extra_description || '');
+          setExtraDiagnosis(order.report_extra_diagnosis || '');
+          setExtraNotes(order.report_extra_notes || '');
+          setExtraEnabled(Boolean(order.report_extra_description || order.report_extra_diagnosis || order.report_extra_notes));
         }
       }, [order, studiesToDisplay, patient]);
 
@@ -241,7 +254,12 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
           }
         }
         const merged = mergeWithExisting(edited);
-        onSaveResults(order.id, merged, orderStatus, validationNotes);
+        const extraPayload = extraEnabled ? {
+          report_extra_description: extraDescription,
+          report_extra_diagnosis: extraDiagnosis,
+          report_extra_notes: extraNotes,
+        } : { report_extra_description: '', report_extra_diagnosis: '', report_extra_notes: '' };
+        onSaveResults(order.id, merged, orderStatus, validationNotes, extraPayload);
       };
 
       const handleValidateAndPreviewAction = () => {
@@ -256,7 +274,12 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
           }
         }
         const merged = mergeWithExisting(edited);
-        onValidateAndPreview(order.id, merged, orderStatus, validationNotes);
+        const extraPayload = extraEnabled ? {
+          report_extra_description: extraDescription,
+          report_extra_diagnosis: extraDiagnosis,
+          report_extra_notes: extraNotes,
+        } : { report_extra_description: '', report_extra_diagnosis: '', report_extra_notes: '' };
+        onValidateAndPreview(order.id, merged, orderStatus, validationNotes, extraPayload);
       };
 
       const stageVariant = (workflowStage) => {
@@ -489,6 +512,53 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
                       placeholder="Anotaciones sobre los resultados, validación, etc."
                       className="bg-white/80 dark:bg-slate-700/80"
                     />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Información adicional para el reporte</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">Úsala para aclaraciones al médico referente o al paciente (opcional).</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-slate-500">Off</span>
+                        <Switch checked={extraEnabled} onCheckedChange={setExtraEnabled} aria-label="Activar información adicional" />
+                        <span className="text-xs text-slate-600 dark:text-slate-300">On</span>
+                      </div>
+                    </div>
+                    {extraEnabled && (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div className="md:col-span-1 space-y-1">
+                          <Label htmlFor="extraDescription" className="text-slate-700 dark:text-slate-300">Descripción</Label>
+                          <Textarea
+                            id="extraDescription"
+                            value={extraDescription}
+                            onChange={(e)=>setExtraDescription(e.target.value)}
+                            placeholder="Breve resumen del estudio o hallazgos relevantes"
+                            className="bg-white/80 dark:bg-slate-700/80"
+                          />
+                        </div>
+                        <div className="md:col-span-1 space-y-1">
+                          <Label htmlFor="extraDiagnosis" className="text-slate-700 dark:text-slate-300">Diagnóstico</Label>
+                          <Textarea
+                            id="extraDiagnosis"
+                            value={extraDiagnosis}
+                            onChange={(e)=>setExtraDiagnosis(e.target.value)}
+                            placeholder="Impresión diagnóstica o consideraciones clínicas"
+                            className="bg-white/80 dark:bg-slate-700/80"
+                          />
+                        </div>
+                        <div className="md:col-span-1 space-y-1">
+                          <Label htmlFor="extraNotes" className="text-slate-700 dark:text-slate-300">Notas</Label>
+                          <Textarea
+                            id="extraNotes"
+                            value={extraNotes}
+                            onChange={(e)=>setExtraNotes(e.target.value)}
+                            placeholder="Indicaciones, recomendaciones o notas personalizadas"
+                            className="bg-white/80 dark:bg-slate-700/80"
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div className="flex gap-3 justify-end pt-2">
                     {abgStudy && (

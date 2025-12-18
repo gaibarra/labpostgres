@@ -576,6 +576,15 @@ async function main(){
           IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='work_orders' AND column_name='notas') THEN
             ALTER TABLE work_orders ADD COLUMN notas text;
           END IF;
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='work_orders' AND column_name='report_extra_description') THEN
+            ALTER TABLE work_orders ADD COLUMN report_extra_description text;
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='work_orders' AND column_name='report_extra_diagnosis') THEN
+            ALTER TABLE work_orders ADD COLUMN report_extra_diagnosis text;
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='work_orders' AND column_name='report_extra_notes') THEN
+            ALTER TABLE work_orders ADD COLUMN report_extra_notes text;
+          END IF;
         END IF;
       END$$;`);
       console.log('[PROVISION] Consolidación work_orders columnas verificada');
@@ -668,7 +677,7 @@ async function main(){
       try {
         const columnsCheck = await tenantPool.query(`SELECT column_name FROM information_schema.columns WHERE table_name='work_orders'`);
         const cols = columnsCheck.rows.map(r=>r.column_name);
-        const requiredCols = ['results','validation_notes','institution_reference','results_finalized','receipt_generated'];
+        const requiredCols = ['results','validation_notes','institution_reference','results_finalized','receipt_generated','report_extra_description','report_extra_diagnosis','report_extra_notes'];
         const missingCols = requiredCols.filter(c=>!cols.includes(c));
         const rolesReport = await ensureRolesAndPerms();
         // Verificación global de metadatos en analysis (no sólo últimas filas)

@@ -28,7 +28,7 @@ function parseArgs(){
     // 1. Columnas críticas
     const { rows: colRows } = await pool.query(`SELECT column_name FROM information_schema.columns WHERE table_name='work_orders'`);
     const cols = colRows.map(r=>r.column_name);
-    const requiredCols = ['results','validation_notes','institution_reference','results_finalized','receipt_generated'];
+    const requiredCols = ['results','validation_notes','institution_reference','results_finalized','receipt_generated','report_extra_description','report_extra_diagnosis','report_extra_notes'];
     const missingCols = requiredCols.filter(c=>!cols.includes(c));
     result.checks.push({ area: 'work_orders.columns', missing: missingCols });
     if (missingCols.length) result.ok=false;

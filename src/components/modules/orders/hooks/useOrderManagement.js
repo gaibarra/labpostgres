@@ -27,6 +27,9 @@ import { useState, useEffect, useCallback, useRef } from 'react';
           notas: '',
           results: {},
           validation_notes: '',
+          report_extra_description: '',
+          report_extra_diagnosis: '',
+          report_extra_notes: '',
         };
 
         const calculateAge = (birthDate) => {
@@ -137,6 +140,9 @@ import { useState, useEffect, useCallback, useRef } from 'react';
                 };
                 if (order.results !== undefined) base.results = order.results;
                 if (order.validation_notes !== undefined) base.validation_notes = order.validation_notes;
+                if (order.report_extra_description !== undefined) base.report_extra_description = order.report_extra_description;
+                if (order.report_extra_diagnosis !== undefined) base.report_extra_diagnosis = order.report_extra_diagnosis;
+                if (order.report_extra_notes !== undefined) base.report_extra_notes = order.report_extra_notes;
                 base.order_date = order.order_date ? new Date(order.order_date) : new Date();
                 base.patient = patient || null;
                 base.patient_name = order.patient_name || patient?.full_name || patient?.name || 'Paciente no encontrado';
@@ -203,7 +209,10 @@ import { useState, useEffect, useCallback, useRef } from 'react';
               descuento: orderData.descuento,
               notas: orderData.notas,
               results: orderData.results || {},
-              validation_notes: orderData.validation_notes || ''
+              validation_notes: orderData.validation_notes || '',
+              report_extra_description: orderData.report_extra_description || '',
+              report_extra_diagnosis: orderData.report_extra_diagnosis || '',
+              report_extra_notes: orderData.report_extra_notes || ''
             };
             
             try {
@@ -263,7 +272,9 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 
   const previewOpenRef = useRef(false);
 
-  const handleSaveResults = useCallback(async (orderId, rawResults, status, notes, openFinalReportModalCallback) => {
+    const handleSaveResults = useCallback(async (orderId, rawResults, status, notes, extraOrCb, maybeCb) => {
+      const extra = (typeof extraOrCb === 'function') ? {} : (extraOrCb || {});
+      const openFinalReportModalCallback = (typeof extraOrCb === 'function') ? extraOrCb : maybeCb;
         // Debounce: limpiar intento previo si existe
         if (pendingTimeoutRef.current) clearTimeout(pendingTimeoutRef.current);
         pendingTimeoutRef.current = setTimeout(async () => {
@@ -281,7 +292,15 @@ import { useState, useEffect, useCallback, useRef } from 'react';
             } catch { return 'hash_err'; }
           };
 
-          const optimisticOrderPatch = { id: orderId, results, status, validation_notes: notes };
+          const optimisticOrderPatch = {
+            id: orderId,
+            results,
+            status,
+            validation_notes: notes,
+            report_extra_description: extra.report_extra_description || '',
+            report_extra_diagnosis: extra.report_extra_diagnosis || '',
+            report_extra_notes: extra.report_extra_notes || ''
+          };
           setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...optimisticOrderPatch } : o));
 
           const reqHash = buildResultsHash(results);
@@ -298,7 +317,14 @@ import { useState, useEffect, useCallback, useRef } from 'react';
           console.groupEnd();
 
           // 3. Enviar PUT
-          const updatedOrder = await apiClient.put(`/work-orders/${orderId}`, { results, status, validation_notes: notes });
+          const updatedOrder = await apiClient.put(`/work-orders/${orderId}`, {
+            results,
+            status,
+            validation_notes: notes,
+            report_extra_description: extra.report_extra_description || '',
+            report_extra_diagnosis: extra.report_extra_diagnosis || '',
+            report_extra_notes: extra.report_extra_notes || ''
+          });
 
             console.groupCollapsed('%c[RESULTS][PUT-RESPONSE]','color:#2563eb;font-weight:bold;', orderId);
             if (updatedOrder) {
@@ -316,6 +342,9 @@ import { useState, useEffect, useCallback, useRef } from 'react';
             results: (updatedOrder && updatedOrder.results && Object.keys(updatedOrder.results || {}).length) ? updatedOrder.results : results,
             status: updatedOrder?.status || status,
             validation_notes: updatedOrder?.validation_notes ?? notes,
+            report_extra_description: updatedOrder?.report_extra_description ?? extra.report_extra_description ?? '',
+            report_extra_diagnosis: updatedOrder?.report_extra_diagnosis ?? extra.report_extra_diagnosis ?? '',
+            report_extra_notes: updatedOrder?.report_extra_notes ?? extra.report_extra_notes ?? '',
           };
 
           // 5. Refetch forzado para confirmar persistencia real antes de abrir modal
@@ -339,6 +368,9 @@ import { useState, useEffect, useCallback, useRef } from 'react';
             results: (refetched.results && Object.keys(refetched.results).length) ? refetched.results : mergedUpdatedOrder.results,
             status: refetched.status || mergedUpdatedOrder.status,
             validation_notes: refetched.validation_notes ?? mergedUpdatedOrder.validation_notes,
+            report_extra_description: refetched.report_extra_description ?? mergedUpdatedOrder.report_extra_description,
+            report_extra_diagnosis: refetched.report_extra_diagnosis ?? mergedUpdatedOrder.report_extra_diagnosis,
+            report_extra_notes: refetched.report_extra_notes ?? mergedUpdatedOrder.report_extra_notes,
             // Preserve selected_items from local state if backend omits/filters them to avoid empty preview
             selected_items: Array.isArray(refetched.selected_items) && refetched.selected_items.length
               ? refetched.selected_items

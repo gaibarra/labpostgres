@@ -28,14 +28,15 @@ async function ensureWorkOrderColumns(req) {
     // Fallback mínimo para no romper listados aunque la introspección falle (p.ej., falta de permisos).
     workOrderColumns = new Set([
       'id','folio','patient_id','referring_entity_id','referring_doctor_id','order_date','status',
-      'selected_items','subtotal','descuento','anticipo','total_price','notas','created_at'
+      'selected_items','subtotal','descuento','anticipo','total_price','notas','created_at',
+      'report_extra_description','report_extra_diagnosis','report_extra_notes'
     ]);
   }
   return workOrderColumns;
 }
 
 function assertSchemaColumns(cols, payload, ctx = 'work_orders') {
-  const critical = ['institution_reference', 'results', 'validation_notes'];
+  const critical = ['institution_reference', 'results', 'validation_notes', 'report_extra_description', 'report_extra_diagnosis', 'report_extra_notes'];
   const missing = critical.filter((field) => Object.prototype.hasOwnProperty.call(payload || {}, field) && !cols.has(field));
   if (missing.length) {
     throw new AppError(400,
@@ -194,7 +195,7 @@ router.get('/recent', auth, requirePermission('work_orders','read'), async (req,
 });
 
 router.post('/', auth, validate(createWorkOrderSchema), audit('create','work_order', (req,r)=>r.locals?.createdId, (req)=>({ body: req.body })), async (req, res, next) => {
-  const { folio, patient_id, referring_entity_id, referring_doctor_id, institution_reference, status, selected_items, total_price, subtotal, descuento, anticipo, notas, results, validation_notes, order_date } = req.body || {};
+  const { folio, patient_id, referring_entity_id, referring_doctor_id, institution_reference, status, selected_items, total_price, subtotal, descuento, anticipo, notas, results, validation_notes, order_date, report_extra_description, report_extra_diagnosis, report_extra_notes } = req.body || {};
   try {
     const cols = await ensureWorkOrderColumns(req);
     assertSchemaColumns(cols, req.body);
@@ -216,6 +217,9 @@ router.post('/', auth, validate(createWorkOrderSchema), audit('create','work_ord
       notas,
       results,
       validation_notes,
+      report_extra_description,
+      report_extra_diagnosis,
+      report_extra_notes,
     };
     const names = [];
     const values = [];
@@ -264,7 +268,7 @@ router.put('/:id', auth, (req, res, next) => {
     const cols = await ensureWorkOrderColumns(req);
     if (retry) console.warn('[WORK_ORDER_UPDATE_RETRY] refreshed columns:', Array.from(cols));
     assertSchemaColumns(cols, req.body);
-    const fields = ['folio','patient_id','referring_entity_id','referring_doctor_id','institution_reference','order_date','status','selected_items','subtotal','descuento','anticipo','total_price','notas','results','validation_notes','results_finalized','receipt_generated'];
+    const fields = ['folio','patient_id','referring_entity_id','referring_doctor_id','institution_reference','order_date','status','selected_items','subtotal','descuento','anticipo','total_price','notas','results','validation_notes','results_finalized','receipt_generated','report_extra_description','report_extra_diagnosis','report_extra_notes'];
     const updates = [];
     const values = [];
     const jsonbFields = new Set(['selected_items','results']);
