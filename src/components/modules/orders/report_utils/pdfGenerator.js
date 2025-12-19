@@ -18,12 +18,12 @@ import { loadJsPdf } from '@/lib/dynamicImports';
       options = { mode: 'window' } // 'window' | 'blob'
     ) => {
       const { jsPDF, autoTable } = await loadJsPdf();
-      const doc = new jsPDF();
+      const doc = new jsPDF({ format: 'letter', unit: 'mm', orientation: 'portrait' });
     const pageHeight = doc.internal.pageSize.height;
       const pageWidth = doc.internal.pageSize.width;
       const margin = 6; // margen más estrecho para compactar
-  const headerHeight = compact ? 46 : 68; // cabecera más baja
-    const topHeaderOnly = compact ? 16 : 20; // margen superior en páginas 2+
+  const headerHeight = compact ? 44 : 64; // cabecera ligeramente más baja
+    const topHeaderOnly = compact ? 34 : 40; // margen superior en páginas 2+ (incluye bloque paciente compacto)
       // Placeholder para total de páginas (se resuelve al final)
       const totalPagesExp = '{total_pages_count_string}';
       // Control para no dibujar la grilla de datos del paciente más de una vez por página
@@ -75,7 +75,7 @@ import { loadJsPdf } from '@/lib/dynamicImports';
       if (patient.phone_number) patientInfoList.push({ label: "Tel. Paciente:", value: patient.phone_number });
       if (patient.email) patientInfoList.push({ label: "Email Paciente:", value: patient.email });
 
-  const patientInfoGrid = [];
+      const patientInfoGrid = [];
       for (let i = 0; i < patientInfoList.length; i += 2) {
         const row = [
           patientInfoList[i].label,
@@ -87,6 +87,8 @@ import { loadJsPdf } from '@/lib/dynamicImports';
         }
         patientInfoGrid.push(row);
       }
+      const patientRows = Math.ceil(patientInfoList.length / 2);
+      const patientBlockReserve = patientRows * (compact ? 5.0 : 6.5) + (compact ? 6 : 8); // espacio reservado arriba de tablas
 
       // Build studies to render with robust inference (same as preview):
       // 1) Prefer selected_items via getStudiesAndParametersForOrder
@@ -250,7 +252,7 @@ import { loadJsPdf } from '@/lib/dynamicImports';
           startY: startY,
           head: [['Antibiograma']],
           theme: 'grid',
-          margin: { top: topHeaderOnly, left: margin, right: margin },
+          margin: { top: topHeaderOnly, left: margin, right: margin, bottom: 16 },
           tableWidth: pageWidth - 2 * margin,
           headStyles: { fillColor: [241, 245, 249], textColor: [14, 116, 144], fontStyle: 'bold', fontSize: compact ? 9 : 11, lineWidth: 0.1, lineColor: [203, 213, 225] },
           styles: { cellPadding: compact ? 1.5 : 2.0 },
@@ -284,7 +286,7 @@ import { loadJsPdf } from '@/lib/dynamicImports';
             startY: y,
             body: [[{ content: cls, styles: { fillColor: [226, 242, 253], textColor: [7, 89, 133], fontStyle: 'bold', fontSize: compact ? 7.5 : 9, halign: 'left', cellPadding: compact ? 1.2 : 1.6 } }]],
             theme: 'plain',
-            margin: { top: topHeaderOnly, left: margin, right: margin },
+            margin: { top: topHeaderOnly, left: margin, right: margin, bottom: 16 },
             tableWidth: pageWidth - 2 * margin,
             styles: { cellPadding: 0.5 },
           });
@@ -303,7 +305,7 @@ import { loadJsPdf } from '@/lib/dynamicImports';
             head: [['Antibiótico', 'Medida', 'S/I/R', 'Notas']],
             body,
             theme: 'grid',
-            margin: { top: topHeaderOnly, left: margin, right: margin },
+            margin: { top: topHeaderOnly, left: margin, right: margin, bottom: 16 },
             tableWidth: pageWidth - 2 * margin,
             headStyles: { fillColor: [248, 250, 252], textColor: [30, 41, 59], fontStyle: 'bold', lineWidth: 0.1, lineColor: [203, 213, 225] },
             styles: { fontSize: compact ? 7.0 : 8, cellPadding: compact ? 1.0 : 1.6, valign: 'middle', font: 'helvetica', overflow: 'linebreak' },
@@ -394,8 +396,8 @@ import { loadJsPdf } from '@/lib/dynamicImports';
             doc.text(reportTitle, titleX, yPos);
             yPos += compact ? 6 : 8;
           }
-          // Dibuja datos del paciente solo en la primera página y una sola vez
-          if (data.pageNumber === 1 && !patientGridDrawnPages.has(1)) {
+          // Dibuja datos del paciente en cada página (una sola vez por página)
+          if (!patientGridDrawnPages.has(data.pageNumber)) {
             autoTable(doc, {
               startY: yPos,
               body: patientInfoGrid,
@@ -403,7 +405,7 @@ import { loadJsPdf } from '@/lib/dynamicImports';
               styles: { fontSize: compact ? 7.2 : 8.5, cellPadding: compact ? 0.4 : 0.8, overflow: 'linebreak' },
               columnStyles: { 0: { fontStyle: 'bold', textColor: [51, 65, 85] }, 2: { fontStyle: 'bold', textColor: [51, 65, 85] } },
             });
-            patientGridDrawnPages.add(1);
+            patientGridDrawnPages.add(data.pageNumber);
             // Línea divisoria bajo datos del paciente, igual que la del header
             const gridBottom = doc.lastAutoTable ? doc.lastAutoTable.finalY : (yPos + 4);
             patientGridBottom = gridBottom + 1.5;
@@ -415,7 +417,7 @@ import { loadJsPdf } from '@/lib/dynamicImports';
           // Footer
           doc.setFontSize(compact ? 7 : 8).setFont(undefined, 'italic');
           doc.setTextColor(100, 116, 139);
-          const footerBaseY = pageHeight - 10;
+          const footerBaseY = pageHeight - 12; // reservar área imprimible inferior
           // Nota VN (una sola vez), más abajo y a la izquierda
           doc.setFontSize(compact ? 6.3 : 6.8).setFont(undefined, 'normal');
           // doc.text('VN = Valores Normales', margin, footerBaseY, { align: 'left' });
@@ -428,6 +430,7 @@ import { loadJsPdf } from '@/lib/dynamicImports';
           doc.text(footerLines, pageWidth / 2, mainFooterY, { align: 'center' });
           // Pagina abajo del texto para que no se mezcle con el párrafo
           const pageNumberY = footerBaseY + 4;
+          doc.setFontSize(compact ? 7.6 : 8.4).setFont(undefined, 'bold');
           doc.text(`Página ${data.pageNumber} de ${totalPagesExp}`, pageWidth - margin, pageNumberY, { align: 'right' });
 
           // Firmas y notas (última página, se maneja al final del documento)
@@ -442,17 +445,17 @@ import { loadJsPdf } from '@/lib/dynamicImports';
         const rightWidth = colWidth / 2;
         // Título del estudio (Biometría Hemática)
         autoTable(doc, {
-          startY: Math.max(headerHeight, patientGridBottom + 4),
+          startY: Math.max(headerHeight, topHeaderOnly + patientBlockReserve),
           head: [[cbcStudy.name || 'Biometría Hemática']],
           theme: 'grid',
-          margin: { top: topHeaderOnly, left: margin, right: margin, bottom: 18 },
+          margin: { top: topHeaderOnly, left: margin, right: margin, bottom: 16 },
           tableWidth: pageWidth - 2 * margin,
           headStyles: { fillColor: [241, 245, 249], textColor: [14, 116, 144], fontStyle: 'bold', fontSize: 9.6, lineWidth: 0.1, lineColor: [203, 213, 225] },
           styles: { cellPadding: compact ? 1.4 : 1.8 },
           showHead: 'firstPage',
           didDrawPage: function(data) { drawHeaderAndFooter(data); },
         });
-        const startY = doc.lastAutoTable ? doc.lastAutoTable.finalY + 2 : Math.max(headerHeight, patientGridBottom + 4);
+        const startY = doc.lastAutoTable ? doc.lastAutoTable.finalY + 2 : Math.max(headerHeight, topHeaderOnly + patientBlockReserve);
 
         // Utilidades de agrupación (mismas reglas que preview)
         const groupParams = (parameters = []) => {
@@ -494,7 +497,7 @@ import { loadJsPdf } from '@/lib/dynamicImports';
             const bodyRows = fillRows(sec.rows);
             autoTable(doc, {
               startY: y,
-              margin: { top: topHeaderOnly, left: x, right: margin, bottom: 10 },
+              margin: { top: topHeaderOnly, left: x, right: margin, bottom: 16 },
               tableWidth: width,
               head: [[sec.title, 'Resultado', 'Unidades', 'Valores de Referencia (VN)']],
               body: bodyRows,
@@ -640,7 +643,7 @@ import { loadJsPdf } from '@/lib/dynamicImports';
         // Dibuja Serie Blanca manualmente
         autoTable(doc, {
           startY: startY,
-          margin: { top: topHeaderOnly, left: rightStartX, right: margin, bottom: 18 },
+          margin: { top: topHeaderOnly, left: rightStartX, right: margin, bottom: 16 },
           tableWidth: rightWidth,
           head: [[ 'Serie Blanca', '', '' ]],
           theme: 'grid',
@@ -691,7 +694,7 @@ import { loadJsPdf } from '@/lib/dynamicImports';
   doc.text(rnText, rightStartX + rightWidth - 2, bandY, { align: 'right' });
         autoTable(doc, {
           startY: bandY + 4,
-          margin: { top: topHeaderOnly, left: rightStartX, right: margin, bottom: 18 },
+          margin: { top: topHeaderOnly, left: rightStartX, right: margin, bottom: 16 },
           tableWidth: rightWidth,
           // Encabezado verde, columnas: Parámetro | Absoluto | % | Valores de Referencia (Abs.)
           head: [[ 'Parámetro', 'Absoluto', '%', 'Valores de Referencia (VN)' ]],
@@ -778,12 +781,25 @@ import { loadJsPdf } from '@/lib/dynamicImports';
       }
 
   if (mainContent.length > 0) {
+    let startY = cbcStudy ? afterCbcY : Math.max(headerHeight, topHeaderOnly + patientBlockReserve);
+    // Evitar que tablas con >15 filas se partan: si no cabe, saltar a nueva hoja antes de dibujar
+    if (mainContent.length > 15) {
+      const rowHeight = compact ? 5.0 : 6.2;
+      const headerH = compact ? 6 : 7;
+      const estHeight = headerH + mainContent.length * rowHeight + 4;
+      const footerReserve = 24;
+      if (startY + estHeight > pageHeight - footerReserve) {
+        doc.addPage();
+        drawHeaderAndFooter({ pageNumber: doc.internal.getCurrentPageInfo().pageNumber });
+        startY = topHeaderOnly + patientBlockReserve + 2;
+      }
+    }
   autoTable(doc, {
         theme: 'grid',
     head: [['Parámetro', 'Resultado', 'Valores de Referencia (VN)']],
         body: mainContent,
-        startY: cbcStudy ? afterCbcY : Math.max(headerHeight, patientGridBottom + 4),
-    margin: { top: topHeaderOnly, left: margin, right: margin, bottom: 18 },
+        startY,
+    margin: { top: topHeaderOnly, left: margin, right: margin, bottom: 16 },
         showHead: 'firstPage',
         headStyles: { 
             fillColor: [248, 250, 252], 
@@ -794,10 +810,11 @@ import { loadJsPdf } from '@/lib/dynamicImports';
         },
         styles: { fontSize: compact ? 6.8 : 7.2, cellPadding: compact ? 0.7 : 1.1, valign: 'middle', font: 'helvetica' },
         columnStyles: {
-          // Reducimos 'Parámetro' y ampliamos 'Valores de Referencia'
-          0: { cellWidth: compact ? 42 : 46, fontStyle: 'bold' },
-          1: { cellWidth: compact ? 28 : 34, halign: 'center' },
-          2: { cellWidth: 'auto', fontSize: compact ? 7 : 7.5 },
+          // Tabla estándar tiene 3 columnas visibles: Parámetro, Resultado, Valores de Referencia.
+          // Distribución: Parámetro ~24%, Resultado ~14%, Referencia ~62% (más ancha para evitar saltos).
+          0: { cellWidth: (pageWidth - 2 * margin) * 0.24, fontStyle: 'bold' },
+          1: { cellWidth: (pageWidth - 2 * margin) * 0.14, halign: 'center' },
+          2: { cellWidth: (pageWidth - 2 * margin) * 0.62 },
         },
         didDrawCell: (data) => {
           if (data.column.index === 1 && data.cell.section === 'body') {
@@ -868,7 +885,7 @@ import { loadJsPdf } from '@/lib/dynamicImports';
   }
 
       // Post-table content: antibiogram, extra info row, signature
-      let finalY = doc.lastAutoTable ? doc.lastAutoTable.finalY : (cbcStudy ? afterCbcY : Math.max(headerHeight, patientGridBottom + 4));
+      let finalY = doc.lastAutoTable ? doc.lastAutoTable.finalY : (cbcStudy ? afterCbcY : Math.max(headerHeight, topHeaderOnly + patientBlockReserve));
       finalY = drawAntibiogramSection((typeof finalY === 'number' ? finalY + 6 : headerHeight));
 
       const defaultExtraNotes = "Valores de referncia ajustados a sexo, la edad del o la paciente así como a la altura del nivel del mar de la zona geográfica de residencia.";
@@ -881,7 +898,7 @@ import { loadJsPdf } from '@/lib/dynamicImports';
         const footerReserve = compact ? 28 : 32; // permitir usar más espacio de la página
         const gap = compact ? 2 : 3;
         let startY = (typeof finalY === 'number' ? finalY + gap : headerHeight);
-        const colWidths = [0.33, 0.33, 0.34].map(p => (pageWidth - 2 * margin) * p);
+        const colWidths = [0.30, 0.30, 0.40].map(p => (pageWidth - 2 * margin) * p);
         const texts = [extraDescription || '—', extraDiagnosis || '—', extraNotes || '—'];
         const estimatedLines = texts.reduce((acc, txt, idx) => {
           const lines = doc.splitTextToSize(String(txt), colWidths[idx]);
@@ -893,7 +910,8 @@ import { loadJsPdf } from '@/lib/dynamicImports';
         if (startY + estimatedHeight > safeBottom) {
           doc.addPage();
           drawHeaderAndFooter({ pageNumber: doc.internal.getCurrentPageInfo().pageNumber });
-          startY = topHeaderOnly + 6; // en páginas siguientes no reservamos la grilla completa
+          // Arrancar por debajo del bloque de paciente para evitar solape
+          startY = topHeaderOnly + patientBlockReserve + 2;
         }
         autoTable(doc, {
           startY,
@@ -908,7 +926,7 @@ import { loadJsPdf } from '@/lib/dynamicImports';
             texts[2]
           ]],
           theme: 'grid',
-          margin: { top: topHeaderOnly, left: margin, right: margin },
+          margin: { top: topHeaderOnly, left: margin, right: margin, bottom: 16 },
           tableWidth: pageWidth - 2 * margin,
           headStyles: { fillColor: [241, 245, 249], textColor: [14, 116, 144], fontStyle: 'bold', fontSize: 8.3, lineWidth: 0.1, lineColor: [203, 213, 225] },
           styles: { fontSize: compact ? 6.9 : 7.4, cellPadding: compact ? 1.1 : 1.6, valign: 'top', overflow: 'linebreak', font: 'helvetica' },
@@ -930,7 +948,8 @@ import { loadJsPdf } from '@/lib/dynamicImports';
         if (startY + estHeight > pageHeight - footerReserve) {
           doc.addPage();
           drawHeaderAndFooter({ pageNumber: doc.internal.getCurrentPageInfo().pageNumber });
-          startY = topHeaderOnly + 5;
+          // Arrancar debajo del bloque de paciente
+          startY = topHeaderOnly + patientBlockReserve + 2;
         }
         doc.setFontSize(9).setFont(undefined, 'bold');
         doc.text('Notas de Validación / Observaciones:', margin, startY);
