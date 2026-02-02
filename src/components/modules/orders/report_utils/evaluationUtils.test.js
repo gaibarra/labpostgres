@@ -103,6 +103,20 @@ describe('evaluationUtils - getReferenceRangeText', () => {
     expect(txt).toMatch(/12 - 15 g\/dL/);
     expect(txt).toMatch(/Femenino/);
   });
+
+  it('omite el placeholder "(Texto libre)" al construir la referencia', () => {
+    const { result } = renderHook(() => useEvaluationUtils());
+    const patient = { date_of_birth: '1995-05-05', sex: 'F' };
+    const param = {
+      reference_ranges: [
+        { sex: 'Ambos', age_min: 0, age_max: 120, age_min_unit: 'años', text_value: '(Texto libre)' }
+      ]
+    };
+    const refObject = result.current.getReferenceRangeText(param, patient, undefined, true);
+    expect(refObject.valueText || '').not.toMatch(/texto libre/i);
+    const refString = result.current.getReferenceRangeText(param, patient);
+    expect(refString.toLowerCase()).not.toContain('texto libre');
+  });
 });
 
 describe('evaluationUtils - evaluateResult', () => {

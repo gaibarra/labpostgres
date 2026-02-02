@@ -48,12 +48,65 @@ import { loadJsPdf } from '@/lib/dynamicImports';
 
       const labPhone = labInfo.phone;
       const labEmail = labInfo.email;
+      // Forzar logo cuando existe una URL válida, aunque el flag esté en false (evita inconsistencias con la previsualización)
+      const showLogoInReport = reportSettings.showLogoInReport !== false || !!(uiSettings.logoUrl || labInfo.logoUrl);
   // Prefer UI logo; fallback to labInfo.logoUrl to avoid regressions if UI setting is empty
-  const labLogo = uiSettings.logoUrl || labInfo.logoUrl || '';
+  const defaultPdfLogo = '/branding/hematos.logo.pdf.png';
+  const labLogo = uiSettings.logoUrl || labInfo.logoUrl || defaultPdfLogo;
   const logoIncludesName = !!uiSettings.logoIncludesLabName; // if true, omit printing labName text to avoid duplication
       const dateFormat = reportSettings.dateFormat || 'dd/MM/yyyy';
       const timeFormat = reportSettings.timeFormat || 'HH:mm';
       const dateTimeFormat = `${dateFormat} ${timeFormat}`;
+
+          // Garantiza que el logo esté cargado como DataURL antes de dibujar el PDF para evitar fallos de CORS/tiempo.
+          const ensureLogoLoaded = async () => {
+            if (!labLogo || !showLogoInReport) return;
+
+            // Normaliza URL para fetch (soporta rutas absolutas del server: /branding/..)
+            let resolvedLogo = labLogo;
+            try {
+              if (/^\//.test(labLogo) && typeof window !== 'undefined' && window.location?.origin) {
+                resolvedLogo = `${window.location.origin}${labLogo}`;
+              } else if (!/^https?:/i.test(labLogo) && typeof window !== 'undefined' && window.location?.href) {
+                resolvedLogo = new URL(labLogo, window.location.href).href;
+              }
+            } catch (_) { /* ignore resolution errors */ }
+
+            // Reusar DataURL global si ya está disponible desde la previsualización
+            if (!generatePdfContent.__logoDataUrl && typeof window !== 'undefined' && window.__LABG40_LAST_LOGO_DATA_URL) {
+              generatePdfContent.__logoDataUrl = window.__LABG40_LAST_LOGO_DATA_URL;
+              generatePdfContent.__logoSource = window.__LABG40_LAST_LOGO_URL || resolvedLogo;
+              return;
+            }
+
+            // Evita refetch si ya tenemos cache para la misma URL
+            if (generatePdfContent.__logoSource === resolvedLogo && generatePdfContent.__logoDataUrl) return;
+            // Si ya viene como data: úsalo directo
+            if (/^data:/i.test(resolvedLogo)) {
+              generatePdfContent.__logoDataUrl = resolvedLogo;
+              generatePdfContent.__logoSource = resolvedLogo;
+              return;
+            }
+            if (typeof fetch !== 'function') return;
+            try {
+              const resp = await fetch(resolvedLogo, { cache: 'force-cache', credentials: 'include' });
+              if (!resp || !resp.ok) return;
+              const blob = await resp.blob();
+              const dataUrl = await new Promise((resolve, reject) => {
+                const fr = new FileReader();
+                fr.onload = () => resolve(fr.result);
+                fr.onerror = () => reject(new Error('logo-read-failed'));
+                fr.readAsDataURL(blob);
+              });
+              generatePdfContent.__logoDataUrl = dataUrl;
+              generatePdfContent.__logoSource = resolvedLogo;
+              try { if (typeof window !== 'undefined') window.__LABG40_LAST_LOGO_DATA_URL = dataUrl; } catch(_) { /* noop */ }
+            } catch (err) {
+              console.warn('[PDF][logo-preload-failed]', err?.message || err);
+            }
+          };
+
+          await ensureLogoLoaded();
 
       let ageText = `${patientAgeData.ageYears} años`;
       if (patientAgeData.ageYears < 1) {
@@ -326,20 +379,26 @@ import { loadJsPdf } from '@/lib/dynamicImports';
           doc.setFontSize(compact ? 12 : 14).setFont(undefined, 'bold').setTextColor(30, 58, 138);
           doc.text(labName, pageWidth / 2, yPos + 4, { align: 'center' });
           // Bandera para insertar logo ya rasterizado si se precargó
-          if (labLogo && reportSettings.showLogoInReport && generatePdfContent.__logoDataUrl) {
+          if (labLogo && showLogoInReport && generatePdfContent.__logoDataUrl) {
             try {
               const wantCenter = !!reportSettings.logoAlignCenter;
+              const dataUrl = generatePdfContent.__logoDataUrl;
+              let imageType = 'PNG';
+              const mimeMatch = /^data:image\/(png|jpeg|jpg);/i.exec(String(dataUrl || ''));
+              if (mimeMatch && mimeMatch[1]) {
+                imageType = mimeMatch[1].toUpperCase() === 'JPG' ? 'JPEG' : mimeMatch[1].toUpperCase();
+              }
               // Intrinsic image properties (jsPDF parses width/height from DataURL)
               let intrinsicW = 0, intrinsicH = 0;
               try {
-                const props = doc.getImageProperties(generatePdfContent.__logoDataUrl);
+                const props = doc.getImageProperties(dataUrl);
                 intrinsicW = props?.width || 0; intrinsicH = props?.height || 0;
               } catch(_) { /* ignore */ }
               const aspectRatio = (intrinsicW > 0 && intrinsicH > 0) ? (intrinsicW / intrinsicH) : 3.5;
               // Desired height configurable; fallbacks give a bit more presence than previous values
               const desiredHeight = (reportSettings.logoHeightMm && reportSettings.logoHeightMm > 0)
                 ? reportSettings.logoHeightMm
-                : (compact ? 18 : 23); // mm (25% más presencia)
+                : (compact ? 13.5 : 17.25); // mm (reducido ~25%)
               const maxWidthRatio = (reportSettings.logoMaxWidthRatio && reportSettings.logoMaxWidthRatio > 0 && reportSettings.logoMaxWidthRatio < 1)
                 ? reportSettings.logoMaxWidthRatio
                 : 0.69; // hasta ~70% del ancho imprimible
@@ -364,7 +423,7 @@ import { loadJsPdf } from '@/lib/dynamicImports';
                 }
               }
               const x = wantCenter ? (pageWidth - logoWidth) / 2 : margin;
-              doc.addImage(generatePdfContent.__logoDataUrl, 'PNG', x, yPos, logoWidth, logoHeight);
+              doc.addImage(dataUrl, imageType, x, yPos, logoWidth, logoHeight);
             } catch(e) { console.warn('[PDF][logo-add-failed]', e.message); }
           }
           doc.setFontSize(compact ? 12 : 14).setFont(undefined, 'bold');
@@ -788,7 +847,8 @@ import { loadJsPdf } from '@/lib/dynamicImports';
       const headerH = compact ? 6 : 7;
       const estHeight = headerH + mainContent.length * rowHeight + 4;
       const footerReserve = 24;
-      if (startY + estHeight > pageHeight - footerReserve) {
+      const hasContentDrawn = !!doc.lastAutoTable || doc.internal.getCurrentPageInfo().pageNumber > 1;
+      if (hasContentDrawn && startY + estHeight > pageHeight - footerReserve) {
         doc.addPage();
         drawHeaderAndFooter({ pageNumber: doc.internal.getCurrentPageInfo().pageNumber });
         startY = topHeaderOnly + patientBlockReserve + 2;
@@ -799,7 +859,7 @@ import { loadJsPdf } from '@/lib/dynamicImports';
     head: [['Parámetro', 'Resultado', 'Valores de Referencia (VN)']],
         body: mainContent,
         startY,
-    margin: { top: topHeaderOnly, left: margin, right: margin, bottom: 16 },
+    margin: { top: topHeaderOnly + patientBlockReserve, left: margin, right: margin, bottom: 16 },
         showHead: 'firstPage',
         headStyles: { 
             fillColor: [248, 250, 252], 
@@ -1034,7 +1094,7 @@ try {
     // Permitir set externo: window.__LABG40_LAST_LOGO_URL = <url>
     if (preLogo) {
       fetch(preLogo, { cache: 'force-cache' }).then(r => r.ok ? r.blob() : null).then(b => {
-        if (!b) return; const fr = new FileReader(); fr.onload = () => { generatePdfContent.__logoDataUrl = fr.result; }; fr.readAsDataURL(b);
+        if (!b) return; const fr = new FileReader(); fr.onload = () => { generatePdfContent.__logoDataUrl = fr.result; generatePdfContent.__logoSource = preLogo; }; fr.readAsDataURL(b);
       }).catch(()=>{});
     }
   }

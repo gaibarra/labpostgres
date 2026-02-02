@@ -1,5 +1,14 @@
 import { useCallback } from 'react';
 
+const cleanReferenceTextValue = (raw) => {
+  if (raw === null || raw === undefined) return '';
+  const trimmed = String(raw).trim();
+  if (!trimmed) return '';
+  const normalized = trimmed.toLowerCase();
+  if (normalized === '(texto libre)' || normalized === 'texto libre') return '';
+  return trimmed;
+};
+
     export const useEvaluationUtils = () => {
       const calculateAgeInUnits = useCallback((birthDateStr) => {
         if (!birthDateStr) return { ageYears: 0, unit: 'años', fullMonths: 0, fullDays: 0, fullWeeks: 0, fullHours: 0 };
@@ -115,8 +124,9 @@ import { useCallback } from 'react';
   const demographics = `(${applicableRef.sex || 'Ambos'}, ${ageText}${methodTag})`;
         
         let valueText = '';
-        if (applicableRef.text_value) {
-          valueText = applicableRef.text_value;
+        const textValueForDisplay = cleanReferenceTextValue(applicableRef.text_value);
+        if (textValueForDisplay) {
+          valueText = textValueForDisplay;
         } else {
           const minValIsNull = applicableRef.lower === -Infinity;
           const maxValIsNull = applicableRef.upper === Infinity;
@@ -133,13 +143,15 @@ import { useCallback } from 'react';
         }
         
         const units = param.unit || '';
-        const fullValueText = `${valueText}${units ? ' ' + units : ''}`;
+        const fullValueText = valueText ? `${valueText}${units ? ' ' + units : ''}` : '';
 
         if (returnObject) {
           return { valueText: fullValueText, demographics };
         }
-
-        return `${fullValueText} ${demographics}`;
+        const parts = [];
+        if (fullValueText) parts.push(fullValueText);
+        if (demographics) parts.push(demographics);
+        return parts.length ? parts.join(' ') : 'N/A';
       }, [getApplicableReference]);
 
       const evaluateResult = useCallback((inputValue, param, patientData, patientAgeDataHook) => {

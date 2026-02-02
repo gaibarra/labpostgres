@@ -1,0 +1,27 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" aria-labelledby="title desc" role="img">
+  <title id="title">LabG40 Icon</title>
+  <desc id="desc">Icono cuadrado con fondo azul oscuro y el texto LabG40 en tono claro.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0E2034" />
+      <stop offset="100%" stop-color="#081523" />
+    </linearGradient>
+    <radialGradient id="glow" cx="0.3" cy="0.3" r="0.8">
+      <stop offset="0%" stop-color="#1B3A5A" stop-opacity="0.55" />
+      <stop offset="100%" stop-color="#0A1828" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+
+  <rect width="1024" height="1024" rx="160" fill="url(#bg)" />
+  <rect width="1024" height="1024" rx="160" fill="url(#glow)" />
+
+  <text x="512" y="560" text-anchor="middle"
+    font-family="'Montserrat', 'Segoe UI', 'DIN Condensed', sans-serif"
+    font-weight="800"
+    font-size="300"
+    fill="#E9EDF7"
+    letter-spacing="6"
+    style="paint-order: stroke fill; stroke: #B6C4E0; stroke-width: 12;">
+    LabG40
+  </text>
+</svg>

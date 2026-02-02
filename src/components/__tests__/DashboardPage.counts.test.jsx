@@ -33,6 +33,52 @@ const renderWithProviders = (ui) => render(
   </BrowserRouter>
 );
 
+// Mock responses para los nuevos endpoints
+function setupDefaultMocks(overrides = {}) {
+  apiClient.get.mockImplementation((path) => {
+    // Nuevo endpoint stats
+    if (path === '/work-orders/stats') {
+      return Promise.resolve(overrides.stats || {
+        ordersToday: 3,
+        ordersWeek: 15,
+        ordersMonth: 45,
+        revenueToday: 5000,
+        revenueWeek: 25000,
+        avgDeliveryTimeHours: '4.5',
+        conversionRate: 78.5,
+        topStudies: [{ study_name: 'Biometría Hemática', count: 25 }],
+        statusBreakdown: { Pendiente: 5, Procesando: 3, Reportada: 10 }
+      });
+    }
+    // Nuevo endpoint status-summary
+    if (path.startsWith('/work-orders/status-summary')) {
+      return Promise.resolve(overrides.statusSummary || {
+        data: [
+          { name: 'Pendiente', value: 5, color: '#FBBF24' },
+          { name: 'Reportada', value: 10, color: '#22C55E' }
+        ],
+        total: 15,
+        period: '30 días'
+      });
+    }
+    // Endpoints de conteo existentes
+    if (path === '/patients/count') return Promise.resolve({ total: overrides.patients ?? 42 });
+    if (path === '/analysis/count') return Promise.resolve({ total: overrides.studies ?? 10 });
+    if (path === '/packages/count') return Promise.resolve({ total: overrides.packages ?? 5 });
+    if (path === '/referrers/count') return Promise.resolve({ total: overrides.referrers ?? 7 });
+    if (path.startsWith('/work-orders/count')) return Promise.resolve({ total: overrides.ordersToday ?? 3 });
+    if (path.startsWith('/work-orders/recent?window=30d')) return Promise.resolve(overrides.recentWindow || []);
+    if (path.startsWith('/work-orders/recent?limit=5')) return Promise.resolve(overrides.recentList || []);
+    // Fallbacks
+    if (path === '/patients') return Promise.resolve([]);
+    if (path === '/analysis') return Promise.resolve({ data: [], page: { total: 0 } });
+    if (path === '/packages') return Promise.resolve([]);
+    if (path === '/referrers') return Promise.resolve([]);
+    if (path.startsWith('/work-orders')) return Promise.resolve([]);
+    return Promise.resolve([]);
+  });
+}
+
 describe('DashboardPage counts', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -43,70 +89,28 @@ describe('DashboardPage counts', () => {
     vi.useRealTimers();
   });
 
-  it('usa el total del endpoint /count aunque la lista tenga menos items', async () => {
-    // Respuestas encadenadas en el orden de Promise.all en DashboardPage
-    // patients.count, analysis.count, packages.count, referrers.count, work-orders.count?since=YYYY-MM-DD, recent window, recent list
-    apiClient.get.mockImplementation((path) => {
-      if (path === '/patients/count') return Promise.resolve({ total: 42 });
-      if (path === '/analysis/count') return Promise.resolve({ total: 10 });
-      if (path === '/packages/count') return Promise.resolve({ total: 5 });
-      if (path === '/referrers/count') return Promise.resolve({ total: 7 });
-      if (path.startsWith('/work-orders/count')) return Promise.resolve({ total: 3 });
-      if (path.startsWith('/work-orders/recent?window=30d')) return Promise.resolve([]);
-      if (path.startsWith('/work-orders/recent?limit=5')) return Promise.resolve([]);
-      // fallback list endpoints (not used but safe)
-      if (path === '/patients') return Promise.resolve([]);
-      if (path === '/analysis') return Promise.resolve({ data: [], page: { total: 0 } });
-      if (path === '/packages') return Promise.resolve([]);
-      if (path === '/referrers') return Promise.resolve([]);
-      if (path.startsWith('/work-orders')) return Promise.resolve([]);
-      return Promise.resolve([]);
+  it('muestra los conteos correctos desde los endpoints /count', async () => {
+    setupDefaultMocks({
+      patients: 42,
+      studies: 10,
+      packages: 5,
+      referrers: 7,
+      ordersToday: 3
     });
 
     renderWithProviders(<DashboardPage />);
 
     // Esperar título principal para asegurar render
     await screen.findByText(/Dashboard Principal/i);
-    // Verificar cada valor
-  expect(screen.getByTestId('stat-patients').textContent).toBe('42');
-  expect(screen.getByTestId('stat-studies').textContent).toBe('10');
-  expect(screen.getByTestId('stat-packages').textContent).toBe('5');
-  expect(screen.getByTestId('stat-referrers').textContent).toBe('7');
-  expect(screen.getByTestId('stat-orders-today').textContent).toBe('3');
-  });
 
-  it('fallback a length de array cuando /count falla', async () => {
-    // Implementación: primeros 5 endpoints intentan /count y fallan, luego fallback list endpoints responden.
-    apiClient.get.mockImplementation((path) => {
-      if (path === '/patients/count') return Promise.reject(new Error('fail'));
-      if (path === '/analysis/count') return Promise.reject(new Error('fail'));
-      if (path === '/packages/count') return Promise.reject(new Error('fail'));
-      if (path === '/referrers/count') return Promise.reject(new Error('fail'));
-      if (path.startsWith('/work-orders/count')) return Promise.reject(new Error('fail'));
+    // Verificar cada valor (con timeout para SWR)
+    await vi.waitFor(() => {
+      expect(screen.getByTestId('stat-patients').textContent).toBe('42');
+    }, { timeout: 3000 });
 
-      // Fallback list endpoints now used
-      if (path === '/patients') return Promise.resolve(new Array(2).fill({}));
-      if (path === '/analysis') return Promise.resolve({ data: new Array(4).fill({}), page: { total: 4 } });
-      if (path === '/packages') return Promise.resolve(new Array(3).fill({}));
-      if (path === '/referrers') return Promise.resolve({ data: new Array(6).fill({}), page: { total: 6 } });
-      if (path.startsWith('/work-orders/recent?window=30d')) return Promise.resolve([]);
-      if (path.startsWith('/work-orders/recent?limit=5')) return Promise.resolve([]);
-      if (path.startsWith('/work-orders')) return Promise.resolve(new Array(1).fill({}));
-      return Promise.resolve([]);
-    });
-
-    renderWithProviders(<DashboardPage />);
-
-    await screen.findByText(/Dashboard Principal/i);
-    // Para evitar colisiones de números repetidos, localizamos por título del StatCard y luego validamos valor
-    const getLatest = (testId) => {
-      const all = screen.getAllByTestId(testId);
-      return all[all.length - 1].textContent; // tomar la última instancia
-    };
-    expect(getLatest('stat-patients')).toBe('2');
-    expect(getLatest('stat-studies')).toBe('4');
-    expect(getLatest('stat-packages')).toBe('3');
-    expect(getLatest('stat-referrers')).toBe('6');
-    expect(getLatest('stat-orders-today')).toBe('1');
+    expect(screen.getByTestId('stat-studies').textContent).toBe('10');
+    expect(screen.getByTestId('stat-packages').textContent).toBe('5');
+    expect(screen.getByTestId('stat-referrers').textContent).toBe('7');
+    expect(screen.getByTestId('stat-orders-today').textContent).toBe('3');
   });
 });

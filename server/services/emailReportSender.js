@@ -21,7 +21,7 @@ function buildReportPdf({ order, patient, labName }) {
     bucket.slice(0, 12).forEach(r => { // Limit lines to keep PDF small
       doc.setFontSize(9);
       const line = `${r.parametroNombre || r.parameterName || r.parametroId}: ${r.valor ?? 'PENDIENTE'}`;
-      doc.text(line.substring(0,80), 18, y); y += 4;
+      doc.text(line.substring(0, 80), 18, y); y += 4;
       if (y > 280) { doc.addPage(); y = 20; }
     });
     y += 2;
@@ -39,19 +39,24 @@ async function createTransport({ host, port, secure, user, pass }) {
   });
 }
 
-async function sendReportEmail({ smtp, to, order, patient, labName, from }) {
+async function sendReportEmail({ smtp, to, order, patient, labName, from, pdfBuffer }) {
   if (!to) throw new Error('Destinatario (to) requerido');
   const transporter = await createTransport(smtp);
-  const pdfBuffer = Buffer.from(buildReportPdf({ order, patient, labName }));
+  // Use provided buffer (from frontend) or generate basic one (server-side fallback)
+  const finalPdfBuffer = pdfBuffer
+    ? pdfBuffer
+    : Buffer.from(buildReportPdf({ order, patient, labName }));
+
   const subject = `Resultados Laboratorio - ${patient.full_name} - Folio ${order.folio}`;
   const text = `Adjunto PDF con el reporte de resultados. Folio ${order.folio}. Paciente ${patient.full_name}.`;
+
   const info = await transporter.sendMail({
-  from: from || smtp.from || smtp.user,
+    from: from || smtp.from || smtp.user,
     to,
     subject,
     text,
     attachments: [
-      { filename: `reporte-${order.folio}.pdf`, content: pdfBuffer }
+      { filename: `reporte-${order.folio}.pdf`, content: finalPdfBuffer }
     ]
   });
   return { messageId: info.messageId, accepted: info.accepted, rejected: info.rejected };

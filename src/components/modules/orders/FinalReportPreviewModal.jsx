@@ -50,7 +50,15 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
         try {
           const uiLogo = labSettings?.uiSettings?.logoUrl || '';
           const fallbackLogo = labSettings?.labInfo?.logoUrl || '';
-          const logoUrl = uiLogo || fallbackLogo;
+          const defaultPdfLogo = '/branding/hematos.logo.pdf.png';
+          let logoUrl = uiLogo || fallbackLogo || defaultPdfLogo;
+          try {
+            if (/^\//.test(logoUrl) && typeof window !== 'undefined' && window.location?.origin) {
+              logoUrl = `${window.location.origin}${logoUrl}`;
+            } else if (!/^https?:/i.test(logoUrl) && typeof window !== 'undefined' && window.location?.href) {
+              logoUrl = new URL(logoUrl, window.location.href).href;
+            }
+          } catch(_) { /* ignore resolution errors */ }
           if (!logoUrl) return;
           // Expose last logo URL for any other consumers
           if (typeof window !== 'undefined') {
@@ -65,7 +73,7 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
           fetch(logoUrl, { cache: 'force-cache' })
             .then(r => r.ok ? r.blob() : Promise.reject(new Error('logo fetch failed')))
             .then(b => new Promise((resolve) => { const fr = new FileReader(); fr.onload = () => resolve(fr.result); fr.readAsDataURL(b); }))
-            .then((dataUrl) => { try { generatePdfContent.__logoDataUrl = dataUrl; } catch(_) { /* ignore */ } })
+            .then((dataUrl) => { try { generatePdfContent.__logoDataUrl = dataUrl; generatePdfContent.__logoSource = logoUrl; window.__LABG40_LAST_LOGO_DATA_URL = dataUrl; } catch(_) { /* ignore */ } })
             .catch(() => { /* ignore preload errors */ });
         } catch { /* ignore */ }
       }, [labSettings?.uiSettings?.logoUrl, labSettings?.labInfo?.logoUrl]);
@@ -226,16 +234,53 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.jsx';
         } catch(e) { console.warn('Dispatch endpoint failed (non-blocking)', e.message); }
         
         if (platform === 'Email') {
-          const subject = `Resultados de Laboratorio - ${patient.full_name} - Folio ${order.folio}`;
-          const body = `Estimado(a) ${patient.full_name},\n\n${reportSummary}\n\nAdjuntamos su reporte de resultados en PDF.\n\nSaludos cordiales,\n${labName}`;
-          const mailtoLink = `mailto:${patient.email || ''}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-          window.location.href = mailtoLink;
-          toast({
-            title: "Preparando Email",
-            description: pdfObjectUrl ? "Se abrió el PDF en una nueva pestaña. Descárguelo y adjúntelo antes de enviar." : "No se pudo abrir el PDF. Usa 'Imprimir / Guardar PDF' y adjunta manualmente.",
-            duration: 7000,
-          });
-          logAuditEvent('ReporteEnviadoIntento', { orderId: order.id, platform: 'Email' }, order.createdBy || 'Sistema');
+          toast({ title: "Enviando...", description: "Generando PDF y enviando por correo." });
+          try {
+            // Generar PDF en Base64
+            const pdfBase64 = await generatePdfContent(
+              order,
+              patient,
+              referrer,
+              studiesDetails,
+              packagesData,
+              patientAgeData,
+              labSettings,
+              getReferenceRangeText,
+              evaluateResult,
+              cleanNumericValueForStorage,
+              getStudiesAndParametersForOrder,
+              isCompact,
+              (antibiogramData && antibiogramData.hasData) ? antibiogramData : null,
+              { mode: 'base64' }
+            );
+
+            // Enviar al backend
+            const sendRes = await apiClient.post(`/work-orders/${order.id}/send-report/email`, {
+               pdfBase64,
+               patient: { full_name: patient.full_name, email: patient.email },
+               labName
+            });
+
+            if (sendRes && sendRes.ok) {
+              toast({ title: "Correo Enviado", description: `El reporte ha sido enviado a ${patient.email || 'el destinatario'}.` });
+              logAuditEvent('ReporteEnviadoExito', { orderId: order.id, platform: 'Email' }, order.createdBy || 'Sistema');
+            } else {
+              throw new Error('El servidor no confirmó el envío.');
+            }
+          } catch (e) {
+            console.error('[EMAIL_SEND_CLIENT_FAIL]', e);
+            toast({ 
+              title: "No se pudo enviar automáticamente", 
+              description: "El servidor no pudo enviar el correo (posiblemente falta configurar SMTP). Se abrirá su cliente de correo local.", 
+              variant: "destructive",
+              duration: 5000 
+            });
+            // Fallback: mailto
+            const subject = `Resultados de Laboratorio - ${patient.full_name} - Folio ${order.folio}`;
+            const body = `Estimado(a) ${patient.full_name},\n\n${reportSummary}\n\nAdjuntamos su reporte de resultados en PDF.\n\nSaludos cordiales,\n${labName}`;
+            const mailtoLink = `mailto:${patient.email || ''}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+            window.location.href = mailtoLink;
+          }
         } else if (platform === 'Telegram') {
           const telegramMessage = `Estimado(a) ${patient.full_name},\n${reportSummary}${reminder}\n\nSaludos cordiales,\n${labName}`;
           let telegramUrl = `https://t.me/share/url?url=${encodeURIComponent(reportSummary)}&text=${encodeURIComponent(telegramMessage)}`;

@@ -2,7 +2,6 @@ import React from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSettings } from '@/contexts/SettingsContext';
-import BrandLogo from '@/components/BrandLogo';
 import ThemeToggle from '@/components/ThemeToggle';
 import { Button } from '@/components/ui/button';
 import {
@@ -59,14 +58,7 @@ const Header = ({ onMenuClick }) => {
         </div>
 
         <div className="flex min-w-0 flex-col items-center justify-center text-center">
-          <div className="flex w-full items-center justify-center gap-3">
-            <BrandLogo
-              showName={false}
-              size="lg"
-              className="hidden sm:flex"
-              iconClassName="text-slate-600 dark:text-slate-200"
-              imageClassName="h-12 w-auto max-w-[160px]"
-            />
+          <div className="flex w-full items-center justify-center">
             <p className="text-sm sm:text-base md:text-lg font-semibold text-slate-800 dark:text-slate-100 text-center leading-tight break-words whitespace-normal">
               {labName}
             </p>

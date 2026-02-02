@@ -144,7 +144,7 @@ router.post('/:id/items', auth, requirePermission('packages','update'), audit('c
   const pkgId = req.params.id;
   try {
     // Inyección de falla para pruebas: simular error app-side dentro del try externo
-    if (process.env.NODE_ENV === 'test' && req.headers && req.headers['x-fault-insert']) {
+    if (process.env.TEST_MODE === '1' && req.headers && req.headers['x-fault-insert']) {
       const mode = req.headers['x-fault-insert'];
       if (mode === 'throw') {
         throw new TypeError('fault-injected');
@@ -160,7 +160,7 @@ router.post('/:id/items', auth, requirePermission('packages','update'), audit('c
     try {
       await client.query('BEGIN');
       // Fault injections dentro de la transacción para simular códigos PG
-      if (process.env.NODE_ENV === 'test' && req.headers && req.headers['x-fault-insert']) {
+      if (process.env.TEST_MODE === '1' && req.headers && req.headers['x-fault-insert']) {
         const mode = req.headers['x-fault-insert'];
         if (mode === 'deadlock') {
           const err = new Error('deadlock simulated'); err.code = '40P01'; throw err;

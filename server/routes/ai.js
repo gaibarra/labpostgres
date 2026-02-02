@@ -704,7 +704,7 @@ router.get('/generate-panel/job/:id', requireAuth, requirePermission('studies','
 });
 
 // Exposición controlada para tests (no documentar como API pública)
-if (process.env.NODE_ENV === 'test') {
+if (process.env.NODE_ENV === 'test' || process.env.TEST_MODE === '1') {
   router.__ensureCoverageForTest = (payload, studyName) => ensureCoverage(payload, studyName||'test');
 }
 

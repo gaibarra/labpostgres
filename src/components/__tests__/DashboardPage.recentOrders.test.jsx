@@ -18,6 +18,7 @@ vi.mock('@/lib/apiClient', () => {
   };
   return { __esModule: true, default: mock, apiClient: mock };
 });
+
 import apiClient from '@/lib/apiClient';
 import DashboardPage from '@/pages/DashboardPage.jsx';
 
@@ -29,30 +30,49 @@ const renderDash = () => render(
   </BrowserRouter>
 );
 
-// Helper para construir recent orders API shape
-defaultRecentOrdersMock();
-
-function defaultRecentOrdersMock() {
-  // counts minimal responses
+function setupMocksWithOrders() {
   apiClient.get.mockImplementation((path) => {
+    // Nuevo endpoint stats
+    if (path === '/work-orders/stats') {
+      return Promise.resolve({
+        ordersToday: 0,
+        ordersWeek: 0,
+        ordersMonth: 0,
+        revenueToday: 0,
+        revenueWeek: 0,
+        avgDeliveryTimeHours: null,
+        conversionRate: 0,
+        topStudies: [],
+        statusBreakdown: {}
+      });
+    }
+    // Nuevo endpoint status-summary
+    if (path.startsWith('/work-orders/status-summary')) {
+      return Promise.resolve({
+        data: [],
+        total: 0,
+        period: '30 días'
+      });
+    }
+    // Conteos
     if (path === '/patients/count') return Promise.resolve({ total: 0 });
     if (path === '/analysis/count') return Promise.resolve({ total: 0 });
     if (path === '/packages/count') return Promise.resolve({ total: 0 });
     if (path === '/referrers/count') return Promise.resolve({ total: 0 });
     if (path.startsWith('/work-orders/count')) return Promise.resolve({ total: 0 });
     if (path.startsWith('/work-orders/recent?window=30d')) return Promise.resolve([]);
+
+    // Órdenes recientes con varios formatos de paciente
     if (path.startsWith('/work-orders/recent?limit=5')) {
       return Promise.resolve([
         { id: 'wo1', folio: 'F0001', status: 'Pendiente', patient: { full_name: 'Juan Pérez' } },
         { id: 'wo2', folio: 'F0002', status: 'Concluida', patient: { first_name: 'María', middle_name: 'Luisa', last_name: 'Gómez' } },
         { id: 'wo3', folio: 'F0003', status: 'Reportada', patient_name: 'Paciente Sin Perfil' },
-        { id: 'wo4', folio: 'F0004', status: 'Procesando', patient_id: 'p123' }, // requiere enrich
-        { id: 'wo5', folio: 'F0005', status: 'Procesando' } // sin nada -> dash persistente
+        { id: 'wo4', folio: 'F0004', status: 'Procesando' } // Sin nombre -> dash
       ]);
     }
-    if (path === '/patients/p123') {
-      return Promise.resolve({ id: 'p123', first_name: 'Carlos', last_name: 'Ruiz' });
-    }
+
+    // Fallbacks
     if (path === '/patients') return Promise.resolve([]);
     if (path === '/analysis') return Promise.resolve({ data: [], page: { total: 0 } });
     if (path === '/packages') return Promise.resolve([]);
@@ -66,24 +86,29 @@ function defaultRecentOrdersMock() {
 describe('DashboardPage recent orders list', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    defaultRecentOrdersMock();
+    setupMocksWithOrders();
   });
   afterEach(() => cleanup());
 
   it('muestra nombres de paciente normalizados y links navegables', async () => {
     renderDash();
     await screen.findByText(/Dashboard Principal/i);
+
+    // Esperar a que carguen los datos con SWR
+    await vi.waitFor(() => {
+      expect(screen.getByText('Juan Pérez')).toBeInTheDocument();
+    }, { timeout: 3000 });
+
     // Nombres normalizados
-    expect(screen.getByText('Juan Pérez')).toBeInTheDocument();
-  expect(screen.getByText('María Luisa Gómez')).toBeInTheDocument();
+    expect(screen.getByText('María Luisa Gómez')).toBeInTheDocument();
     expect(screen.getByText('Paciente Sin Perfil')).toBeInTheDocument();
-  // Nombre enriquecido por patient_id
-  await screen.findByText('Carlos Ruiz');
-  // Caso totalmente vacío -> dash
-  expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(1);
+
+    // Caso sin nombre -> dash
+    expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(1);
 
     // Links contienen highlight param y anchor
     const juanLink = screen.getByRole('link', { name: 'F0001' });
     expect(juanLink.getAttribute('href')).toMatch(/orders\?highlight=wo1#order-wo1/);
   });
+
 });

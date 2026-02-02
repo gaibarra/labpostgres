@@ -1,0 +1,17 @@
+{
+  "name": "LabG40",
+  "short_name": "LabG40",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0E2034",
+  "theme_color": "#0E2034",
+  "icons": [
+    {
+      "src": "/labg40-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
