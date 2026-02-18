@@ -124,6 +124,17 @@ Para una visión consolidada (diagramas Mermaid: componentes, capas, flujo IA, m
 
 Incluye además: puntos de extensión futuros, métricas expuestas y normalizaciones clínicas.
 
+## Cotizaciones (Quotes)
+
+Las cotizaciones son independientes de `work_orders` y permiten negociar precios por referente con historial de versiones.
+
+Características clave:
+* Estados: `Borrador`, `Enviada`, `Aceptada`, `Expirada`.
+* Vigencia con prórroga ilimitada (registro de evento en auditoría).
+* Descuentos globales + por ítem (monto y porcentaje) con precio final negociado.
+* Historial con snapshot completo y diff visual (última vs anterior).
+* Al aceptar, actualiza la `listaprecios` del referente.
+
 ## Multi-Tenancy (una base de datos por laboratorio)
 
 Modo opcional activando `MULTI_TENANT=1` en `.env`. Requiere una base "master" que contiene:

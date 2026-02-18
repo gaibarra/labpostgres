@@ -1,6 +1,6 @@
 import React from 'react';
     import { Link, useLocation, useNavigate } from 'react-router-dom';
-    import { Home, Settings, Users, TestTube as TestTubeDiagonal, Package, ClipboardList, ShieldCheck, DollarSign, Target, X, ChevronsLeft, ChevronsRight, HelpCircle } from 'lucide-react';
+    import { Home, Settings, Users, TestTube as TestTubeDiagonal, Package, ClipboardList, ShieldCheck, DollarSign, Target, X, ChevronsLeft, ChevronsRight, HelpCircle, FileText } from 'lucide-react';
     import { cn } from '@/lib/utils';
     import { Button } from '@/components/ui/button';
     import { motion, AnimatePresence } from 'framer-motion';
@@ -16,6 +16,7 @@ import React from 'react';
       { href: '/studies', label: 'Estudios', icon: TestTubeDiagonal },
       { href: '/packages', label: 'Paquetes', icon: Package },
       { href: '/orders', label: 'Órdenes', icon: ClipboardList },
+      { href: '/quotes', label: 'Cotizaciones', icon: FileText },
       { href: '/administration', label: 'Administración', icon: ShieldCheck },
       { href: '/finance', label: 'Finanzas', icon: DollarSign },
       { href: '/marketing', label: 'Marketing', icon: Target },
@@ -58,9 +59,9 @@ import React from 'react';
               <X className="h-6 w-6"/>
             </Button>
           </div>
-          <nav className="flex-grow">
+          <nav className="flex-grow min-h-0 overflow-y-auto relative">
             <TooltipProvider delayDuration={0}>
-              <ul className="space-y-1">
+              <ul className="space-y-1 pb-4">
                 {navItems.map((item) => (
                   <li key={item.href}>
                     <Tooltip>
@@ -103,6 +104,7 @@ import React from 'react';
                 ))}
               </ul>
             </TooltipProvider>
+            <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-b from-transparent to-slate-50 dark:to-slate-900" />
           </nav>
           <div className="mt-auto p-2 flex flex-col items-center">
             <TooltipProvider delayDuration={0}>

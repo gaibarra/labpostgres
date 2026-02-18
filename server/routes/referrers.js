@@ -45,12 +45,12 @@ router.get('/count/all', auth, requirePermission('referrers','read'), async (req
 });
 
 // CREATE
-router.post('/', auth, requirePermission('referrers','create'), sanitizeBody(['name','entity_type','specialty','email','phone_number','address','listaprecios']), validate(referrerCreateSchema), audit('create','referrer', (req,r)=>r.locals?.createdId, (req)=>({ body: req.body })), async (req,res,next)=>{
-  const { name, entity_type, specialty, email, phone_number, address, listaprecios } = req.body || {};
+router.post('/', auth, requirePermission('referrers','create'), sanitizeBody(['name','entity_type','specialty','email','phone_number','address','contact_name','contact_phone','social_media','listaprecios']), validate(referrerCreateSchema), audit('create','referrer', (req,r)=>r.locals?.createdId, (req)=>({ body: req.body })), async (req,res,next)=>{
+  const { name, entity_type, specialty, email, phone_number, address, contact_name, contact_phone, social_media, listaprecios } = req.body || {};
   try {
     const { rows } = await activePool(req).query(
-      `INSERT INTO ${TABLE}(name, entity_type, specialty, email, phone_number, address, listaprecios) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-      [name, entity_type||null, specialty||null, email||null, phone_number||null, address||null, listaprecios||null]
+      `INSERT INTO ${TABLE}(name, entity_type, specialty, email, phone_number, address, contact_name, contact_phone, social_media, listaprecios) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      [name, entity_type||null, specialty||null, email||null, phone_number||null, address||null, contact_name||null, contact_phone||null, social_media||null, listaprecios||null]
     );
     const created = rows[0];
     res.locals.createdId = created.id;
@@ -71,12 +71,12 @@ router.get('/:id', auth, requirePermission('referrers','read'), async (req,res,n
 });
 
 // UPDATE
-router.put('/:id', auth, requirePermission('referrers','update'), sanitizeBody(['name','entity_type','specialty','email','phone_number','address','listaprecios']), validate(referrerUpdateSchema), audit('update','referrer', req=>req.params.id, (req)=>({ body: req.body })), async (req,res,next)=>{
+router.put('/:id', auth, requirePermission('referrers','update'), sanitizeBody(['name','entity_type','specialty','email','phone_number','address','contact_name','contact_phone','social_media','listaprecios']), validate(referrerUpdateSchema), audit('update','referrer', req=>req.params.id, (req)=>({ body: req.body })), async (req,res,next)=>{
   try {
     const { rows: baseRows } = await activePool(req).query(`SELECT name FROM ${TABLE} WHERE id=$1`,[req.params.id]);
     if(!baseRows[0]) return next(new AppError(404,'Referente no encontrado','REFERRER_NOT_FOUND'));
     const isParticular = (baseRows[0].name||'').toLowerCase()==='particular';
-    const allowed = ['name','entity_type','specialty','email','phone_number','address','listaprecios'];
+    const allowed = ['name','entity_type','specialty','email','phone_number','address','contact_name','contact_phone','social_media','listaprecios'];
     const sets=[]; const vals=[];
     allowed.forEach(f=>{
       if(Object.prototype.hasOwnProperty.call(req.body,f)){

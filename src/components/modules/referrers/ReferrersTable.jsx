@@ -2,7 +2,7 @@ import React from 'react';
 import { Table, TableBody, TableCell, TableHeader, TableHead, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, Edit, Trash2, FileText } from 'lucide-react';
+import { MoreHorizontal, Edit, Trash2, FileText, PlusCircle } from 'lucide-react';
 import PriceListTrigger from './PriceListTrigger';
 
 const ReferrersTable = ({ 
@@ -14,6 +14,7 @@ const ReferrersTable = ({
   packagesData,
   onUpdateReferrerPrices,
   particularReferrer,
+  onCreateQuote,
   isSubmitting
 }) => {
   return (
@@ -88,6 +89,12 @@ const ReferrersTable = ({
                         <FileText className="mr-2 h-4 w-4 text-indigo-500" />
                         Ver Lista (PDF)
                       </DropdownMenuItem>
+                      {referrer.name !== 'Particular' && (
+                        <DropdownMenuItem onClick={() => onCreateQuote(referrer.id)} className="cursor-pointer" disabled={isSubmitting}>
+                          <PlusCircle className="mr-2 h-4 w-4 text-emerald-500" />
+                          Cotización rápida
+                        </DropdownMenuItem>
+                      )}
                       {referrer.name !== 'Particular' && (
                         <DropdownMenuItem onClick={() => openDeleteConfirm(referrer)} className="cursor-pointer text-red-600 dark:text-red-400 focus:text-red-600 dark:focus:text-red-400" disabled={isSubmitting}>
                           <Trash2 className="mr-2 h-4 w-4" />

@@ -22,6 +22,7 @@ const Referrers = lazy(() => import('@/components/modules/Referrers'));
 const Studies = lazy(() => import('@/components/modules/Studies'));
 const Packages = lazy(() => import('@/components/modules/Packages'));
 const Orders = lazy(() => import('@/components/modules/Orders'));
+const Quotes = lazy(() => import('@/components/modules/Quotes'));
 const Administration = lazy(() => import('@/components/modules/Administration'));
 const UserManagement = lazy(() => import('@/components/modules/administration/UserManagement'));
 const RolesAndPermissions = lazy(() => import('@/components/modules/administration/RolesAndPermissions'));
@@ -79,6 +80,7 @@ function App() {
             <Route path="/studies" element={<Studies />} />
             <Route path="/packages" element={<Packages />} />
             <Route path="/orders" element={<Orders />} />
+            <Route path="/quotes" element={<Quotes />} />
             <Route path="/administration" element={<Administration />} />
             <Route path="/administration/user-management" element={<UserManagement />} />
             <Route path="/administration/roles-permissions" element={<RolesAndPermissions />} />

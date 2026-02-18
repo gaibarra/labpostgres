@@ -5,10 +5,20 @@
 ALTER TABLE public.system_audit_logs
   ADD COLUMN IF NOT EXISTS profile_id uuid;
 
--- Backfill existing audit entries from performed_by (user who performed the action)
-UPDATE public.system_audit_logs
-SET profile_id = performed_by
-WHERE performed_by IS NOT NULL;
+-- Clean up orphaned profile_id values before FK
+UPDATE public.system_audit_logs sal
+SET profile_id = NULL
+WHERE profile_id IS NOT NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM public.profiles p WHERE p.id = sal.profile_id
+  );
+
+-- Backfill existing audit entries from performed_by only if profile exists
+UPDATE public.system_audit_logs sal
+SET profile_id = sal.performed_by
+FROM public.profiles p
+WHERE sal.performed_by IS NOT NULL
+  AND p.id = sal.performed_by;
 
 -- Create foreign key constraint
 DO $$BEGIN

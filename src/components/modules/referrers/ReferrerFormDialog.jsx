@@ -13,6 +13,9 @@ const ReferrerFormDialog = ({ isOpen, onOpenChange, referrer, onSave, isSubmitti
     phone_number: '',
     email: '',
     address: '',
+    contact_name: '',
+    contact_phone: '',
+    social_media: { facebook: '', instagram: '', whatsapp: '' },
     listaprecios: { studies: [], packages: [] },
   });
 
@@ -28,6 +31,17 @@ const ReferrerFormDialog = ({ isOpen, onOpenChange, referrer, onSave, isSubmitti
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
+    if (name.startsWith('social_media.')) {
+      const key = name.split('social_media.')[1];
+      setCurrentReferrer(prev => ({
+        ...prev,
+        social_media: {
+          ...(prev.social_media && typeof prev.social_media === 'object' ? prev.social_media : {}),
+          [key]: value
+        }
+      }));
+      return;
+    }
     setCurrentReferrer(prev => ({ ...prev, [name]: value }));
   };
 

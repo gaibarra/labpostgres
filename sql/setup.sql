@@ -109,6 +109,12 @@ CREATE TABLE IF NOT EXISTS referring_entities (
   entity_type text,
   specialty text,
   listaprecios jsonb,
+  email text,
+  phone_number text,
+  address text,
+  contact_name text,
+  contact_phone text,
+  social_media jsonb,
   created_at timestamptz DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_referring_entities_name ON referring_entities(LOWER(name));
@@ -172,6 +178,87 @@ CREATE TABLE IF NOT EXISTS work_order_results (
   created_at timestamptz DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_work_order_results_order ON work_order_results(work_order_id);
+
+-- Cotizaciones -------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS quotes (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  quote_number text,
+  referring_entity_id uuid REFERENCES referring_entities(id) ON DELETE SET NULL,
+  status text DEFAULT 'Borrador',
+  quote_date timestamptz DEFAULT now(),
+  expires_at timestamptz,
+  subtotal numeric(12,2) DEFAULT 0,
+  descuento numeric(12,2) DEFAULT 0,
+  descuento_percent numeric(5,2) DEFAULT 0,
+  total_price numeric(12,2) DEFAULT 0,
+  notes text,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_quotes_referrer ON quotes(referring_entity_id);
+CREATE INDEX IF NOT EXISTS idx_quotes_status ON quotes(status);
+CREATE INDEX IF NOT EXISTS idx_quotes_date ON quotes(quote_date);
+
+CREATE TABLE IF NOT EXISTS quote_items (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  quote_id uuid NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
+  item_type text NOT NULL,
+  item_id uuid NOT NULL,
+  item_name text,
+  base_price numeric(10,2) DEFAULT 0,
+  discount_amount numeric(10,2) DEFAULT 0,
+  discount_percent numeric(5,2) DEFAULT 0,
+  final_price numeric(10,2) DEFAULT 0,
+  position int,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_quote_items_quote ON quote_items(quote_id);
+CREATE INDEX IF NOT EXISTS idx_quote_items_item ON quote_items(item_id);
+
+CREATE TABLE IF NOT EXISTS quote_versions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  quote_id uuid NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
+  version_number int NOT NULL,
+  status text,
+  snapshot jsonb DEFAULT '{}'::jsonb,
+  created_by uuid,
+  created_at timestamptz DEFAULT now(),
+  UNIQUE(quote_id, version_number)
+);
+CREATE INDEX IF NOT EXISTS idx_quote_versions_quote ON quote_versions(quote_id);
+
+CREATE TABLE IF NOT EXISTS quote_version_items (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  quote_version_id uuid NOT NULL REFERENCES quote_versions(id) ON DELETE CASCADE,
+  item_type text NOT NULL,
+  item_id uuid,
+  item_name text,
+  base_price numeric(10,2) DEFAULT 0,
+  discount_amount numeric(10,2) DEFAULT 0,
+  discount_percent numeric(5,2) DEFAULT 0,
+  final_price numeric(10,2) DEFAULT 0,
+  position int
+);
+CREATE INDEX IF NOT EXISTS idx_quote_version_items_version ON quote_version_items(quote_version_id);
+
+CREATE OR REPLACE FUNCTION quotes_set_updated_at()
+RETURNS trigger AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END; $$ LANGUAGE plpgsql;
+
+DO $$BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname='trg_quotes_updated_at') THEN
+    CREATE TRIGGER trg_quotes_updated_at BEFORE UPDATE ON quotes
+      FOR EACH ROW EXECUTE FUNCTION quotes_set_updated_at();
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname='trg_quote_items_updated_at') THEN
+    CREATE TRIGGER trg_quote_items_updated_at BEFORE UPDATE ON quote_items
+      FOR EACH ROW EXECUTE FUNCTION quotes_set_updated_at();
+  END IF;
+END$$;
 
 CREATE TABLE IF NOT EXISTS price_list_items (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -833,6 +920,7 @@ DECLARE cnt int; BEGIN
         'referrers', ARRAY['create','read','update','delete','manage_pricelists'],
         'studies', ARRAY['create','read','update','delete'],
         'packages', ARRAY['create','read','update','delete'],
+        'quotes', ARRAY['create','read','update','delete','send','accept','extend','view_history'],
         'orders', ARRAY['create','read_all','read_assigned','update_status','enter_results','validate_results','print_report','send_report'],
         'finance', ARRAY['access_income_report','access_expense_tracking','manage_expenses','access_accounts_receivable','manage_payments','access_invoicing'],
         'administration', ARRAY['manage_users','manage_roles','system_settings','view_audit_log','manage_templates','manage_branches'],
@@ -841,6 +929,7 @@ DECLARE cnt int; BEGIN
       ), true),
       ('Técnico de Laboratorio', jsonb_build_object(
         'patients', ARRAY['read'],
+        'quotes', ARRAY['read','view_history'],
         'orders', ARRAY['read_assigned','enter_results','update_status']
       ), true),
       ('Recepcionista', jsonb_build_object(
@@ -848,11 +937,13 @@ DECLARE cnt int; BEGIN
         'referrers', ARRAY['read'],
         'studies', ARRAY['read'],
         'packages', ARRAY['read'],
+        'quotes', ARRAY['create','read','update','send','extend','view_history'],
         'orders', ARRAY['create','read_all','update_status','print_report','send_report'],
         'finance', ARRAY['access_accounts_receivable','manage_payments']
       ), true),
       ('Flebotomista', jsonb_build_object(
         'patients', ARRAY['read'],
+        'quotes', ARRAY['read','view_history'],
         'orders', ARRAY['read_assigned','update_status']
       ), true),
       ('Invitado', '{}'::jsonb, true);

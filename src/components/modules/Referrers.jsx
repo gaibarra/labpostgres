@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { useToast } from "@/components/ui/use-toast";
 import { motion } from 'framer-motion';
@@ -33,6 +34,7 @@ const Referrers = () => {
   const { toast } = useToast();
   const { user } = useAuth();
   const isMobile = useMediaQuery("(max-width: 768px)");
+  const navigate = useNavigate();
 
   const [referrers, setReferrers] = useState([]);
   const [studies, setStudies] = useState([]);
@@ -162,6 +164,10 @@ const Referrers = () => {
     (referrer.email && referrer.email.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
+  const handleCreateQuote = (referrerId) => {
+    navigate(`/quotes?referrerId=${referrerId}`);
+  };
+
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
       <ReferrerHelpDialog open={isHelpDialogOpen} onOpenChange={setIsHelpDialogOpen} />
@@ -188,6 +194,7 @@ const Referrers = () => {
                   packagesData={packagesData}
                   onUpdateReferrerPrices={handleUpdateReferrerPrices}
                   particularReferrer={particularReferrer}
+                  onCreateQuote={handleCreateQuote}
                   isSubmitting={isSubmitting}
                 />
               ) : (
@@ -201,6 +208,7 @@ const Referrers = () => {
                     packagesData={packagesData}
                     onUpdateReferrerPrices={handleUpdateReferrerPrices}
                     particularReferrer={particularReferrer}
+                    onCreateQuote={handleCreateQuote}
                     isSubmitting={isSubmitting}
                   />
                 </div>

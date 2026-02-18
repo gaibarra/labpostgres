@@ -20,6 +20,9 @@ const { ensureCoreSchemaArtifacts } = require('./services/schemaGuards');
 
 const app = express();
 
+// Use X-Forwarded-For from Nginx so rate limiting keys per real client IP.
+app.set('trust proxy', 1);
+
 // Asegura tablas e índices críticos (idempotente) al iniciar el proceso.
 ensureCoreSchemaArtifacts().catch(err => {
   console.error('[SCHEMA] ensureCoreSchemaArtifacts failed', err.message || err);
@@ -148,6 +151,10 @@ registerRoute('/api/patients', patientRoutes, { tenant: true });
 // Rutas Work Orders
 const workOrderRoutes = require('./routes/workOrders');
 registerRoute('/api/work-orders', workOrderRoutes, { tenant: true });
+
+// Rutas Quotes
+const quotesRoutes = require('./routes/quotes');
+registerRoute('/api/quotes', quotesRoutes, { tenant: true });
 
 // Rutas Usuarios (admin) (en muchos casos son globales al tenant)
 const userRoutes = require('./routes/users');

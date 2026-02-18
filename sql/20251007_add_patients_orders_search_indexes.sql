@@ -36,8 +36,8 @@ BEGIN
   IF EXISTS (
     SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='patients' AND column_name='phone'
   ) THEN
-    EXECUTE $$CREATE INDEX IF NOT EXISTS idx_patients_phone_digits
-              ON patients ((regexp_replace(phone::text, '\\D', '', 'g')))$$;
+    EXECUTE $q$CREATE INDEX IF NOT EXISTS idx_patients_phone_digits
+          ON patients ((regexp_replace(phone::text, '\\D', '', 'g')))$q$;
   END IF;
 END$$;
 
@@ -46,8 +46,8 @@ BEGIN
   IF EXISTS (
     SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='patients' AND column_name='phone_number'
   ) THEN
-    EXECUTE $$CREATE INDEX IF NOT EXISTS idx_patients_phone_number_digits
-              ON patients ((regexp_replace(phone_number::text, '\\D', '', 'g')))$$;
+    EXECUTE $q$CREATE INDEX IF NOT EXISTS idx_patients_phone_number_digits
+          ON patients ((regexp_replace(phone_number::text, '\\D', '', 'g')))$q$;
   END IF;
 END$$;
 

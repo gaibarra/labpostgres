@@ -51,7 +51,12 @@ const crypto = require('crypto');
   console.log('Ejecutando migraciones:', files);
   const markExecuted = async (file, checksum) => {
     try {
-      await pool.query('INSERT INTO schema_migrations(filename, checksum) VALUES ($1,$2) ON CONFLICT (filename) DO NOTHING', [file, checksum]);
+      await pool.query(
+        `INSERT INTO schema_migrations(filename, checksum)
+         SELECT $1, $2
+         WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE filename = $1)`,
+        [file, checksum]
+      );
       executed.add(file);
     } catch (e) {
       console.warn('No se pudo registrar schema_migrations para', file, e.message);

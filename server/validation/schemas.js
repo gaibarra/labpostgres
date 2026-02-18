@@ -89,6 +89,39 @@ const updateWorkOrderSchema = z.object({
   params: z.object({ id: uuid })
 });
 
+// Quotes
+const quoteItemSchema = z.object({
+  item_type: z.string().optional().nullable(),
+  item_id: uuid.optional().nullable(),
+  item_name: z.string().optional().nullable(),
+  base_price: z.number().nonnegative().optional().nullable(),
+  discount_amount: z.number().nonnegative().optional().nullable(),
+  discount_percent: z.number().nonnegative().optional().nullable(),
+  final_price: z.number().nonnegative().optional().nullable(),
+  position: z.number().int().optional().nullable(),
+});
+
+const createQuoteSchema = z.object({
+  body: z.object({
+    quote_number: z.string().optional().nullable(),
+    referring_entity_id: uuid.optional().nullable(),
+    status: z.string().optional().nullable(),
+    quote_date: z.string().datetime().optional().nullable(),
+    expires_at: z.string().datetime().optional().nullable(),
+    subtotal: z.number().nonnegative().optional().nullable(),
+    descuento: z.number().nonnegative().optional().nullable(),
+    descuento_percent: z.number().nonnegative().optional().nullable(),
+    total_price: z.number().nonnegative().optional().nullable(),
+    notes: z.string().optional().nullable(),
+    items: z.array(quoteItemSchema).optional().nullable(),
+  })
+});
+
+const updateQuoteSchema = z.object({
+  body: createQuoteSchema.shape.body.partial(),
+  params: z.object({ id: uuid })
+});
+
 module.exports = {
   registerSchema,
   loginSchema,
@@ -96,6 +129,8 @@ module.exports = {
   updatePatientSchema,
   createWorkOrderSchema,
   updateWorkOrderSchema,
+  createQuoteSchema,
+  updateQuoteSchema,
   // extended schemas added below
 };
 
@@ -154,6 +189,15 @@ const referrerCreateSchema = z.object({
       ]).optional().nullable()
     ),
     address: z.string().optional().nullable(),
+    contact_name: z.string().optional().nullable(),
+    contact_phone: z.preprocess(
+      v => (v === '' ? null : v),
+      z.union([
+        z.string().regex(/^[+\d\s-]{7,20}$/,"Celular debe tener entre 7 y 20 caracteres válidos"),
+        z.null()
+      ]).optional().nullable()
+    ),
+    social_media: z.any().optional().nullable(),
     listaprecios: z.any().optional().nullable()
   })
 });

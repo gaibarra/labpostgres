@@ -65,10 +65,34 @@ const ReferrerForm = ({ currentReferrer, handleInputChange, handleSelectChange, 
               <Input id="email" name="email" type="email" value={currentReferrer.email || ''} onChange={handleInputChange} placeholder="correo@ejemplo.com (opcional)" disabled={isSubmitting} />
             </div>
           </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="contact_name">Persona de contacto</Label>
+              <Input id="contact_name" name="contact_name" value={currentReferrer.contact_name || ''} onChange={handleInputChange} placeholder="Nombre del contacto" disabled={isSubmitting} />
+            </div>
+            <div>
+              <Label htmlFor="contact_phone">Celular de contacto</Label>
+              <Input id="contact_phone" name="contact_phone" type="tel" value={currentReferrer.contact_phone || ''} onChange={handleInputChange} placeholder="Ej: 5512345678" disabled={isSubmitting} />
+            </div>
+          </div>
            <div>
               <Label htmlFor="address">Dirección</Label>
               <Input id="address" name="address" value={currentReferrer.address || ''} onChange={handleInputChange} placeholder="Calle, Número, Colonia, Ciudad" disabled={isSubmitting} />
             </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <Label htmlFor="social_media_facebook">Facebook</Label>
+              <Input id="social_media_facebook" name="social_media.facebook" value={currentReferrer.social_media?.facebook || ''} onChange={handleInputChange} placeholder="https://facebook.com/..." disabled={isSubmitting} />
+            </div>
+            <div>
+              <Label htmlFor="social_media_instagram">Instagram</Label>
+              <Input id="social_media_instagram" name="social_media.instagram" value={currentReferrer.social_media?.instagram || ''} onChange={handleInputChange} placeholder="https://instagram.com/..." disabled={isSubmitting} />
+            </div>
+            <div>
+              <Label htmlFor="social_media_whatsapp">WhatsApp</Label>
+              <Input id="social_media_whatsapp" name="social_media.whatsapp" value={currentReferrer.social_media?.whatsapp || ''} onChange={handleInputChange} placeholder="https://wa.me/" disabled={isSubmitting} />
+            </div>
+          </div>
         </div>
       </ScrollArea>
       <DialogFooter className="pt-4 mt-4 border-t flex flex-col sm:flex-row gap-2">
